@@ -1,5 +1,5 @@
-import { FlashList } from '@shopify/flash-list';
-import { type ReactElement, useCallback, useState } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { type ReactElement, useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, type LayoutChangeEvent, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { usePrefetchItemOnFocus } from '@/api/queries';
@@ -34,6 +34,12 @@ interface ItemGridProps {
  * grid really has (`gridFor` in the theme), so a sidebar, Split View or the
  * TV rail give the right column count. `key` changes with the column count,
  * so FlashList rebuilds once instead of animating cells.
+ *
+ * TV: the row with the focus scrolls to the middle of the grid. Android's
+ * ScrollView alone scrolls only until the focused tile shows, so the focused
+ * row sat on the bottom edge with its title and focus ring cut off. The end
+ * padding is only the focus room, so Down on the last row has no empty space
+ * to scroll into (like the Home rows, `tvPageEndPadding`).
  */
 export function ItemGrid({
   items,
@@ -48,7 +54,7 @@ export function ItemGrid({
   focusFirstTile = true,
 }: ItemGridProps) {
   const l = useLayout();
-  const bottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset });
+  const tabBottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset });
   const { c } = useTheme();
   const openItem = useOpenItem();
   const pull = usePullRefresh(onRefresh);
@@ -59,8 +65,27 @@ export function ItemGrid({
   const width = measured || l.contentWidth;
   const g = gridLayout(shape, width, l.tv, l.width);
   const { columns, tileWidth, gap, gutter } = g;
-  // TV: room above the first row for the focus scale and ring.
-  const topPad = l.tv ? tvFocusBleed(tileHeight(shape, tileWidth)) + spacing.lg : autoInset ? spacing.xs : spacing.lg;
+  // TV: room above the first row and below the last for the focus scale and ring.
+  const focusRoom = tvFocusBleed(tileHeight(shape, tileWidth)) + spacing.lg;
+  const topPad = l.tv ? focusRoom : autoInset ? spacing.xs : spacing.lg;
+  const bottomPad = l.tv ? focusRoom : tabBottomPad;
+
+  const list = useRef<FlashListRef<BaseItemDto>>(null);
+  const focusedRow = useRef(-1);
+  const centerRow = useCallback(
+    (index: number) => {
+      const row = Math.floor(index / columns);
+      if (row === focusedRow.current) return;
+      focusedRow.current = row;
+      // The offset from the row's layout: scrollToIndex sent the focus back to the first tile on Android TV.
+      const grid = list.current;
+      const cell = grid?.getLayout(row * columns);
+      if (!grid || !cell) return;
+      const view = grid.getWindowSize().height;
+      grid.scrollToOffset({ offset: Math.max(0, grid.getFirstItemOffset() + cell.y - (view - cell.height) / 2), animated: true });
+    },
+    [columns],
+  );
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = Math.round(e.nativeEvent.layout.width);
@@ -82,15 +107,23 @@ export function ItemGrid({
           shape={shape}
           onPress={open}
           preferredFocus={l.tv && focusFirstTile && index === 0}
-          onFocusItem={l.tv ? prefetch : undefined}
+          onFocusItem={
+            l.tv
+              ? (it) => {
+                  prefetch(it);
+                  centerRow(index);
+                }
+              : undefined
+          }
         />
       </View>
     ),
-    [columns, gap, tileWidth, shape, open, l.tv, prefetch, focusFirstTile],
+    [columns, gap, tileWidth, shape, open, l.tv, prefetch, centerRow, focusFirstTile],
   );
 
   return (
       <FlashList
+        ref={list}
         onLayout={onLayout}
         data={items}
         numColumns={columns}
