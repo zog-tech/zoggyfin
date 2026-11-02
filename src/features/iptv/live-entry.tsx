@@ -1,9 +1,13 @@
 /**
  * The way into Live TV where it is not a tab (iPhone, iPad, Android): a row
  * at the top of the Library tab. See nav.ts for why.
+ *
+ * On iOS the row shows only after a provider is added in Settings. The App
+ * Store build is a Jellyfin client first, and the app ships no channels of
+ * its own, so an empty Live TV row at the top of the Library only confuses.
  */
 import { router } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
@@ -18,6 +22,7 @@ export function LiveTvEntry() {
   const { c } = useTheme();
   const providers = useProviders();
   if (liveTvTab || isTV) return null;
+  if (Platform.OS === 'ios' && !providers.length) return null;
   const detail = providers.length
     ? providers.map((p) => p.name).join(', ')
     : 'Add an IPTV provider to watch live channels';
