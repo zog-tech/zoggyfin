@@ -50,13 +50,12 @@ import { Scrubber } from '../player/scrubber';
 import { useTvScrub } from '../player/use-tv-scrub';
 import { c, ease, iconSize, motion, radius, spacing } from '../player/tokens';
 import { ArtBackground } from './art-background';
+import { nowPlayingSizes } from './layout';
 import { LyricsPanel } from './lyrics-panel';
 import { QueuePanel } from './queue-panel';
 import { VolumeSlider } from './volume-slider';
 
 export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
-/** Two columns (player | queue or lyrics) from this window width. */
-const WIDE = 900;
 
 type Panel = 'none' | 'queue' | 'lyrics';
 type SheetKind = 'speed' | 'sleep' | 'chapters' | 'more' | null;
@@ -121,7 +120,7 @@ export function NowPlayingScreen() {
   const s = audioSession();
 
   useHideDevToolsButton();
-  const wide = width >= WIDE;
+  const { wide, columnWidth, contentWidth, artSize } = nowPlayingSizes({ width, height, insetTop: insets.top, insetBottom: insets.bottom, longForm });
   const [panel, setPanel] = useState<Panel>(wide ? 'queue' : 'none');
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -297,12 +296,6 @@ export function NowPlayingScreen() {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
     setPanel((cur) => (cur === p ? (wide ? (p === 'queue' ? 'queue' : 'queue') : 'none') : p));
   };
-
-  const contentWidth = wide ? Math.min(560, width / 2) - spacing.xl * 2 : Math.min(width, 600) - spacing.xl * 2;
-  // Room for the title, scrubber, transport and bottom rows below the art.
-  const below = longForm ? 330 : 360;
-  // Wide windows also stack the header and the title above the controls in one column.
-  const artSize = Math.max(140, Math.min(contentWidth, height - insets.top - insets.bottom - below - (wide ? 110 : 40), 560));
 
   const title = (
     <View style={styles.titleRow}>
@@ -495,12 +488,13 @@ export function NowPlayingScreen() {
   if (wide) {
     body = (
       <View style={styles.wideRow}>
-        <View style={styles.wideLeft}>
+        <View style={[styles.wideLeft, { width: columnWidth }]}>
           <GestureDetector gesture={dismiss}>
             <View style={styles.center}>
               {header}
-              {/* No flex parent here: the art area takes the art's own height. */}
-              <View style={[styles.artArea, styles.artAreaFixed, { width: contentWidth, height: artSize + spacing.md * 2 }]}>{artwork}</View>
+              {/* The art area takes the art's own height. With `flex: 1`, Yoga uses a flex basis of 0 over
+                  `height`, so the box shrank to its minimum and the art covered the header and the title. */}
+              <View style={[styles.artArea, { width: contentWidth, height: artSize + spacing.md * 2 }]}>{artwork}</View>
               <View style={{ width: contentWidth }}>{title}</View>
             </View>
           </GestureDetector>
@@ -525,7 +519,7 @@ export function NowPlayingScreen() {
               <View style={{ width: contentWidth }}>{compactTitle}</View>
             ) : (
               <>
-                <View style={[styles.artArea, { width: contentWidth }]}>{artwork}</View>
+                <View style={[styles.artArea, styles.flex, { width: contentWidth }]}>{artwork}</View>
                 <View style={{ width: contentWidth }}>{title}</View>
               </>
             )}
@@ -715,8 +709,7 @@ const styles = StyleSheet.create({
   grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
   closeButton: { position: 'absolute', left: spacing.lg, bottom: -6 },
   closeInner: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  artArea: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 140, paddingVertical: spacing.md },
-  artAreaFixed: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
+  artArea: { alignItems: 'center', justifyContent: 'center', minHeight: 140, paddingVertical: spacing.md },
   art: {
     borderRadius: 20,
     // A solid fill lets iOS draw the shadow from the layer shape.
@@ -750,7 +743,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
   disabled: { opacity: 0.35 },
   wideRow: { flex: 1, flexDirection: 'row' },
-  wideLeft: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  wideLeft: { alignItems: 'center', justifyContent: 'center' },
   wideRight: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
   panelTabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   panelTab: { paddingHorizontal: spacing.md, height: 32, borderRadius: 16, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)' },
