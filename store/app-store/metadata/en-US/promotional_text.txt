@@ -1,1 +1,1 @@
-Your own movies, shows and music from your Jellyfin server. Downloads for offline play, watch together, and no ads, accounts or tracking.
+Your own Jellyfin server on iPhone and iPad: movies, shows and music with a native player, downloads you can see, and watch together.

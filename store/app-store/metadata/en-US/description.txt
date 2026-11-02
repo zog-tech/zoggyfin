@@ -1,16 +1,16 @@
-Zoggyfin is a fast, calm client for your own Jellyfin media server. Sign in to your server and play your movies, shows and music on your iPhone and iPad.
+Zoggyfin is a fast, calm client for your own Jellyfin media server. Sign in to your server and play your movies, shows and music with players that feel at home on iPhone and iPad.
 
 You need a Jellyfin server to use Zoggyfin. Zoggyfin has no media of its own: it plays only what is on the servers that you add. To try the app first, use the public Jellyfin demo server.
 
 VIDEO
-• Video player with Picture in Picture and AirPlay
+• Native video player with Picture in Picture and AirPlay
 • Audio and subtitle tracks, quality and playback speed
 • Scrubbing with preview images and chapter marks
 • Skip Intro, Skip Credits and a next-episode countdown
 • Resume where you stopped; progress syncs with your server
 
 MUSIC AND AUDIOBOOKS
-• Background playback with controls on the lock screen and in Control Center
+• Background playback and lock-screen controls
 • Synced lyrics when your server has them
 • A queue you can reorder, plus shuffle and repeat
 • Instant Mix from a song, album, artist or genre
@@ -25,7 +25,7 @@ DOWNLOADS YOU CAN SEE
 
 WATCH TOGETHER
 • SyncPlay groups with other users of your server
-• Nearby: watch or listen in sync with people near you on the same Wi-Fi. Bluetooth helps nearby devices find each other.
+• Nearby: watch in sync with a device on the same network
 
 MADE FOR YOUR LIBRARY
 • Home with Continue Watching, Next Up and Recently Added
@@ -34,15 +34,10 @@ MADE FOR YOUR LIBRARY
 • Fast search with results grouped by type
 • Every item has a picture, even without server artwork
 • More than one server and user, with home and internet addresses
-• An optional Wi-Fi rule picks the home address of your server on your home Wi-Fi
 • Quick Connect sign-in, light and dark appearance
-• A wide layout for iPad
-
-FOR SERVER ADMINISTRATORS
-• Invite a person with a link or a QR code
-• An admin panel: sessions, users, libraries, scheduled tasks and logs
+• Layouts for iPad, with a sidebar and two-column pages
 
 PRIVATE BY DESIGN
-Zoggyfin has no account of its own, no ads, no analytics and no tracking. The app talks only to the servers that you add.
+Zoggyfin has no account of its own, no ads, no analytics and no tracking. The app talks only to the server that you add.
 
 Zoggyfin is open source under the MPL-2.0. It is not affiliated with the Jellyfin project. Jellyfin is free software for your own media server.
