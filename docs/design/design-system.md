@@ -424,7 +424,7 @@ The generated tile is a real tile (same press, hover and badge rules). It is not
 - **Secondary actions:** one row of 44-pt round buttons with 11-pt labels: Download (shows progress ring while downloading), Add to playlist, Played, Favourite, Audio & Subtitles. Overflow goes into the More menu.
 - **Overview:** `subheadline` `text2`, 3 lines with "More" in `accent` that expands in place.
 - Below: Seasons (segmented pager for series), Episodes list, Cast & Crew (circle row), Chapters (thumb row), More like this (poster row).
-- **iPad (≥ 900 content width):** two columns. Left 40 %: poster tile (raised), actions. Right 60 %: title, metadata, overview (max `readableWidth` 640), then lists. The backdrop stays full width behind, height 420.
+- **iPad (≥ 900 content width):** two columns. Left 40 %: poster tile (raised). Right 60 %: title, metadata, Play (poster width), the round actions, overview (max `readableWidth` 640), then lists. The actions get the text column's width, so all of them fit in one row. TV keeps Play and the actions under the poster, where the focus starts. The backdrop stays full width behind, height 420.
 
 ### 7.7 Segmented sub-tab pager (Music, Library sections, Seasons)
 

@@ -96,8 +96,8 @@ const VIDEO_TYPES = new Set(['Movie', 'Episode', 'Video', 'MusicVideo']);
  * a tall backdrop, a wide 16:9 image, square album art or a circle. Then the
  * title (the server logo when there is one), the metadata line, the primary
  * action with its resume bar, round secondary actions and the overview. Wide
- * windows put the artwork and actions in a left column (40 %) and the text
- * in the right column (60 %).
+ * windows put the artwork in a left column (40 %) and the text, Play and the
+ * actions in the right column (60 %). TV keeps Play and the actions under the art.
  */
 export function DetailScaffold<Row>({
   item,
@@ -231,6 +231,10 @@ export function DetailScaffold<Row>({
   secondary.push({ icon: 'ellipsis', label: 'More', onPress: () => setSheet(true) });
 
   const centered = !twoColumn;
+  // Two columns: Play and the round actions go under the facts in the text column. Under the poster
+  // they had only the poster's width, so Played and Favourite left the row on an iPad.
+  // TV keeps them under the poster, where the focus starts on Play.
+  const actionsUnderPoster = twoColumn && isTV;
 
   const title = <Title item={item} centered={centered} big={media} />;
 
@@ -292,6 +296,14 @@ export function DetailScaffold<Row>({
     </View>
   );
 
+  // Two-column sizes.
+  const leftWidth = Math.round((pageWidth - l.gutter * 2) * 0.4);
+  const posterAspect = layout === 'wide' ? 16 / 9 : layout === 'backdrop' ? 2 / 3 : 1;
+  // TV: the poster is at most 40% of the screen height, so the focused Play or Resume button shows whole when the page opens.
+  const tvPosterMax = isTV ? Math.round(l.height * 0.4 * posterAspect) : Infinity;
+  const posterWidth = Math.min(leftWidth, layout === 'square' ? 320 : 260, tvPosterMax);
+  const buttonsWidth = isTV ? Math.min(leftWidth, 260) : posterWidth;
+
   const overview = item.Overview ? <Overview text={item.Overview} centered={false} /> : null;
 
   const textBlock = (
@@ -300,8 +312,8 @@ export function DetailScaffold<Row>({
       {title}
       {layout === 'square' || layout === 'circle' ? eyebrowLine : null}
       {factsLine}
-      {twoColumn ? null : primary}
-      {twoColumn ? null : actionsRow}
+      {actionsUnderPoster ? null : twoColumn && primary ? <View style={[s.primaryColumn, { width: buttonsWidth }]}>{primary}</View> : primary}
+      {actionsUnderPoster ? null : actionsRow}
       {overview}
     </View>
   );
@@ -316,12 +328,6 @@ export function DetailScaffold<Row>({
 
   let header: ReactElement;
   if (twoColumn) {
-    const leftWidth = Math.round((pageWidth - l.gutter * 2) * 0.4);
-    const posterAspect = layout === 'wide' ? 16 / 9 : layout === 'backdrop' ? 2 / 3 : 1;
-    // TV: the poster is at most 40% of the screen height, so the focused Play or Resume button shows whole when the page opens.
-    const tvPosterMax = isTV ? Math.round(l.height * 0.4 * posterAspect) : Infinity;
-    const posterWidth = Math.min(leftWidth, layout === 'square' ? 320 : 260, tvPosterMax);
-    const buttonsWidth = isTV ? Math.min(leftWidth, 260) : posterWidth;
     header = (
       <View>
         {media ? <Hero item={item} height={heroH} style={heroStyle} /> : null}
@@ -337,10 +343,12 @@ export function DetailScaffold<Row>({
                 circle={layout === 'circle'}
               />
             </View>
-            <View style={{ width: buttonsWidth, gap: spacing.lg }}>
-              {primary}
-              {actionsRow}
-            </View>
+            {actionsUnderPoster ? (
+              <View style={{ width: buttonsWidth, gap: spacing.lg }}>
+                {primary}
+                {actionsRow}
+              </View>
+            ) : null}
           </View>
           <View style={[s.right, { maxWidth: sizes.readableWidth }]}>{textBlock}</View>
         </View>
@@ -611,6 +619,8 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   raised: { ...shadow('raised'), borderRadius: radius.lg },
   artWrap: { marginBottom: spacing.sm },
   textBlock: { gap: spacing.md, width: '100%' as const },
+  // The Play button in the text column keeps the poster's width, not the column's.
+  primaryColumn: { maxWidth: '100%' as const },
   textCenter: { textAlign: 'center' as const },
   selfCenter: { alignSelf: 'center' as const },
   eyebrow: { ...font(type.subheadline), fontWeight: '600' as const, color: c.text2 },
