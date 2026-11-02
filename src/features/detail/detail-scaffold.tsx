@@ -96,8 +96,9 @@ const VIDEO_TYPES = new Set(['Movie', 'Episode', 'Video', 'MusicVideo']);
  * a tall backdrop, a wide 16:9 image, square album art or a circle. Then the
  * title (the server logo when there is one), the metadata line, the primary
  * action with its resume bar, round secondary actions and the overview. Wide
- * windows put the artwork in a left column (40 %) and the text, Play and the
- * actions in the right column (60 %). TV keeps Play and the actions under the art.
+ * windows put the artwork in a left column as wide as the art and the text,
+ * Play and the actions in the right column, which takes the rest of the page.
+ * TV keeps Play and the actions under the art.
  */
 export function DetailScaffold<Row>({
   item,
@@ -304,7 +305,9 @@ export function DetailScaffold<Row>({
   const posterWidth = Math.min(leftWidth, layout === 'square' ? 320 : 260, tvPosterMax);
   const buttonsWidth = isTV ? Math.min(leftWidth, 260) : posterWidth;
 
-  const overview = item.Overview ? <Overview text={item.Overview} centered={false} /> : null;
+  const overviewText = item.Overview ? <Overview text={item.Overview} centered={false} /> : null;
+  // Long text keeps a readable line length; the title, facts and actions use the whole text column.
+  const overview = overviewText && twoColumn ? <View style={s.readable}>{overviewText}</View> : overviewText;
 
   const textBlock = (
     <View style={s.textBlock}>
@@ -332,7 +335,8 @@ export function DetailScaffold<Row>({
       <View>
         {media ? <Hero item={item} height={heroH} style={heroStyle} /> : null}
         <View style={[s.columns, { width: pageWidth, paddingHorizontal: l.gutter, marginTop: media ? -heroH * 0.45 : spacing.huge * 2 }]}>
-          <View style={[s.left, { width: leftWidth }]}>
+          {/* The left column is as wide as its poster, so the text column gets the rest of the page. TV keeps 40 %. */}
+          <View style={[s.left, { width: actionsUnderPoster ? leftWidth : posterWidth }]}>
             <View style={s.raised}>
               <ItemImage
                 item={item}
@@ -350,7 +354,7 @@ export function DetailScaffold<Row>({
               </View>
             ) : null}
           </View>
-          <View style={[s.right, { maxWidth: sizes.readableWidth }]}>{textBlock}</View>
+          <View style={s.right}>{textBlock}</View>
         </View>
         {beforeRows ? <View style={[s.page, { width: pageWidth }]}>{beforeRows}</View> : null}
       </View>
@@ -616,6 +620,7 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   columns: { alignSelf: 'center' as const, flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: spacing.xxxl },
   left: { alignItems: 'center' as const, gap: spacing.xl },
   right: { flex: 1, paddingTop: spacing.huge * 2 },
+  readable: { maxWidth: sizes.readableWidth },
   raised: { ...shadow('raised'), borderRadius: radius.lg },
   artWrap: { marginBottom: spacing.sm },
   textBlock: { gap: spacing.md, width: '100%' as const },
