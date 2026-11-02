@@ -1,1 +1,1 @@
-jellyfin,media server,home server,movies,tv shows,music,audiobooks,offline,syncplay,self-hosted
+media server,movies,tv shows,music player,video player,offline,downloads,home media,syncplay,lyrics

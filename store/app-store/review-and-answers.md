@@ -38,6 +38,9 @@ Answer "None" to every content question. Unrestricted web access: no. The rating
 
 ## Screenshots
 
-Take them on the public demo server, never on a private server. Do not show Live TV.
-- iPhone 6.9" (1320×2868): Home, item page, player, music now playing, downloads.
-- iPad 13" (2064×2752): Home and the item page in the wide layout.
+`screenshots/` holds the uploaded set, in upload order. Take them on the public demo server, never on a private server.
+- Show only openly licensed titles: Blender open films (Caminandes and others) and the Creative Commons demo albums.
+- Do not show Live TV, award laurels, logos of real organisations or commercial posters. The demo Home rows change with other visitors and often show commercial-looking titles, so Home is not in the set.
+- iPhone 6.9" (1320×2868, `APP_IPHONE_67`): item page, player, music, Now Playing, search, downloads.
+- iPad 13" (2064×2752, `APP_IPAD_PRO_3GEN_129`): music, Now Playing, player.
+- No alpha channel (App Store Connect refuses it).

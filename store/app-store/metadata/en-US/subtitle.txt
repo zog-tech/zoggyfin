@@ -1,1 +1,1 @@
-A client for Jellyfin servers
+A calm client for Jellyfin
