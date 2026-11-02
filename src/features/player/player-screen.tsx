@@ -31,7 +31,7 @@ import type { KeyPress } from '@/native/key-input-types';
 import { nextUpPhase, nextUpStartsAt, skipPromptAt } from '@/player/segments';
 import { videoSession } from '@/player/session';
 import { useShowsPause } from '@/player/control-gate';
-import { playingVideo, videoDetail, videoSummary } from '@/player/stream-info';
+import { playingVideo, transcodeReasonText, videoDetail, videoSummary } from '@/player/stream-info';
 import { type LiveNow, playerState, setPlayerState, usePlayerStore } from '@/player/store';
 import { ZAP_IDLE, zapDeadline, type ZapEvent, zapReducer, type ZapState, zapTakesBack } from '@/player/zap';
 import { channelSearchPending, requestChannelSearch } from '@/features/iptv/search-request';
@@ -767,10 +767,14 @@ export function PlayerScreen() {
   const streamVideo = now && now.kind !== 'audio' ? playingVideo(reportedVideo, now.plan.playMethod, now.plan.original ?? null, now.plan.target ?? null) : null;
   const original = now?.plan.original ?? null;
   const method = now?.plan.playMethod === 'Transcode' ? 'Transcoding' : now?.plan.playMethod === 'DirectStream' ? 'Direct stream' : 'Direct play';
+  const originalAudio = now?.plan.audio.find((a) => a.index === now.plan.audioIndex)?.label ?? null;
+  const convertReason = now && now.plan.playMethod !== 'DirectPlay' ? transcodeReasonText(now.plan.target?.reasons ?? []) : null;
   // What plays against the file: is a higher quality worth it?
   const streamInfo: SheetInfo[] = [
     streamVideo ? { key: 'playing', label: `Playing: ${videoSummary(streamVideo)}`, detail: [videoDetail(streamVideo), method].join(' · ') } : null,
-    original && !now?.plan.isLocal ? { key: 'original', label: `Original: ${videoSummary(original)}`, detail: videoDetail(original) } : null,
+    original && !now?.plan.isLocal ? { key: 'original', label: `Original: ${videoSummary(original)}`, detail: [videoDetail(original), originalAudio].filter(Boolean).join(' · ') } : null,
+    // A conversion the server makes: the reason tells whether a setting or the file causes it.
+    convertReason ? { key: 'why', label: 'Converted because of', detail: convertReason } : null,
   ].filter((r) => r !== null);
   const settingsSections: SheetSection[] = now
     ? [

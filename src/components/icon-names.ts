@@ -48,6 +48,7 @@ export const ANDROID_SYMBOLS = {
   film: 'movie',
   tv: 'tv',
   'music.mic': 'mic',
+  'mic.fill': 'mic',
   waveform: 'graphic_eq',
   person: 'person',
   'person.fill': 'person',

@@ -1,7 +1,8 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { useGenreItems } from '@/api/queries';
+import { useGenreItems, useLibrary } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { Button } from '@/components/button';
 import { ItemGrid } from '@/components/item-grid';
@@ -9,8 +10,56 @@ import { EmptyState, ErrorState, FadeInAfterLoad, GridSkeleton } from '@/compone
 import { usePlayer } from '@/player';
 import { spacing, useLayout } from '@/theme';
 
-/** A music genre: Play, Shuffle and Instant mix, then its albums. */
+/** A genre. `kind=video`: its movies and shows in every library. Else a music genre. */
 export default function GenreScreen() {
+  const { kind } = useLocalSearchParams<{ kind?: string }>();
+  return kind === 'video' ? <VideoGenre /> : <MusicGenre />;
+}
+
+const VIDEO_TYPES = ['Movie', 'Series'] as const;
+
+/** Movies and shows of the genre, A to Z, a page at a time. */
+function VideoGenre() {
+  const { name } = useLocalSearchParams<{ id: string; name?: string }>();
+  const genres = useMemo(() => (name ? [name] : []), [name]);
+  const lib = useLibrary({
+    parentId: '',
+    includeItemTypes: VIDEO_TYPES,
+    sortBy: 'SortName',
+    sortOrder: 'Ascending',
+    played: 'all',
+    favorites: false,
+    genres,
+    years: [],
+  });
+  const items = useMemo(() => lib.data?.pages.flatMap((p) => p.items) ?? [], [lib.data]);
+  return (
+    <>
+      <Stack.Screen options={{ title: name || 'Genre' }} />
+      <FadeInAfterLoad loading={lib.isPending}>
+        {lib.isPending ? (
+          <GridSkeleton shape="poster" />
+        ) : lib.error && !lib.data ? (
+          <ErrorState error={lib.error} onRetry={lib.refetch} />
+        ) : (
+          <ItemGrid
+            items={items}
+            shape="poster"
+            onEndReached={() => {
+              if (lib.hasNextPage && !lib.isFetchingNextPage) lib.fetchNextPage();
+            }}
+            isFetchingMore={lib.isFetchingNextPage}
+            onRefresh={lib.refetch}
+            ListEmptyComponent={<EmptyState icon="theatermasks" title="No movies or shows in this genre" />}
+          />
+        )}
+      </FadeInAfterLoad>
+    </>
+  );
+}
+
+/** A music genre: Play, Shuffle and Instant mix, then its albums. */
+function MusicGenre() {
   const { id, name, libraryId } = useLocalSearchParams<{ id: string; name?: string; libraryId?: string }>();
   const q = useGenreItems(libraryId, id);
   const player = usePlayer();

@@ -9,6 +9,7 @@ import { type ComponentRef, createContext, type ReactNode, type RefObject, useCo
 import { ScrollView, View } from 'react-native';
 
 import { type FocusTarget, TvFocusGuide } from './focus';
+import { tvDrivenScroll } from './scroll';
 
 /** Home on TV: the page that scrolls the row with the focus under the billboard. */
 export interface TvRowPage {
@@ -62,6 +63,7 @@ export function TvShelf<T>({
     <TvFocusGuide ref={row} autoFocus>
       <ScrollView
         ref={scroll}
+        {...tvDrivenScroll}
         horizontal
         showsHorizontalScrollIndicator={false}
         style={{ marginLeft: gutter - inset }}

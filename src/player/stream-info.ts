@@ -16,6 +16,8 @@ export interface TranscodeTarget {
   maxHeight: number | null;
   /** Bits per second. */
   videoBitrate: number | null;
+  /** The server's `TranscodeReasons` (for example `AudioCodecNotSupported`). */
+  reasons: string[];
 }
 
 /** The video stream of the file on the server, or null when it has none. */
@@ -28,10 +30,11 @@ export function originalVideo(source: MediaSource): VideoTrackInfo | null {
     bitrate: v.BitRate ?? source.Bitrate ?? null,
     frameRate: v.RealFrameRate ?? v.AverageFrameRate ?? null,
     codec: v.Codec ?? null,
+    range: v.VideoRangeType ?? null,
   };
 }
 
-/** Reads `MaxWidth`, `MaxHeight` and `VideoBitrate` from a Jellyfin transcode URL (any case). */
+/** Reads `MaxWidth`, `MaxHeight`, `VideoBitrate` and `TranscodeReasons` from a Jellyfin transcode URL (any case). */
 export function transcodeTarget(url: string): TranscodeTarget {
   const params = new Map<string, string>();
   const q = url.indexOf('?');
@@ -48,7 +51,45 @@ export function transcodeTarget(url: string): TranscodeTarget {
     const n = Number(params.get(k));
     return Number.isFinite(n) && n > 0 ? n : null;
   };
-  return { maxWidth: num('maxwidth'), maxHeight: num('maxheight'), videoBitrate: num('videobitrate') };
+  const reasons = (params.get('transcodereasons') ?? '').split(',').map((r) => r.trim()).filter(Boolean);
+  return { maxWidth: num('maxwidth'), maxHeight: num('maxheight'), videoBitrate: num('videobitrate'), reasons };
+}
+
+const REASONS: Record<string, string> = {
+  ContainerNotSupported: 'file format',
+  VideoCodecNotSupported: 'video codec',
+  AudioCodecNotSupported: 'audio codec',
+  SubtitleCodecNotSupported: 'subtitles burned in',
+  AudioChannelsNotSupported: 'audio channels',
+  AudioProfileNotSupported: 'audio profile',
+  AudioSampleRateNotSupported: 'audio sample rate',
+  AudioBitDepthNotSupported: 'audio bit depth',
+  AudioBitrateNotSupported: 'audio bitrate',
+  AudioIsExternal: 'external audio file',
+  SecondaryAudioNotSupported: 'audio track',
+  VideoProfileNotSupported: 'video profile',
+  VideoLevelNotSupported: 'video level',
+  VideoResolutionNotSupported: 'resolution',
+  VideoBitDepthNotSupported: 'video bit depth',
+  VideoFramerateNotSupported: 'frame rate',
+  VideoRangeTypeNotSupported: 'HDR type',
+  VideoCodecTagNotSupported: 'video codec tag',
+  RefFramesNotSupported: 'reference frames',
+  AnamorphicVideoNotSupported: 'anamorphic video',
+  InterlacedVideoNotSupported: 'interlaced video',
+  ContainerBitrateExceedsLimit: 'quality limit',
+  VideoBitrateNotSupported: 'quality limit',
+  UnknownVideoStreamInfo: 'unknown video',
+  UnknownAudioStreamInfo: 'unknown audio',
+  DirectPlayError: 'a direct play error',
+  StreamCountExceedsLimit: 'too many streams',
+};
+
+/** Why the server converts the file, in words: "audio codec, subtitles burned in". Null with no reason. */
+export function transcodeReasonText(reasons: readonly string[]): string | null {
+  const words = reasons.map((r) => REASONS[r] ?? r.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase());
+  const unique = [...new Set(words)];
+  return unique.length ? unique.join(', ') : null;
 }
 
 /** The video that plays now: the player's report, else what the server sends. */
@@ -117,6 +158,8 @@ const CODECS: Record<string, string> = {
   'video/av01': 'AV1',
   vp9: 'VP9',
   'video/x-vnd.on2.vp9': 'VP9',
+  // ExoPlayer names the Dolby Vision decoder, not the base codec.
+  'video/dolby-vision': 'Dolby Vision',
 };
 
 /** A codec name or MIME type as people know it (HEVC, H.264). */
@@ -129,8 +172,24 @@ export function videoSummary(v: VideoTrackInfo): string {
   return [resolutionLabel(v.width, v.height), v.bitrate ? formatBitrate(v.bitrate) : null].filter(Boolean).join(' · ');
 }
 
-/** The details: "1920×1080 · HEVC · 23.976 fps". */
+const RANGES: Record<string, string> = {
+  HDR10: 'HDR10',
+  HDR10Plus: 'HDR10+',
+  HLG: 'HLG',
+  DOVI: 'Dolby Vision',
+  DOVIWithHDR10: 'Dolby Vision · HDR10',
+  DOVIWithHDR10Plus: 'Dolby Vision · HDR10+',
+  DOVIWithHLG: 'Dolby Vision · HLG',
+  DOVIWithSDR: 'Dolby Vision · SDR',
+};
+
+/** The HDR type as people know it, or null for SDR and an unknown range. */
+export function rangeLabel(range: string | null | undefined): string | null {
+  return range ? (RANGES[range] ?? null) : null;
+}
+
+/** The details: "1920×1080 · HEVC · HDR10 · 23.976 fps". */
 export function videoDetail(v: VideoTrackInfo): string {
   const fps = v.frameRate ? `${Number(v.frameRate.toFixed(3))} fps` : null;
-  return [`${v.width}×${v.height}`, v.codec ? codecLabel(v.codec) : null, fps].filter(Boolean).join(' · ');
+  return [`${v.width}×${v.height}`, v.codec ? codecLabel(v.codec) : null, rangeLabel(v.range), fps].filter(Boolean).join(' · ');
 }

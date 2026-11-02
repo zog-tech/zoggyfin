@@ -11,6 +11,7 @@ import { Touchable } from '@/components/touchable';
 import { registerBuiltinHomeSections } from '@/features/home/builtin-sections';
 import { Billboard, BillboardRows } from '@/features/tv/billboard';
 import type { FocusTarget } from '@/features/tv/focus';
+import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
 import { ProfileMenu } from '@/features/profile/profile-menu';
 import { OfflineBanner } from '@/features/offline/offline-banner';
@@ -104,6 +105,7 @@ export default function HomeScreen() {
           <TvRowScroll.Provider value={tvPage}>
             <ScrollView
               ref={tvScroll}
+              {...tvDrivenScroll}
               style={s.tvRows}
               contentContainerStyle={{ paddingBottom: Math.max(bottomPad, endPad) }}
               onLayout={(e) => setListH(e.nativeEvent.layout.height)}>

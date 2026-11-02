@@ -3,7 +3,7 @@ import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { SearchBarCommands } from 'react-native-screens';
 
-import { useSearch } from '@/api/queries';
+import { useSearch, useVideoGenres } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { Button } from '@/components/button';
 import { Chip, chipRowTV } from '@/components/chip';
@@ -16,10 +16,12 @@ import { Touchable } from '@/components/touchable';
 import { isNetworkError, searchDownloads } from '@/downloads';
 import { useDownloadsStore } from '@/downloads/store';
 import { TrackRow } from '@/features/detail/rows';
+import { browseGenres, inGenre } from '@/features/genres/genres';
 import { OfflineBanner } from '@/features/offline/offline-banner';
 import { useServerNames } from '@/features/servers/use-server-names';
 import {
   filterSections,
+  GENRE_SEARCH_FILTERS,
   groupSearchResults,
   pushRecentSearch,
   SEARCH_FILTERS,
@@ -30,7 +32,9 @@ import { formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { useRootScreenOptions } from '@/lib/stack-options';
 import { useOffline } from '@/lib/online';
+import { toast } from '@/lib/toast';
 import { useDebounced } from '@/lib/use-debounced';
+import { voiceInput } from '@/native/voice-input';
 import { isTV } from '@/platform/tv';
 import { usePlayer } from '@/player';
 import { readJson, writeJson } from '@/storage/json';
@@ -64,9 +68,14 @@ export default function SearchScreen() {
   const root = useRootScreenOptions({ bar: !ownField });
   const [text, setText] = useState('');
   const [filter, setFilter] = useState<SearchFilter>('all');
+  // A movie and show genre (its name): the search keeps to it, and with no words lists it.
+  const [genre, setGenre] = useState<string | null>(null);
   const term = useDebounced(text.trim(), sizes.searchDebounce);
-  const q = useSearch(term);
+  const q = useSearch(term, genre ?? undefined);
   const offline = useOffline();
+  const genreList = browseGenres(useVideoGenres(!offline).data);
+  // The system speech screen (Android): the TV remote's voice button opens Google's search instead.
+  const [canSpeak] = useState(() => !!voiceInput?.available());
   const records = useDownloadsStore((st) => st.records);
   const nameOf = useServerNames();
   // With downloads from more than one server, each local result names its server.
@@ -76,11 +85,12 @@ export default function SearchScreen() {
   }, [records, nameOf]);
   // Offline (or the server cannot be reached): search what is on this device.
   const localOnly = offline || (!!q.error && !q.data && isNetworkError(q.error));
-  const localResults = useMemo(() => (localOnly ? searchDownloads(records, term) : []), [localOnly, records, term]);
+  const localResults = useMemo(() => (localOnly ? inGenre(searchDownloads(records, term), genre) : []), [localOnly, records, term, genre]);
   const results = localOnly ? localResults : q.data;
   const all = useMemo(() => groupSearchResults(results ?? []), [results]);
   const sections = useMemo(() => filterSections(all, filter), [all, filter]);
-  const top = filter === 'all' ? topResult(sections) : null;
+  // A genre with no words is a list to browse: no top result.
+  const top = filter === 'all' && term.length >= 2 ? topResult(sections) : null;
   const [recentVersion, setRecentVersion] = useState(0);
   const searchRef = useRef<SearchBarCommands>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
@@ -94,7 +104,7 @@ export default function SearchScreen() {
     }
   }, [term, hasResults]);
 
-  const active = term.length >= 2;
+  const active = term.length >= 2 || !!genre;
   // Read when the recent list is on screen; it changes only between searches.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const recent = useMemo(() => readJson<string[]>(RECENT_KEY, []), [active, recentVersion]);
@@ -102,6 +112,21 @@ export default function SearchScreen() {
   const applyRecent = (r: string) => {
     setText(r);
     searchRef.current?.setText(r);
+  };
+
+  const pickGenre = (name: string | null) => {
+    setGenre(name);
+    // Episodes, Music and People do not exist within a genre.
+    if (name && !GENRE_SEARCH_FILTERS.some((f) => f.value === filter)) setFilter('all');
+  };
+
+  const speak = async () => {
+    try {
+      const said = (await voiceInput?.listen('Search Zoggyfin'))?.trim();
+      if (said) applyRecent(said);
+    } catch {
+      toast('Voice search is not available on this device.', { icon: 'mic.fill' });
+    }
   };
 
   return (
@@ -154,6 +179,11 @@ export default function SearchScreen() {
                 </Touchable>
               ) : null}
             </View>
+            {canSpeak ? (
+              <Touchable onPress={speak} radius={radius.md} hitSlop={8} accessibilityRole="button" accessibilityLabel="Search by voice" style={s.mic}>
+                <Icon name="mic.fill" size={scaled(iconSize.md)} color={c.text} />
+              </Touchable>
+            ) : null}
             {text ? (
               <Touchable
                 onPress={() => {
@@ -170,13 +200,25 @@ export default function SearchScreen() {
         ) : null}
 
         <OfflineBanner />
+        {genreList.length && !localOnly ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={s.chips}
+            contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
+            <Chip label="All genres" selected={!genre} onPress={() => pickGenre(null)} />
+            {genreList.map((g) => (
+              <Chip key={g.Id} label={g.Name ?? ''} selected={genre === g.Name} onPress={() => pickGenre(genre === g.Name ? null : (g.Name ?? null))} />
+            ))}
+          </ScrollView>
+        ) : null}
         {active ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={s.chips}
             contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
-            {SEARCH_FILTERS.map((f) => (
+            {(genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
               <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
             ))}
           </ScrollView>
@@ -224,11 +266,13 @@ export default function SearchScreen() {
         ) : sections.length === 0 ? (
           <EmptyState
             icon="magnifyingglass"
-            title={`No results for “${term}”`}
+            title={term.length >= 2 ? `No results for “${term}”${genre ? ` in ${genre}` : ''}` : `Nothing in ${genre ?? 'this genre'}`}
             message={
               localOnly
                 ? 'The server cannot be reached, so only downloads are searched.'
-                : filter === 'all'
+                : genre
+                  ? 'Check the spelling or choose All genres.'
+                  : filter === 'all'
                   ? 'Check the spelling or try fewer words.'
                   : 'Check the spelling or choose another filter.'
             }
@@ -352,6 +396,14 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   },
   input: { ...font(type.body), ...webInput, color: c.text, flex: 1, height: '100%' as const },
   cancel: { ...font(type.body), color: c.accent },
+  mic: {
+    height: scaled(sizes.webSearchHeight),
+    width: scaled(sizes.webSearchHeight),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: c.surface2,
+    borderRadius: radius.md + 2,
+  },
   chips: { flexGrow: 0, marginTop: spacing.md },
   chipsContent: { gap: spacing.sm },
   recent: { marginTop: spacing.xxl },

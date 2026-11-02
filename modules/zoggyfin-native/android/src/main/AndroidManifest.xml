@@ -32,4 +32,11 @@
   <uses-feature android:name="android.hardware.wifi" android:required="false" />
   <uses-feature android:name="android.hardware.location" android:required="false" />
   <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+  <!-- Voice input in search (ZoggyfinVoiceModule): the system speech screen must be visible to the app. -->
+  <queries>
+    <intent>
+      <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+    </intent>
+  </queries>
 </manifest>

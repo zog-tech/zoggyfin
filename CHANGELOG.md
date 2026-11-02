@@ -52,7 +52,8 @@ first commit to today. All of it was built in the first weeks of the project.
   Settings. It downloads the update, then a small card says "An update is ready" with "Restart now" and
   "Later". The card waits while video or audio plays. A new TV app from the TV updater wins over it.
 - **Stream info.** The player shows the resolution and bitrate that play under the title. The Playback
-  sheet puts them next to the original file, so a viewer can tell whether a higher quality would help.
+  sheet puts them next to the original file (with its HDR type and audio track), so a viewer can tell
+  whether a higher quality would help, and says why the server converts the file.
 - **Screen size.** A player menu with Fit, Fill (crop) and Stretch.
 - **Motion.** Favourite and Played turn on at once on the item page, with a small pop and a light
   haptic. Download rings move smoothly between steps. A finished download's icon arrives with a small
@@ -64,6 +65,12 @@ first commit to today. All of it was built in the first weeks of the project.
   and a side menu entry on TV.
 - **Home discovery.** "Because you watched" rows from the server's movie recommendations, a "Short on
   time" row of unwatched movies of 100 minutes or less, and a genre of the day that changes at midnight.
+- **Genres.** A Genres row on Home (movie and show genres, the largest first) opens a page with every
+  movie and show of the genre. Search has genre chips: a genre keeps the search to its movies and
+  shows, and with no words lists the genre, best rated first.
+- **Voice search (Android).** A microphone button next to the search field opens the system speech
+  screen and searches for what was said. On Google TV the remote's voice button opens Google's own
+  search, not the app's.
 - **Android TV updates.** The sideloaded Android TV app (Google TV, Fire TV) finds a new APK, downloads
   it, checks its SHA-256 and opens the system installer. The Play build (`tv-play`) has no self-update.
   The website has a download for TV. TV releases keep the version 0.1.0; the build number
@@ -122,6 +129,12 @@ first commit to today. All of it was built in the first weeks of the project.
 - TV: the Films and Series pages use the single focus mark and stay inside the overscan-safe area.
   A focused track or episode row no longer runs to the edge of the screen.
 - TV: Down on the last Home row no longer scrolls the rows out of view.
+- Android: AV1 films with a Dolby Vision layer over HDR10, HLG or SDR play directly. Before, the server
+  converted them to H.264, often slower than real time, and playback kept stopping to buffer.
+- Android TV: Home, its rows and the item grids scroll once per press, in a 300 ms glide. Before,
+  Android jumped to the focused row and the app's scroll then slid it again, so each press jumped and
+  slid. Extra Down presses on the last Home row no longer cut the row off, and fast Up presses in a
+  library grid no longer scroll up past the focus and then back down.
 - TV: Settings, and other pages with no preferred focus, take the focus when they open. Before, the
   focus stayed on the page they covered and the remote could not reach them.
 - Android: a transcode that started mid-file (resume, a quality change) could stop with a playback

@@ -5,6 +5,7 @@ import {
   originalVideo,
   playingVideo,
   resolutionLabel,
+  transcodeReasonText,
   transcodeTarget,
   videoDetail,
   videoSummary,
@@ -21,7 +22,7 @@ const uhd: MediaSource = {
 
 describe('originalVideo', () => {
   it('reads the video stream of the file', () => {
-    expect(originalVideo(uhd)).toEqual({ width: 3840, height: 1600, bitrate: 25_000_000, frameRate: 23.976, codec: 'hevc' });
+    expect(originalVideo(uhd)).toEqual({ width: 3840, height: 1600, bitrate: 25_000_000, frameRate: 23.976, codec: 'hevc', range: null });
   });
   it('falls back to the source bitrate', () => {
     const s: MediaSource = { Bitrate: 5_000_000, MediaStreams: [{ Type: 'Video', Index: 0, Width: 1280, Height: 720 }] };
@@ -36,11 +37,28 @@ describe('originalVideo', () => {
 describe('transcodeTarget', () => {
   it('reads the limits in any case', () => {
     const url = '/videos/1/master.m3u8?VideoCodec=hevc&videoBitrate=7616000&MaxWidth=1920&maxheight=1080&ApiKey=x';
-    expect(transcodeTarget(url)).toEqual({ maxWidth: 1920, maxHeight: 1080, videoBitrate: 7_616_000 });
+    expect(transcodeTarget(url)).toEqual({ maxWidth: 1920, maxHeight: 1080, videoBitrate: 7_616_000, reasons: [] });
   });
   it('gives nulls for missing or bad values', () => {
-    expect(transcodeTarget('/videos/1/master.m3u8?VideoBitrate=abc&%E0%A4%A=1')).toEqual({ maxWidth: null, maxHeight: null, videoBitrate: null });
-    expect(transcodeTarget('/videos/1/master.m3u8')).toEqual({ maxWidth: null, maxHeight: null, videoBitrate: null });
+    const none = { maxWidth: null, maxHeight: null, videoBitrate: null, reasons: [] };
+    expect(transcodeTarget('/videos/1/master.m3u8?VideoBitrate=abc&%E0%A4%A=1')).toEqual(none);
+    expect(transcodeTarget('/videos/1/master.m3u8')).toEqual(none);
+  });
+  it('reads the transcode reasons', () => {
+    const url = '/videos/1/master.m3u8?TranscodeReasons=AudioCodecNotSupported%2CSubtitleCodecNotSupported';
+    expect(transcodeTarget(url).reasons).toEqual(['AudioCodecNotSupported', 'SubtitleCodecNotSupported']);
+  });
+});
+
+describe('transcodeReasonText', () => {
+  it('names the reasons in words, once each', () => {
+    expect(transcodeReasonText(['AudioChannelsNotSupported', 'ContainerBitrateExceedsLimit', 'VideoBitrateNotSupported'])).toBe(
+      'audio channels, quality limit',
+    );
+  });
+  it('splits an unknown reason into words, and gives null with none', () => {
+    expect(transcodeReasonText(['SomethingNewNotSupported'])).toBe('something new not supported');
+    expect(transcodeReasonText([])).toBeNull();
   });
 });
 
@@ -49,7 +67,7 @@ describe('playingVideo', () => {
 
   it("prefers the player's report and fills a missing bitrate", () => {
     const reported = { width: 1920, height: 800, bitrate: null, frameRate: 24, codec: 'video/hevc' };
-    expect(playingVideo(reported, 'Transcode', original, { maxWidth: 1920, maxHeight: null, videoBitrate: 8_000_000 })).toEqual({
+    expect(playingVideo(reported, 'Transcode', original, { maxWidth: 1920, maxHeight: null, videoBitrate: 8_000_000, reasons: [] })).toEqual({
       ...reported,
       bitrate: 8_000_000,
     });
@@ -59,7 +77,7 @@ describe('playingVideo', () => {
     expect(playingVideo(null, 'DirectStream', original, null)).toEqual(original);
   });
   it('scales the original to the transcode limits, keeping the shape', () => {
-    expect(playingVideo(null, 'Transcode', original, { maxWidth: 1920, maxHeight: 1080, videoBitrate: 8_000_000 })).toEqual({
+    expect(playingVideo(null, 'Transcode', original, { maxWidth: 1920, maxHeight: 1080, videoBitrate: 8_000_000, reasons: [] })).toEqual({
       width: 1920,
       height: 800,
       bitrate: 8_000_000,
@@ -68,7 +86,7 @@ describe('playingVideo', () => {
     });
   });
   it('never scales up', () => {
-    expect(playingVideo(null, 'Transcode', original, { maxWidth: 7680, maxHeight: null, videoBitrate: null })?.width).toBe(3840);
+    expect(playingVideo(null, 'Transcode', original, { maxWidth: 7680, maxHeight: null, videoBitrate: null, reasons: [] })?.width).toBe(3840);
   });
   it('is null when nothing is known', () => {
     expect(playingVideo(null, 'Transcode', null, null)).toBeNull();
@@ -99,6 +117,7 @@ describe('labels', () => {
     expect(codecLabel('video/hevc')).toBe('HEVC');
     expect(codecLabel('h264')).toBe('H.264');
     expect(codecLabel('video/av01')).toBe('AV1');
+    expect(codecLabel('video/dolby-vision')).toBe('Dolby Vision');
     expect(codecLabel('mpeg4')).toBe('MPEG4');
   });
   it('builds the summary and the detail lines', () => {
@@ -107,5 +126,10 @@ describe('labels', () => {
     expect(videoSummary({ ...v, bitrate: null })).toBe('1080p');
     expect(videoDetail(v)).toBe('1920×1080 · H.264 · 23.976 fps');
     expect(videoDetail({ ...v, codec: null, frameRate: null })).toBe('1920×1080');
+  });
+  it('names an HDR type and leaves out SDR', () => {
+    const v = { width: 1920, height: 1080, bitrate: null, frameRate: 23.976, codec: 'h264' };
+    expect(videoDetail({ ...v, codec: 'av1', range: 'DOVIWithHDR10' })).toBe('1920×1080 · AV1 · Dolby Vision · HDR10 · 23.976 fps');
+    expect(videoDetail({ ...v, range: 'SDR' })).toBe('1920×1080 · H.264 · 23.976 fps');
   });
 });

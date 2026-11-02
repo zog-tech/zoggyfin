@@ -4,6 +4,7 @@ import { ActivityIndicator, type LayoutChangeEvent, RefreshControl, StyleSheet, 
 
 import { usePrefetchItemOnFocus } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
+import { tvDrivenScroll } from '@/features/tv/scroll';
 import { useOpenItem } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { gridLayout, spacing, tvFocusBleed, useLayout, useTheme } from '@/theme';
@@ -41,7 +42,9 @@ interface ItemGridProps {
  * ScrollView alone scrolls only until the focused tile shows, so the focused
  * row sat on the bottom edge with its title and focus ring cut off. The end
  * padding is only the focus room, so Down on the last row has no empty space
- * to scroll into (like the Home rows, `tvPageEndPadding`).
+ * to scroll into (like the Home rows, `tvPageEndPadding`). Android's own
+ * focus scroll is off (`tvDrivenScroll`): on fast Up presses it paged up past
+ * rows FlashList had not drawn, and the grid then slid back to the focus.
  */
 export function ItemGrid({
   items,
@@ -85,10 +88,19 @@ export function ItemGrid({
       const cell = grid?.getLayout(row * columns);
       if (!grid || !cell) return;
       const view = grid.getWindowSize().height;
-      grid.scrollToOffset({ offset: Math.max(0, grid.getFirstItemOffset() + cell.y - (view - cell.height) / 2), animated: true });
+      // The first row shows the header too: Android no longer scrolls to the focus on its own.
+      const offset = row === 0 ? 0 : Math.max(0, grid.getFirstItemOffset() + cell.y - (view - cell.height) / 2);
+      grid.scrollToOffset({ offset, animated: true });
     },
     [columns],
   );
+
+  // TV: the focus can reach the header (the filter chips) past rows not drawn yet; the grid then scrolls to the top.
+  const showHeader = useCallback(() => {
+    focusedRow.current = -1;
+    list.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+  const header = l.tv && ListHeaderComponent ? <View onFocusCapture={showHeader}>{ListHeaderComponent}</View> : ListHeaderComponent;
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = Math.round(e.nativeEvent.layout.width);
@@ -137,10 +149,15 @@ export function ItemGrid({
         onEndReached={onEndReached}
         onEndReachedThreshold={0.8}
         refreshControl={pull.onRefresh ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={refreshTint(c.text2)} /> : undefined}
-        ListHeaderComponent={ListHeaderComponent}
+        ListHeaderComponent={header}
         ListEmptyComponent={ListEmptyComponent}
         ListFooterComponent={isFetchingMore ? <ActivityIndicator style={styles.footer} color={c.text2} /> : null}
         renderItem={renderItem}
+        // TV: the app scrolls to the focused row. A header with rows of tiles (focusFirstTile off) keeps Android's own focus scroll.
+        {...(l.tv && focusFirstTile ? tvDrivenScroll : null)}
+        // TV: three screens of rows above and below are drawn. With less, a burst of Up presses
+        // outran the scroll and Android found the header before the next row.
+        drawDistance={l.tv ? l.height * 3 : undefined}
       />
   );
 }

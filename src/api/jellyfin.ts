@@ -190,7 +190,8 @@ export async function getLibraryPage(
   const sortBy: ItemSortBy[] = q.sortBy === 'SortName' ? ['SortName'] : [q.sortBy, 'SortName'];
   const res = await getLibraryApi(api).getItems({
     userId,
-    parentId: q.parentId,
+    // No parent: every library (a genre page).
+    parentId: q.parentId || undefined,
     includeItemTypes: q.includeItemTypes as BaseItemKind[],
     recursive: true,
     sortBy,
@@ -641,7 +642,28 @@ const SEARCH_TYPES: BaseItemKind[] = [
 ];
 
 /** Items, artists and people in parallel. Artists and people are not returned by /Items. */
-export async function search(api: Api, userId: string, term: string, signal?: AbortSignal): Promise<BaseItemDto[]> {
+/** Movies and shows of one genre (by name), matching `term` when there is one; with no term the best rated first. */
+async function searchGenre(api: Api, userId: string, term: string, genre: string, signal?: AbortSignal): Promise<BaseItemDto[]> {
+  const res = await getLibraryApi(api).getItems(
+    {
+      userId,
+      searchTerm: term || undefined,
+      genres: [genre],
+      recursive: true,
+      includeItemTypes: ['Movie', 'Series'],
+      sortBy: term ? undefined : ['CommunityRating', 'SortName'],
+      sortOrder: term ? undefined : ['Descending', 'Ascending'],
+      limit: term ? 60 : 100,
+      ...tile,
+    },
+    { signal },
+  );
+  return res.data.Items ?? [];
+}
+
+/** `genre`: only movies and shows of that genre (artists, people and songs have no movie genre). */
+export async function search(api: Api, userId: string, term: string, signal?: AbortSignal, genre?: string): Promise<BaseItemDto[]> {
+  if (genre) return searchGenre(api, userId, term, genre, signal);
   const opts = { signal };
   const [items, artists, people] = await Promise.all([
     getLibraryApi(api).getItems(

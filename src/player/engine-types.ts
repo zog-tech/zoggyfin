@@ -58,6 +58,8 @@ export interface VideoTrackInfo {
   frameRate: number | null;
   /** A MIME type or codec name (`video/hevc`, `h264`), or null. */
   codec: string | null;
+  /** The server's video range (`SDR`, `HDR10`, `DOVIWithHDR10`), for the file on the server. */
+  range?: string | null;
 }
 
 /**
