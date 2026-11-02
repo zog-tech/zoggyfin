@@ -11,7 +11,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ScrollView, Switch, Text, View } from 'react-native';
+import { Switch, Text, View } from 'react-native';
 
 import { describeError } from '@/api/errors';
 import { scopeKey } from '@/api/query-keys';
@@ -23,6 +23,7 @@ import { Icon } from '@/components/icon';
 import { EmptyState } from '@/components/states';
 import { TextField } from '@/components/text-field';
 import { Touchable } from '@/components/touchable';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { Group, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
 import { InviteQr } from '@/features/invite/invite-qr';
@@ -221,7 +222,7 @@ export function InviteScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Invite someone', headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
-      <ScrollView
+      <TvScrollView
         contentInsetAdjustmentBehavior="automatic"
         style={styles.page}
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}
@@ -317,7 +318,7 @@ export function InviteScreen() {
             ))}
           </Group>
         </View>
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }

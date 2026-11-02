@@ -5,7 +5,7 @@
  * (or the first category) takes the focus when the page opens.
  */
 import { router, Stack } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { type ComponentRef, useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/button';
@@ -26,6 +26,7 @@ import {
   type VodCategory,
   type VodKind,
 } from '@/iptv';
+import { useTvPageScroll } from '@/features/tv/page-scroll';
 import { toast } from '@/lib/toast';
 import { useDebounced } from '@/lib/use-debounced';
 import { isTV } from '@/platform/tv';
@@ -62,6 +63,8 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
   const resume = useMemo(() => continueWatching(lists, kind === 'film' ? 'film' : 'episode').map(tileOfPosition), [lists, kind]);
   const favourites = useMemo(() => favouritesOf(lists, kind).map(tileOfFavourite), [lists, kind]);
   const results = useMemo(() => search.results.map((x) => tileOfItem(kind, x)), [search.results, kind]);
+  const list = useRef<ComponentRef<typeof FlatList<VodCategory>>>(null);
+  const tvScroll = useTvPageScroll(useCallback(() => list.current?.getNativeScrollRef(), []));
   const rows = useMemo<VodCategory[]>(() => (cats.data.length ? [{ id: ALL_CATEGORY, name: labels.all }, ...cats.data] : []), [cats.data, labels.all]);
 
   const seriesOf = useCallback((episodeId: string) => lists.positions[`episode:${episodeId}`]?.seriesId, [lists]);
@@ -169,6 +172,8 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
     const shelvesFirst = resume.length > 0 || favourites.length > 0;
     body = (
       <FlatList
+        ref={list}
+        {...tvScroll.props}
         key={columns}
         data={rows}
         numColumns={columns}

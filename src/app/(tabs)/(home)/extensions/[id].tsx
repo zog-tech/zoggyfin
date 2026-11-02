@@ -4,7 +4,7 @@
  */
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, Switch, View } from 'react-native';
+import { Switch, View } from 'react-native';
 
 import { EmptyState } from '@/components/states';
 import { OptionSheet } from '@/components/option-sheet';
@@ -13,6 +13,7 @@ import { currentAccount, loadManifest, prefill, requestInstall, templateContext 
 import { describePermission, safeHost, type SettingField } from '@/extensions/schema';
 import { getExtension, removeExtension, setEnabled, setGrant, setValue, upsertExtension, useExtensions } from '@/extensions/store';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { confirmDestructive } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
 import { features } from '@/platform/tv';
@@ -95,7 +96,7 @@ export default function ExtensionScreen() {
   return (
     <>
       <Stack.Screen options={{ title: m.name, headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}>
+      <TvScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}>
         <View style={styles.inner}>
           <Group footer={m.description}>
             <SettingsRow icon="checkmark.circle.fill" label="On" onPress={() => setEnabled(m.id, !ext.enabled)} role="switch" checked={ext.enabled} trailing={sw(ext.enabled, (v) => setEnabled(m.id, v), 'On')} />
@@ -159,7 +160,7 @@ export default function ExtensionScreen() {
             <ActionRow label={`Remove ${m.name}`} onPress={remove} />
           </Group>
         </View>
-      </ScrollView>
+      </TvScrollView>
       <OptionSheet
         visible={picker !== null}
         title={picker?.label ?? ''}

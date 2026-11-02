@@ -215,6 +215,7 @@ Pure logic sits in its own file with tests (for example `admin/logic.ts`, `playl
 | `zoggyfin-discovery` | iOS, Android | `src/servers/discovery/backend.native.ts` | UDP server discovery, local network access check |
 | `zoggyfin-share` | Android | `src/extensions/share-intake.native.ts` | Links shared from other apps |
 | `zoggyfin-native` (`ZoggyfinTsBridge`) | iOS | `src/native/ts-bridge.native.ts` (contract in `ts-bridge-types.ts`) | TS bridge: plays a progressive MPEG-TS stream (IPTV `.ts` URL) as a live HLS playlist on 127.0.0.1, for AVPlayer. Pure parsing in `TsSegmenter.swift` |
+| `zoggyfin-native` (`ZoggyfinVoice`) | Android | `src/native/voice-input.native.ts` (contract in `voice-input-types.ts`) | Voice search: opens the system speech screen (`RECOGNIZE_SPEECH`) and returns what was said |
 
 The Mac app links the iOS nearby Swift code through `desktop/src-tauri/swift/`. A change in `modules/zoggyfin-native/ios/Nearby*.swift` also changes the Mac app.
 

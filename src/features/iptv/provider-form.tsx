@@ -7,10 +7,11 @@
  */
 import { router, Stack } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { TextField, type TextFieldRef } from '@/components/text-field';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { iptv, iptvErrorText, type ProviderInput, type ProviderKind, sendsUserAgent } from '@/iptv';
 import { confirmDestructive } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
@@ -73,7 +74,7 @@ export function ProviderForm({ id, kind: kindParam }: { id?: string; kind?: Prov
     <>
       <Stack.Screen options={{ title, headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" style={s.page} contentContainerStyle={s.content}>
+        <TvScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" style={s.page} contentContainerStyle={s.content}>
           <View style={s.inner}>
             {isTV ? <Text style={s.tvTitle}>{title}</Text> : null}
             <TextField
@@ -172,7 +173,7 @@ export function ProviderForm({ id, kind: kindParam }: { id?: string; kind?: Prov
             {busy ? <Text style={s.note}>A large list can take a minute.</Text> : null}
             {id ? <Button title="Remove provider" variant="text" onPress={() => void remove()} disabled={busy} /> : null}
           </View>
-        </ScrollView>
+        </TvScrollView>
       </KeyboardAvoidingView>
     </>
   );

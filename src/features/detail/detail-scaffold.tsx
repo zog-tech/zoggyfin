@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
-import { type ReactElement, type ReactNode, useCallback, useMemo, useState } from 'react';
+import { type ReactElement, type ReactNode, useCallback, useState } from 'react';
 import { PixelRatio, Platform, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -25,8 +25,8 @@ import { Touchable } from '@/components/touchable';
 import { useItemActions } from '@/features/actions/use-item-actions';
 import { TogetherSheetHost, usePlayForEveryone, useTogetherEntry } from '@/features/together/together-sheet';
 import { buildImageUrl, imageSource } from '@/images/image-url';
-import type { FocusTarget } from '@/features/tv/focus';
-import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
+import { useTvPageScroll } from '@/features/tv/page-scroll';
+import { TvRowScroll } from '@/features/tv/shelf';
 import { formatClock, playedFraction } from '@/lib/format';
 import { turnedOn } from '@/lib/pop-in';
 import { type PopInOptions, usePopIn } from '@/lib/use-pop-in';
@@ -133,18 +133,8 @@ export function DetailScaffold<Row>({
   const pull = usePullRefresh(onRefresh);
   const scrollRef = useAnimatedRef<Animated.FlatList<Row>>();
   const offset = useScrollOffset(scrollRef);
-  // TV: a row that takes the focus scrolls to the upper third, so its tiles and focus ring show whole.
-  const scrollToRow = useCallback(
-    (row: FocusTarget | null) => {
-      row?.measureInWindow((_x, y) => {
-        const delta = y - l.height * 0.3;
-        if (Math.abs(delta) > 8) scrollRef.current?.scrollToOffset({ offset: Math.max(0, offset.get() + delta), animated: true });
-      });
-    },
-    [l.height, offset, scrollRef],
-  );
-  // The page ends with its own padding: no rows to track.
-  const tvPage = useMemo<TvRowPage>(() => ({ scrollTo: scrollToRow, track: () => () => undefined }), [scrollToRow]);
+  // TV: the page glides to the focused control or row and stops at its end.
+  const tvScroll = useTvPageScroll(useCallback(() => scrollRef.current?.getNativeScrollRef(), [scrollRef]));
 
   const layout = heroLayout(item);
   const media = layout === 'backdrop' || layout === 'wide';
@@ -389,9 +379,10 @@ export function DetailScaffold<Row>({
           ),
         }}
       />
-      <TvRowScroll.Provider value={isTV ? tvPage : null}>
+      <TvRowScroll.Provider value={tvScroll.page}>
       <Animated.FlatList
         ref={scrollRef}
+        {...tvScroll.props}
         data={rows ?? []}
         keyExtractor={rowKey ?? ((_, i) => String(i))}
         renderItem={({ item: row, index }) => (

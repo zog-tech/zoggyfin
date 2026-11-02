@@ -6,11 +6,12 @@
  * The selected entry has the `accentSoft` fill; on TV the focus adds the
  * shared row fill (§7.19). On TV the selected entry takes the first focus.
  */
-import { type ComponentRef, type RefObject } from 'react';
+import { type ComponentRef, type RefObject, useCallback, useRef } from 'react';
 import { FlatList, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
+import { useTvPageScroll } from '@/features/tv/page-scroll';
 import { ALL_GROUP, ALL_PROVIDERS, type BrowseEntry, FAVOURITES_GROUP, RECENTS_GROUP } from '@/iptv';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
@@ -53,8 +54,12 @@ export function BrowseColumn({
 }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
+  const list = useRef<ComponentRef<typeof FlatList<BrowseEntry>>>(null);
+  const tvScroll = useTvPageScroll(useCallback(() => list.current?.getNativeScrollRef(), []));
   return (
     <FlatList
+      ref={list}
+      {...tvScroll.props}
       data={entries}
       keyExtractor={(e) => e.key}
       style={[s.column, { width }]}

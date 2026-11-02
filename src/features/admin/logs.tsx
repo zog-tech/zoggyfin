@@ -5,7 +5,7 @@
  */
 import type { LogFile } from '@jellyfin/sdk/lib/generated-client/models';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { FlatList, Platform, Text, TextInput, View } from 'react-native';
 
 import { describeError } from '@/api/errors';
 import { Button } from '@/components/button';
@@ -13,6 +13,7 @@ import { Icon } from '@/components/icon';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { Group, LeadingIcon, makeSettingsStyles } from '@/features/settings/rows';
 import { Touchable } from '@/components/touchable';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { useDebounced } from '@/lib/use-debounced';
 import { formatBytes } from '@/lib/format';
@@ -82,9 +83,9 @@ export function LogsSplit({ target }: { target: AdminTarget }) {
   const current = name ?? first ?? null;
   return (
     <View style={[s.split, sidebar ? { paddingLeft: sidebar } : null]}>
-      <ScrollView style={s.splitList} contentContainerStyle={s.splitListContent}>
+      <TvScrollView style={s.splitList} contentContainerStyle={s.splitListContent}>
         <LogsSection target={target} selected={current} onOpen={setName} />
-      </ScrollView>
+      </TvScrollView>
       <View style={s.splitViewer}>{current ? <LogViewer key={current} target={target} name={current} /> : <EmptyState icon="doc.text" title="No log file" />}</View>
     </View>
   );

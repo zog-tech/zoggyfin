@@ -4,7 +4,7 @@
  */
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
@@ -12,6 +12,7 @@ import { requestInstall } from '@/extensions/runtime';
 import { safeHost } from '@/extensions/schema';
 import { useExtensions } from '@/extensions/store';
 import { Group, makeSettingsStyles, SettingsRow } from '@/features/settings/rows';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { features } from '@/platform/tv';
 import { spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
@@ -37,7 +38,7 @@ export default function ExtensionsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Extensions', headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
-      <ScrollView
+      <TvScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         style={styles.page}
@@ -92,7 +93,7 @@ export default function ExtensionsScreen() {
           </Group>
           {!list.length ? <Text style={[styles.footer, { textAlign: 'center' }]}>No extensions yet.</Text> : null}
         </View>
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }

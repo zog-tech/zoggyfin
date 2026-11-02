@@ -7,7 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, TextInput, View } from 'react-native';
 import { create } from 'zustand';
 
 import * as jf from '@/api/jellyfin';
@@ -19,6 +19,7 @@ import { Icon } from '@/components/icon';
 import { ItemImage } from '@/components/item-image';
 import { makeSheetStyles, Sheet, SheetRow } from '@/components/sheet';
 import { ErrorState } from '@/components/states';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, useStyles, useTheme, webInput } from '@/theme';
 
 import { fits, playlistMediaFor, sheetOrder } from './logic';
@@ -117,7 +118,7 @@ function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: ()
 
   return (
     <Sheet visible={!!items} title={what ? `Add “${what}” to a playlist` : 'Add to playlist'} onClose={close} doneLabel="Cancel">
-      <ScrollView style={s.list} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <TvScrollView style={s.list} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.group}>
           {naming ? (
             <View style={s.newRow}>
@@ -161,7 +162,7 @@ function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: ()
         {q.data && !order.recent.length && !order.all.length ? (
           <Text style={s.empty}>{media === 'Audio' ? 'No music playlists yet. Make one above.' : 'No video playlists yet. Make one above.'}</Text>
         ) : null}
-      </ScrollView>
+      </TvScrollView>
     </Sheet>
   );
 }

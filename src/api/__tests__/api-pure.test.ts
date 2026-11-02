@@ -79,6 +79,11 @@ describe('query keys', () => {
   it('normalizes search terms', () => {
     expect(queryKeys.search(s, '  Sample ')).toEqual(queryKeys.search(s, 'sample'));
   });
+
+  it('keeps a genre search apart from a plain one', () => {
+    expect(queryKeys.search(s, 'sample', 'Drama')).not.toEqual(queryKeys.search(s, 'sample'));
+    expect(queryKeys.search(s, 'sample', '')).toEqual(queryKeys.search(s, 'sample'));
+  });
 });
 
 describe('describeError', () => {

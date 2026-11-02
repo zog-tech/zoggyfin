@@ -43,6 +43,8 @@ export interface MediaCapabilities {
   hevcRanges?: string;
   /** False when the HEVC decoder plays 8-bit video only. Default: true. */
   hevcTenBit?: boolean;
+  /** AV1 video ranges the device shows correctly, `|`-separated. Default: SDR, HDR10, HDR10+ and HLG. */
+  av1Ranges?: string;
 }
 
 export interface ProfileOptions {
@@ -169,13 +171,21 @@ export function exoCapabilities(report: AndroidDecoders | null): MediaCapabiliti
   const hlsAudio = (['aac', 'mp3', 'ac3', 'eac3'] as const).filter((c) => audio.includes(c));
   const hdr = report?.hdr ?? [];
   const tenBit = report ? !!report.codecs.hevc?.tenBit : false;
-  const ranges = ['SDR'];
-  if (tenBit && hdr.includes('hdr10')) ranges.push('HDR10', 'DOVIWithHDR10');
-  if (tenBit && hdr.includes('hdr10Plus')) ranges.push('HDR10Plus', 'DOVIWithHDR10Plus');
-  if (tenBit && hdr.includes('hlg')) ranges.push('HLG', 'DOVIWithHLG');
-  ranges.push('DOVIWithSDR');
+  // Dolby Vision with a fallback layer plays as that layer (HDR10, HLG or SDR).
+  const exoRanges = (tenBitDecoder: boolean) => {
+    const out = ['SDR'];
+    if (tenBitDecoder && hdr.includes('hdr10')) out.push('HDR10', 'DOVIWithHDR10');
+    if (tenBitDecoder && hdr.includes('hdr10Plus')) out.push('HDR10Plus', 'DOVIWithHDR10Plus');
+    if (tenBitDecoder && hdr.includes('hlg')) out.push('HLG', 'DOVIWithHLG');
+    out.push('DOVIWithSDR');
+    return out;
+  };
+  const ranges = exoRanges(tenBit);
   // Dolby Vision profile 5 has no fallback layer: only with a Dolby Vision decoder and display.
   if (has('dolbyVision') && hdr.includes('dolbyVision')) ranges.push('DOVI');
+  // AV1 had the AVPlayer list, which has no Dolby Vision: an AV1 film with a Dolby Vision
+  // layer was converted to H.264, slower than real time on many servers.
+  const av1TenBit = !!report?.codecs.av1?.tenBit;
   const level = (k: string, fallback: number) => {
     const n = report?.codecs[k]?.maxLevel ?? 0;
     return n > 0 ? n : fallback;
@@ -193,6 +203,7 @@ export function exoCapabilities(report: AndroidDecoders | null): MediaCapabiliti
     hevcLevel: level('hevc', 153),
     hevcRanges: ranges.join('|'),
     hevcTenBit: tenBit,
+    av1Ranges: exoRanges(av1TenBit).join('|'),
   };
 }
 
@@ -293,7 +304,7 @@ function codecProfiles(caps: MediaCapabilities): CodecProfile[] {
       Codec: 'av1',
       Conditions: [
         cond('EqualsAny', 'VideoProfile', 'main'),
-        cond('EqualsAny', 'VideoRangeType', AV1_RANGES),
+        cond('EqualsAny', 'VideoRangeType', caps.av1Ranges ?? AV1_RANGES),
         cond('LessThanEqual', 'VideoBitDepth', '10'),
       ],
     });

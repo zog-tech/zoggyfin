@@ -70,6 +70,9 @@ export const SEARCH_FILTERS: readonly { value: SearchFilter; label: string }[] =
   { value: 'people', label: 'People' },
 ];
 
+/** The filters that can match within a genre: a genre search finds only movies and shows. */
+export const GENRE_SEARCH_FILTERS = SEARCH_FILTERS.filter((f) => f.value === 'all' || f.value === 'movies' || f.value === 'shows');
+
 const FILTER_KEYS: Record<Exclude<SearchFilter, 'all'>, readonly string[]> = {
   movies: ['movies', 'collections', 'videos'],
   shows: ['series'],

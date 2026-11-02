@@ -225,13 +225,14 @@ export function useGenreItems(libraryId: string | undefined, genreId: string | u
   });
 }
 
-export function useSearch(term: string) {
+/** `genre` (a genre name): only movies and shows of it; with a genre an empty term lists the genre. */
+export function useSearch(term: string, genre?: string) {
   const { api, userId, scope } = useApi();
   const t = term.trim();
   return useQuery({
-    queryKey: queryKeys.search(scope, t),
-    queryFn: ({ signal }) => jf.search(api, userId, t, signal),
-    enabled: t.length >= 2,
+    queryKey: queryKeys.search(scope, t, genre),
+    queryFn: ({ signal }) => jf.search(api, userId, t, signal, genre),
+    enabled: t.length >= 2 || !!genre,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   });

@@ -5,7 +5,7 @@
  */
 import { Stack } from 'expo-router';
 import { type ReactNode, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, RefreshControl, Text, View, type ViewStyle } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Icon, type IconName } from '@/components/icon';
@@ -15,6 +15,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { TextField } from '@/components/text-field';
 import { Touchable } from '@/components/touchable';
 import { makeSettingsStyles } from '@/features/settings/rows';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
@@ -85,14 +86,14 @@ export function AdminPage({ children, onRefresh, wide = false, inset = true, sty
   const pull = usePullRefresh(onRefresh);
   useRefreshSpinner(pull.refreshing);
   return (
-    <ScrollView
+    <TvScrollView
       contentInsetAdjustmentBehavior="automatic"
       style={rs.page}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={[rs.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}
       refreshControl={pull.onRefresh ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={refreshTint(c.text3)} colors={[c.accent]} /> : undefined}>
       <View style={[rs.inner, wide && s.innerWide, style]}>{children}</View>
-    </ScrollView>
+    </TvScrollView>
   );
 }
 

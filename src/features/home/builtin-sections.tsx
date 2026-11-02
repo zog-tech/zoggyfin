@@ -22,6 +22,7 @@ import type { BaseItemDto } from '@/api/types';
 import { ItemRow } from '@/components/item-row';
 import { EmptyState } from '@/components/states';
 import { shapeForList } from '@/components/tile';
+import { browseGenres, GENRE_ROW_MAX, genreCount } from '@/features/genres/genres';
 import { daySeed } from '@/features/home/daily';
 import { GENRE_POOL_SIZE, pickDailyGenre, spotlightItems, spotlightTitle } from '@/features/home/genre-spotlight';
 import { recommendationRows } from '@/features/home/recommendations';
@@ -29,7 +30,7 @@ import { SHORT_POOL_SIZE, shortOnTime } from '@/features/home/short-on-time';
 import { useDay } from '@/features/home/use-day';
 import { isSupportedView } from '@/features/library/library-kind';
 import { episodeLabel, formatDuration } from '@/lib/format';
-import { itemHref, useTabGroup } from '@/lib/navigation';
+import { itemHref, useTabGroup, videoGenreHref } from '@/lib/navigation';
 import { isTV } from '@/platform/tv';
 import { homeSections } from '@/registry/home-sections';
 
@@ -115,6 +116,28 @@ function GenreOfTheDay() {
   const items = spotlightItems(q.data);
   if (offline || !genre || !items.length) return null;
   return <ItemRow title={spotlightTitle(genre)} shape="poster" items={items} />;
+}
+
+/** Movie and show genres, the largest first. A tile opens the genre with all its movies and shows. */
+function Genres() {
+  const offline = useOffline();
+  const group = useTabGroup();
+  const genres = useVideoGenres(!offline);
+  const items = browseGenres(genres.data, GENRE_ROW_MAX);
+  if (offline || !items.length) return null;
+  return (
+    <ItemRow
+      title="Genres"
+      shape="thumb"
+      titleOnArt
+      items={items}
+      tileSubtitle={genreCount}
+      onPress={(genre) => {
+        const href = videoGenreHref(group, genre);
+        if (href) router.push(href);
+      }}
+    />
+  );
 }
 
 function ContinueListening() {
@@ -210,5 +233,6 @@ export function registerBuiltinHomeSections(): void {
   homeSections.register({ id: 'builtin.shortOnTime', order: 35, component: ShortOnTime });
   homeSections.register({ id: 'builtin.recentlyAdded', order: 40, component: RecentlyAdded });
   homeSections.register({ id: 'builtin.genreOfTheDay', order: 42, component: GenreOfTheDay });
+  homeSections.register({ id: 'builtin.genres', order: 44, component: Genres });
   homeSections.register({ id: 'builtin.downloaded', order: 50, component: DownloadedLast });
 }

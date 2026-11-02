@@ -1,7 +1,7 @@
 import { router, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image } from 'expo-image';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
 import LOGO from '@/assets/images/logo-mark.png';
 import { describeError } from '@/api/errors';
@@ -15,6 +15,7 @@ import { askIfReinstalled } from '@/features/servers/reinstall';
 import { lanHelpAfterFailure, openLanSettings, useServerDiscovery } from '@/features/servers/use-server-discovery';
 import { setNoAccountOpen, useOfflineEntries } from '@/features/offline/use-offline-entries';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { loadRuntimeConfig } from '@/lib/runtime-config';
 import { pageIsHttps } from '@/servers/connection';
 import { type LanHelp, withLanRetry } from '@/servers/discovery/lan-access';
@@ -96,7 +97,7 @@ export default function ServerScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <TvScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.inner}>
           <Image source={LOGO} style={styles.logo} contentFit="contain" accessibilityIgnoresInvertColors accessible={false} />
           <Text style={styles.title} accessibilityRole="header">
@@ -152,7 +153,7 @@ export default function ServerScreen() {
             </View>
           ) : null}
         </View>
-      </ScrollView>
+      </TvScrollView>
       {entries.joinNearby && !adding ? <TogetherSheetHost where="join" /> : null}
     </KeyboardAvoidingView>
   );

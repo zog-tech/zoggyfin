@@ -9,10 +9,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Overview, RoundAction } from '@/features/detail/detail-scaffold';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, radius, scaled, scriptStyle, sizes, spacing, type, useLayout, useStyles, useTheme, withAlpha } from '@/theme';
 
@@ -150,10 +151,10 @@ export function VodDetail({
   return (
     <>
       <Stack.Screen options={{ title: '' }} />
-      <ScrollView style={s.page} contentContainerStyle={{ paddingBottom: spacing.huge * 2 }}>
+      <TvScrollView style={s.page} contentContainerStyle={{ paddingBottom: spacing.huge * 2 }}>
         {header}
         <View style={[s.selfCenter, { width: pageWidth }]}>{children}</View>
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }

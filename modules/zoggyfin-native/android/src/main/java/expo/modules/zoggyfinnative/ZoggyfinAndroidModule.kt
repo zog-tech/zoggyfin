@@ -106,6 +106,7 @@ class ZoggyfinAndroidModule : Module() {
           if (key == "hevc" && (pl.profile == CodecProfileLevel.HEVCProfileMain10 || pl.profile == CodecProfileLevel.HEVCProfileMain10HDR10)) {
             tenBit = true
           }
+          if (key == "av1" && pl.profile in AV1_TEN_BIT) tenBit = true
         }
       }
       out[key] = mapOf("hardware" to hardware, "software" to software, "maxLevel" to maxLevel, "tenBit" to tenBit)
@@ -267,6 +268,13 @@ class ZoggyfinAndroidModule : Module() {
     fun holdPictureInPicture(ms: Long = 2000) {
       pipHoldUntil = SystemClock.elapsedRealtime() + ms
     }
+
+    /** AV1 Main 10 profiles (API 29 constants; the values are plain ints). */
+    private val AV1_TEN_BIT = setOf(
+      CodecProfileLevel.AV1ProfileMain10,
+      CodecProfileLevel.AV1ProfileMain10HDR10,
+      CodecProfileLevel.AV1ProfileMain10HDR10Plus,
+    )
 
     private val MIMES = listOf(
       "h264" to "video/avc",

@@ -167,6 +167,17 @@ describe('ExoPlayer device profile (Android)', () => {
     expect(hevc?.Conditions?.some((c) => c.Property === 'VideoCodecTag')).toBe(false);
   });
 
+  it('direct plays AV1 with a Dolby Vision layer on a 10-bit decoder and an HDR display', () => {
+    const tv = buildDeviceProfile(exoCapabilities({ ...phone, codecs: { ...phone.codecs, av1: d(true, 0, true) } }), opts);
+    const av1 = codec(tv, 'av1');
+    const ranges = (av1?.Conditions?.find((c) => c.Property === 'VideoRangeType')?.Value ?? '').split('|');
+    expect(ranges).toEqual(expect.arrayContaining(['SDR', 'HDR10', 'HLG', 'DOVIWithHDR10', 'DOVIWithSDR']));
+    expect(ranges).not.toContain('DOVI');
+    // An 8-bit-only AV1 decoder (or an older build with no report): SDR only.
+    const eight = exoCapabilities({ ...phone, codecs: { ...phone.codecs, av1: d(true) } });
+    expect(eight.av1Ranges).toBe('SDR|DOVIWithSDR');
+  });
+
   it('adds AC3 and E-AC3 when the device decodes them', () => {
     const dolby = exoCapabilities({ ...phone, codecs: { ...phone.codecs, ac3: d(false), eac3: d(false) } });
     expect(dolby.audioCodecs).toEqual(expect.arrayContaining(['ac3', 'eac3']));

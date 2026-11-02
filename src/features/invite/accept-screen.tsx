@@ -16,7 +16,7 @@
  */
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
 import { getApi } from '@/api/client';
 import { describeError } from '@/api/errors';
@@ -26,6 +26,7 @@ import { completeSignIn } from '@/auth/sign-in';
 import { useSessionStore } from '@/auth/session-store';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { changeOwnPassword } from '@/invite/api';
 import { canReadClipboard, readClipboard } from '@/invite/clipboard';
 import { offerExtensionsLater } from '@/invite/extensions';
@@ -133,7 +134,7 @@ export function AcceptInviteScreen() {
   return (
     <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <TvScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.inner}>
           {step.name === 'paste' ? <PasteStep error={step.error} onOpen={(t) => setView(viewFor(payloadFromText(t), true))} onCancel={notNow} /> : null}
           {invite && (step.name === 'confirm' || step.name === 'joining') ? (
@@ -160,7 +161,7 @@ export function AcceptInviteScreen() {
             <PasswordStep invite={invite} joined={step.joined} onDone={() => finish(step.joined)} />
           ) : null}
         </View>
-      </ScrollView>
+      </TvScrollView>
     </KeyboardAvoidingView>
   );
 }

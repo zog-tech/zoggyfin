@@ -32,6 +32,7 @@ import { Icon, type IconName } from '@/components/icon';
 import { LoadingState } from '@/components/states';
 import { Touchable } from '@/components/touchable';
 import { focusView } from '@/features/tv/focus';
+import { TvScrollView, useTvPageScroll } from '@/features/tv/page-scroll';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
 import {
@@ -260,6 +261,7 @@ export function LiveTvScreen() {
   });
 
   const list = useRef<ComponentRef<typeof FlatList<Channel | ProviderChannel>>>(null);
+  const tvScroll = useTvPageScroll(useCallback(() => list.current?.getNativeScrollRef(), []));
   useEffect(() => {
     list.current?.scrollToOffset({ offset: 0, animated: false });
   }, [groupKey, query, liveView, searching]);
@@ -293,7 +295,7 @@ export function LiveTvScreen() {
     return (
       <>
         {title}
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={[s.emptyPage, { paddingHorizontal: l.gutter, paddingBottom: bottomPad }]}>
+        <TvScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={[s.emptyPage, { paddingHorizontal: l.gutter, paddingBottom: bottomPad }]}>
           {isTV ? <Text style={s.tvTitle}>Live TV</Text> : null}
           <View style={s.center}>
             <View style={s.stateIcon}>
@@ -309,7 +311,7 @@ export function LiveTvScreen() {
               <Button title="M3U playlist" icon="list.bullet" variant="tonal" onPress={() => router.push(providerFormHref(group, { kind: 'm3u' }))} />
             </View>
           </View>
-        </ScrollView>
+        </TvScrollView>
       </>
     );
   }
@@ -496,6 +498,7 @@ export function LiveTvScreen() {
   ) : (
     <FlatList
       ref={list}
+      {...tvScroll.props}
       data={rows}
       keyExtractor={(r) => ('channel' in r ? r.key : r.id)}
       style={[s.flex, listWidth !== undefined ? { width: listWidth } : null]}
