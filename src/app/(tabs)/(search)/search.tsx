@@ -28,6 +28,7 @@ import {
   type SearchFilter,
   topResult,
 } from '@/features/search/group-results';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { useRootScreenOptions } from '@/lib/stack-options';
@@ -149,7 +150,7 @@ export default function SearchScreen() {
               },
         }}
       />
-      <ScrollView
+      <TvScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -309,7 +310,7 @@ export default function SearchScreen() {
             {localOnly ? <Text style={[s.localNote, { paddingHorizontal: l.gutter }]}>Showing downloads only. The server cannot be reached.</Text> : null}
           </View>
         )}
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }

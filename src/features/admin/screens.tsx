@@ -5,10 +5,11 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { Group, LeadingIcon, makeSettingsStyles, SettingsRow } from '@/features/settings/rows';
 import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
@@ -87,7 +88,7 @@ function AdminHomeWide({ target }: { target: AdminTarget }) {
   const refresh = useRefreshAll(target);
   return (
     <View style={[s.split, sidebar ? { paddingLeft: sidebar } : null]}>
-      <ScrollView style={s.nav} contentContainerStyle={[s.navContent, { paddingBottom: bottomPad }]}>
+      <TvScrollView style={s.nav} contentContainerStyle={[s.navContent, { paddingBottom: bottomPad }]}>
         <Text style={s.server} numberOfLines={2}>
           {target.serverName}
         </Text>
@@ -114,7 +115,7 @@ function AdminHomeWide({ target }: { target: AdminTarget }) {
         </View>
         <WebDashboardGroup target={target} />
         <ServerActionsGroup target={target} />
-      </ScrollView>
+      </TvScrollView>
       <View style={s.pane}>
         <AdminPage onRefresh={refresh} wide inset={false}>
           <Text style={s.paneTitle} accessibilityRole="header">

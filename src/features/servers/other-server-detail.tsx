@@ -5,7 +5,7 @@
  * "Switch to <server>".
  */
 import { router } from 'expo-router';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { findServer } from '@/auth/accounts';
@@ -15,6 +15,7 @@ import { ItemImage } from '@/components/item-image';
 import { shapeFor } from '@/components/tile-shape';
 import { downloadedChildren, downloads } from '@/downloads';
 import { TrackRow } from '@/features/detail/rows';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { confirmDestructive } from '@/lib/confirm';
 import { usePlayer } from '@/player';
 import { createStyles, type AppTheme, font, radius, scaled, scriptStyle, spacing, type, useLayout, useStyles } from '@/theme';
@@ -59,7 +60,7 @@ export function OtherServerDownloadDetail({ item, serverId }: { item: BaseItemDt
   };
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={[s.content, { paddingHorizontal: l.gutter, paddingBottom: bottomPad }]}>
+    <TvScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={[s.content, { paddingHorizontal: l.gutter, paddingBottom: bottomPad }]}>
       <View style={s.hero}>
         <ItemImage item={item} variant={audio ? 'square' : wide ? 'landscape' : 'poster'} width={width} aspectRatio={audio ? 1 : wide ? 16 / 9 : 2 / 3} rounded={radius.lg} />
         <Text style={[s.title, scriptStyle(item.Name, s.title)]} accessibilityRole="header">
@@ -83,7 +84,7 @@ export function OtherServerDownloadDetail({ item, serverId }: { item: BaseItemDt
           ))}
         </View>
       ) : null}
-    </ScrollView>
+    </TvScrollView>
   );
 }
 

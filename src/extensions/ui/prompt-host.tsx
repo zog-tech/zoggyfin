@@ -3,12 +3,13 @@
  * a confirm, a text field, or a choice list that loads from the extension.
  */
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { makeSheetStyles, Sheet, SheetRow } from '@/components/sheet';
 import { TextField } from '@/components/text-field';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, useStyles, useTheme } from '@/theme';
 
 import { type ChoiceOption, type Prompt, usePrompt } from '../prompts';
@@ -111,7 +112,7 @@ function ChoicePrompt({ prompt }: { prompt: Extract<Prompt, { kind: 'choice' }> 
   }
   const options = state.options;
   return (
-    <ScrollView style={s.list}>
+    <TvScrollView style={s.list}>
       {options.length === 0 ? <Text style={s.message}>No options</Text> : null}
       <View style={s.group}>
         {options.map((o, i) => {
@@ -126,7 +127,7 @@ function ChoicePrompt({ prompt }: { prompt: Extract<Prompt, { kind: 'choice' }> 
           );
         })}
       </View>
-    </ScrollView>
+    </TvScrollView>
   );
 }
 

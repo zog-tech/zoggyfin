@@ -11,7 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { scopeKey } from '@/api/query-keys';
@@ -23,6 +23,7 @@ import { Icon } from '@/components/icon';
 import type { IconName } from '@/components/icon-names';
 import { makeSheetStyles, Sheet, SheetRow } from '@/components/sheet';
 import { Touchable } from '@/components/touchable';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { downloadsSupported } from '@/downloads';
 import { useDownloadsStore } from '@/downloads/store';
@@ -114,9 +115,9 @@ function ProfileMenuOpen({ onClose }: { onClose: () => void }) {
   if (POPOVER) return <Popover onClose={() => close()}>{body}</Popover>;
   return (
     <Sheet visible title={null} onClose={() => close()} doneLabel="Done">
-      <ScrollView style={{ maxHeight: 620 }} contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
+      <TvScrollView style={{ maxHeight: 620 }} contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
         {body}
-      </ScrollView>
+      </TvScrollView>
     </Sheet>
   );
 }
@@ -256,7 +257,7 @@ function Popover({ onClose, children }: { onClose: () => void; children: ReactNo
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="Close the menu" accessibilityRole="button" />
       <View ref={panel} style={[s.popover, { top: insets.top + 64 }]} accessibilityRole="menu" aria-label="Profile menu">
-        <ScrollView contentContainerStyle={s.popoverContent}>{children}</ScrollView>
+        <TvScrollView contentContainerStyle={s.popoverContent}>{children}</TvScrollView>
       </View>
     </Modal>
   );

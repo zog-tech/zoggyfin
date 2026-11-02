@@ -1,7 +1,7 @@
 import * as Application from 'expo-application';
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Platform, ScrollView, Switch, Text, View } from 'react-native';
+import { Linking, Platform, Switch, Text, View } from 'react-native';
 
 import { clearQueryCache } from '@/api/query-client';
 import { useApi } from '@/api/use-api';
@@ -16,6 +16,7 @@ import { openAddServer, signOutUser } from '@/features/servers/actions';
 import { providersHref } from '@/features/iptv/nav';
 import { ConnectionStatus } from '@/features/servers/connection-status';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { UpdateSettingsRow } from '@/features/updates/update-row';
 import { confirmDestructive as confirm } from '@/lib/confirm';
 import { devOffline, setDevOffline } from '@/lib/dev-offline';
@@ -67,7 +68,7 @@ export default function SettingsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Settings', headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}>
+      <TvScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}>
         <View style={styles.inner}>
           <Group>
             <View style={[styles.row, styles.account]}>
@@ -129,7 +130,7 @@ export default function SettingsScreen() {
             <ActionRow label={busy ? 'Signing out' : `Sign ${session.userName} out`} onPress={signOut} disabled={busy} />
           </Group>
         </View>
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }

@@ -6,10 +6,11 @@
  * and "All providers" follow it). Settings rows (design system §7.15).
  */
 import { router, Stack } from 'expo-router';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Group, makeSettingsStyles, SettingsRow } from '@/features/settings/rows';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { ALL_PROVIDERS, iptv, type ProviderRecord, useProviders, useStartWith } from '@/iptv';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
@@ -50,7 +51,7 @@ export function ProvidersScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'IPTV Providers', headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar } : null]}>
+      <TvScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar } : null]}>
         <View style={styles.inner}>
           {isTV ? <Text style={styles.name}>IPTV Providers</Text> : null}
           {providers.length ? (
@@ -113,7 +114,7 @@ export function ProvidersScreen() {
             <SettingsRow icon="list.bullet" label="M3U playlist" onPress={() => router.push(providerFormHref(group, { kind: 'm3u' }))} last />
           </Group>
         </View>
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }

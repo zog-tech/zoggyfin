@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
 import { getApi } from '@/api/client';
 import { describeError } from '@/api/errors';
@@ -18,6 +18,7 @@ import { TextField, type TextFieldRef } from '@/components/text-field';
 import { LanAccessHelp } from '@/features/servers/nearby-servers';
 import { finishReinstall } from '@/features/servers/reinstall';
 import { lanHelpAfterFailure, openLanSettings } from '@/features/servers/use-server-discovery';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { type LanHelp, withLanRetry } from '@/servers/discovery/lan-access';
 import { createStyles, type AppTheme, font, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
 
@@ -117,7 +118,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <TvScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.inner}>
           <Text style={styles.title}>Sign in</Text>
           <Text style={styles.subtitle} numberOfLines={2}>
@@ -180,7 +181,7 @@ export default function LoginScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+      </TvScrollView>
     </KeyboardAvoidingView>
   );
 }

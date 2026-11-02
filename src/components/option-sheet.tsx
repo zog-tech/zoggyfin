@@ -1,5 +1,6 @@
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, useStyles, useTheme } from '@/theme';
 
@@ -33,7 +34,7 @@ export function OptionSheet<T>({
   const { c } = useTheme();
   return (
     <Sheet visible={visible} title={title} onClose={onClose} doneLabel="Done">
-      <ScrollView style={s.list} contentContainerStyle={s.content}>
+      <TvScrollView style={s.list} contentContainerStyle={s.content}>
         {options.length === 0 ? <Text style={s.empty}>No options</Text> : null}
         <View style={s.group}>
           {options.map((o, i) => {
@@ -58,7 +59,7 @@ export function OptionSheet<T>({
             );
           })}
         </View>
-      </ScrollView>
+      </TvScrollView>
     </Sheet>
   );
 }

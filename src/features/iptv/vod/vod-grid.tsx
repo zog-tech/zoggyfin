@@ -4,11 +4,12 @@
  * changes with the column count so FlashList rebuilds once. A category can
  * hold thousands of films.
  */
-import { FlashList } from '@shopify/flash-list';
-import { type ReactElement, useCallback, useState } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { type ReactElement, useCallback, useRef, useState } from 'react';
 import { type LayoutChangeEvent, View } from 'react-native';
 
 import { tileHeight } from '@/components/tile';
+import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { gridLayout, spacing, tvFocusBleed, useLayout } from '@/theme';
 
@@ -46,6 +47,8 @@ export function VodGrid({
     const w = Math.round(e.nativeEvent.layout.width);
     if (w > 0 && w !== measured) setMeasured(w);
   };
+  const list = useRef<FlashListRef<VodTileData>>(null);
+  const tvScroll = useTvPageScroll(useCallback(() => flashScroll(list.current?.getNativeScrollRef()), []), { onLayout });
 
   const renderItem = useCallback(
     ({ item, index }: { item: VodTileData; index: number }) => (
@@ -63,7 +66,9 @@ export function VodGrid({
 
   return (
     <FlashList
+      ref={list}
       onLayout={onLayout}
+      {...tvScroll.props}
       data={items}
       numColumns={columns}
       key={columns}

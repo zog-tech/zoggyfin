@@ -1,6 +1,6 @@
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { DEFAULT_MUSIC_OPTIONS, type MusicOptions, type MusicTab } from '@/api/jellyfin';
@@ -16,6 +16,7 @@ import { EmptyState, ErrorState, GridSkeleton, LoadingState } from '@/components
 import { TabPager } from '@/components/tab-pager';
 import type { PagerTab } from '@/components/tab-pager-types';
 import { ArtistRow, TrackRow } from '@/features/detail/rows';
+import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
 import { type TabGroup, useOpenItem, useTabGroup } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { usePlayer } from '@/player';
@@ -182,6 +183,8 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
   const l = useLayout();
   const bottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset: false });
+  const list = useRef<FlashListRef<BaseItemDto>>(null);
+  const tvScroll = useTvPageScroll(useCallback(() => flashScroll(list.current?.getNativeScrollRef()), []));
   const more = () => {
     if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage();
   };
@@ -214,6 +217,8 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
     return (
       <>
         <FlashList
+          ref={list}
+          {...tvScroll.props}
           data={items}
           keyExtractor={(it, i) => it.Id ?? String(i)}
           renderItem={({ item, index }) =>

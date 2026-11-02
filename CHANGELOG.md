@@ -135,6 +135,10 @@ first commit to today. All of it was built in the first weeks of the project.
   Android jumped to the focused row and the app's scroll then slid it again, so each press jumped and
   slid. Extra Down presses on the last Home row no longer cut the row off, and fast Up presses in a
   library grid no longer scroll up past the focus and then back down.
+- Android TV: every other page that scrolls (item pages, Search, Settings, Live TV, the IPTV films and
+  series, music lists, sign-in, menus and sheets) glides to the focused control the same way and stops
+  at the end of its content. Before, Down at the end of an item page scrolled past it and cut the
+  rows off.
 - TV: Settings, and other pages with no preferred focus, take the focus when they open. Before, the
   focus stayed on the page they covered and the remote could not reach them.
 - Android: a transcode that started mid-file (resume, a quality change) could stop with a playback

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, ScrollView, Switch, Text, View } from 'react-native';
+import { Platform, Switch, Text, View } from 'react-native';
 
 import { findServer as probeServer } from '@/api/jellyfin';
 import { normalizeServerUrl } from '@/api/server-url';
@@ -16,6 +16,7 @@ import { Sheet } from '@/components/sheet';
 import { EmptyState } from '@/components/states';
 import { TextField } from '@/components/text-field';
 import { Touchable } from '@/components/touchable';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { InviteSection } from '@/features/invite/invite-section';
 import { openAddUser, removeServerFlow, signOutUser, switchAccount } from '@/features/servers/actions';
@@ -75,7 +76,7 @@ export default function ServerScreen() {
   return (
     <>
       <Stack.Screen options={{ title: server.name, headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
-      <ScrollView
+      <TvScrollView
         contentInsetAdjustmentBehavior="automatic"
         style={styles.page}
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}
@@ -104,7 +105,7 @@ export default function ServerScreen() {
             />
           </Group>
         </View>
-      </ScrollView>
+      </TvScrollView>
     </>
   );
 }
