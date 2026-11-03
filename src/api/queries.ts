@@ -81,7 +81,7 @@ export function usePrefetchItemOnFocus(delayMs = 300): (item: BaseItemDto) => vo
   );
 }
 
-export function useLibrary(q: LibraryQuery) {
+export function useLibrary(q: LibraryQuery, enabled = true) {
   const { api, userId, scope } = useApi();
   return useInfiniteQuery({
     queryKey: queryKeys.library(scope, q),
@@ -92,6 +92,7 @@ export function useLibrary(q: LibraryQuery) {
       return last.items.length > 0 && next < last.total ? next : undefined;
     },
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
