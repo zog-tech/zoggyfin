@@ -204,7 +204,7 @@ Play → session.ts finds the completed record (local.ts) → plays the file →
 
 ### 2.8 Features (`src/features/`)
 
-`actions`, `admin` (server admin panel, fixture mode), `detail` (item pages), `home`, `invite`, `iptv` (Live TV pages, provider form; `vod/` Films and Series pages), `library` (filters), `music` (music pager), `music-player`, `offline`, `player`, `playlists`, `profile`, `search`, `servers`, `settings`, `together` (session sheet, room bar), `tv` (focus, side menu, remote, billboard), `updates` (Mac update card).
+`actions`, `admin` (server admin panel, fixture mode), `remote` (Play on… and the Remote screen: control other Jellyfin sessions of the same user), `detail` (item pages), `home`, `invite`, `iptv` (Live TV pages, provider form; `vod/` Films and Series pages), `library` (filters), `music` (music pager), `music-player`, `offline`, `player`, `playlists`, `profile`, `search`, `servers`, `settings`, `together` (session sheet, room bar), `tv` (focus, side menu, remote, billboard), `updates` (Mac update card).
 Pure logic sits in its own file with tests (for example `admin/logic.ts`, `playlists/logic.ts`, `detail/hero-layout.ts`, `profile/menu-model.ts`).
 
 ### 2.9 Native code (`modules/`, `patches/`, `desktop/`)
@@ -272,6 +272,7 @@ The "Manual check" column lists what unit tests cannot see. The `verify-change` 
 | `src/extensions/` | `src/extensions/__tests__/` | Item action sheet, Home rows, share intake, invites | Install the sample in `docs/extensions.md`; an action, a Home row, a panel (not on TV) |
 | `src/registry/`, `src/features/actions/`, `src/features/home/` | `src/registry/__tests__/registry.test.ts` | Action sheet, Home, extensions | Open the action sheet on a movie, an episode, an album, a playlist; Home rows appear in order |
 | `src/invite/`, `site/public/join` | `src/invite/__tests__/` (payload, join, join-page, policy, records, cleanup, addresses, qr) | Accept-invite flow, admin, extensions | Create an invite as admin, open the link, paste invite, set a password |
+| `src/features/remote/`, remote calls in `src/api/jellyfin.ts` | `src/features/remote/__tests__/logic.test.ts` | Item action sheet (Play on…), profile menu | Web or phone with a second client signed in as the same user (the Jellyfin web client works): Play on…, then pause, seek, volume, stop from the Remote screen; phone and iPad width; TV preview hides it |
 | `src/features/admin/` | `src/features/admin/__tests__/` | none | Dev builds: Settings, Development, "Admin fixture data" (web: `?adminFixtures=1`) |
 | `src/features/*` with pure logic | The `__tests__/` folder of that feature | The screens of that feature | The screens on phone, iPad width and web |
 | `src/theme/`, `src/components/` | `src/theme/__tests__/layout.test.ts`, `src/lib/__tests__/tab-bar-inset.test.ts` | Every screen | Light and dark theme, phone and iPad widths, web, TV preview, Arabic text, reduced motion |

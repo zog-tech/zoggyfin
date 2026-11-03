@@ -4,6 +4,7 @@
  */
 import { isDownloadable } from '@/downloads/plan';
 import { canAddToPlaylist } from '@/features/playlists/logic';
+import { canPlayRemotely } from '@/features/remote/logic';
 import { itemActions } from '@/registry/item-actions';
 
 const PLAYABLE = new Set(['Movie', 'Episode', 'Video', 'MusicVideo', 'Audio', 'AudioBook', 'MusicAlbum', 'MusicArtist', 'MusicGenre', 'Playlist', 'Series', 'Season', 'BoxSet']);
@@ -30,6 +31,14 @@ export function registerBuiltinItemActions(): void {
     order: 10,
     when: ({ item }) => PLAYABLE.has(item.Type ?? ''),
     run: ({ item, app }) => app.play(item),
+  });
+  itemActions.register({
+    id: 'builtin.playOn',
+    title: 'Play on…',
+    icon: 'airplay.video',
+    order: 11,
+    when: ({ item, app }) => !!app.playOn && canPlayRemotely(item),
+    run: ({ item, app }) => app.playOn?.(item),
   });
   itemActions.register({
     id: 'builtin.playNext',

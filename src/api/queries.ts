@@ -237,3 +237,19 @@ export function useSearch(term: string, genre?: string) {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+/**
+ * The sessions this user can control. `pollMs` refetches while the caller is
+ * on screen (the Remote screen polls every 2 s); the sheet loads once.
+ */
+export function useRemoteSessions(opts: { enabled?: boolean; pollMs?: number | false } = {}) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.remoteSessions(scope),
+    queryFn: () => jf.getControllableSessions(api, userId),
+    enabled: opts.enabled ?? true,
+    refetchInterval: opts.pollMs ?? false,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
+  });
+}

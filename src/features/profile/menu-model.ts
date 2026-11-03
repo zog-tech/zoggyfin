@@ -8,7 +8,7 @@ import type { ConnectionInfo } from '@/servers/status';
 import type { TogetherState } from '@/together/store';
 import { groupCount } from '@/together/syncplay-logic';
 
-export type MenuRowId = 'invite' | 'together' | 'downloads' | 'admin' | 'extensions' | 'settings' | 'signout';
+export type MenuRowId = 'invite' | 'together' | 'remote' | 'downloads' | 'admin' | 'extensions' | 'settings' | 'signout';
 
 export interface MenuRow {
   id: MenuRowId;
@@ -29,6 +29,8 @@ export interface MenuInput {
   together: boolean;
   /** People in the open room, or null when no room is open. A room with an unknown count: 0. */
   roomPeople: number | null;
+  /** Remote control of other devices can run on this platform (not TV). */
+  remote: boolean;
   /** Downloads can run on this platform. */
   downloads: boolean;
   /** Finished downloads on this device. */
@@ -66,6 +68,7 @@ export function menuRows(i: MenuInput): MenuRow[] {
     const detail = i.roomPeople === null ? null : i.roomPeople > 0 ? `In a session · ${people(i.roomPeople)}` : 'In a session';
     rows.push({ id: 'together', label: 'Together', icon: 'person.2', detail });
   }
+  if (i.remote) rows.push({ id: 'remote', label: 'Control a device', icon: 'iphone', detail: null });
   if (i.downloads) rows.push({ id: 'downloads', label: 'Downloads', icon: 'arrow.down.circle', detail: downloadsDetail(i.downloadCount, i.active) });
   if (i.admin === true) rows.push({ id: 'admin', label: 'Admin panel', icon: 'checkmark.shield', detail: null });
   rows.push({ id: 'extensions', label: 'Extensions', icon: 'square.grid.2x2', detail: null });

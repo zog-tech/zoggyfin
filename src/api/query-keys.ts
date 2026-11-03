@@ -79,6 +79,8 @@ export const queryKeys = {
   videoGenres: (s: SessionScope) => [...scopeKey(s), 'videoGenres'] as const,
   /** The items of the genre of the day. The day is in the key, so the row moves on at midnight. */
   genreOfDay: (s: SessionScope, day: string, genreId: string) => [...scopeKey(s), 'genreOfDay', day, genreId] as const,
+  /** Other sessions this user can control (Play on…, Remote). Polled while the Remote screen is open. */
+  remoteSessions: (s: SessionScope) => [...scopeKey(s), 'remoteSessions'] as const,
   similar: (s: SessionScope, itemId: string) => [...scopeKey(s), 'similar', itemId] as const,
   search: (s: SessionScope, term: string, genre = '') =>
     [...scopeKey(s), 'search', term.trim().toLowerCase(), genre] as const,
