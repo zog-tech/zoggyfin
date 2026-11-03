@@ -101,6 +101,7 @@ Zoggyfin is in early development. The sections below describe what exists today,
 Phase 1 ("Foundation"):
 
 - Sign in with a server address and a username and password, or with Quick Connect.
+  Settings, Quick Connect approves a code from another device (a TV, a browser), so that device signs in with no password.
 - Home: Continue Watching, Next Up, Because you watched (movie recommendations), Continue Listening,
   Short on time (unwatched movies of 100 minutes or less), Recently Added per library, and a genre of the day.
 - Library: library grids with sort and filters, shows to seasons to episodes, collections.

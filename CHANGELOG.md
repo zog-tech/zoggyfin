@@ -16,6 +16,8 @@ first commit to today. All of it was built in the first weeks of the project.
 - **Foundation.** An Expo SDK 58 project on `react-native-tvos`, the Jellyfin API layer, sign-in with
   a password or Quick Connect, the tab shell, Home, library grids, item pages, search and generated art
   for items with no picture.
+- **Quick Connect approval.** Settings, Quick Connect takes the six-digit code that another device
+  shows (a TV, a browser, another Jellyfin app) and signs that device in as this account.
 - **Design system.** The Ember accent on graphite, a light and a dark theme, one icon set per platform
   and rules for Arabic text. See `docs/design`.
 - **Video player.** Direct play or HLS from a device profile, a full-screen player with trickplay,

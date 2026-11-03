@@ -125,6 +125,11 @@ export async function authenticateWithQuickConnect(api: Api, secret: string): Pr
   return (await getAuthenticationApi(api).authenticateWithQuickConnect({ quickConnectDto: { Secret: secret } })).data;
 }
 
+/** Lets in the device that shows `code`, as `userId`. True when the server accepted it. */
+export async function authorizeQuickConnect(api: Api, code: string, userId: string): Promise<boolean> {
+  return (await getAuthenticationApi(api).authorizeQuickConnect({ code, userId })).data === true;
+}
+
 export async function logout(api: Api): Promise<void> {
   await getSessionApi(api).reportSessionEnded();
 }
