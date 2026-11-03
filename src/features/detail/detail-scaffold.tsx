@@ -365,7 +365,8 @@ export function DetailScaffold<Row>({
               />
             </View>
             {actionsUnderPoster ? (
-              <View style={{ width: buttonsWidth, gap: spacing.lg }}>
+              // At least the poster's width; wider when the label needs it ("Resume 1:02:14" at 10-foot sizes).
+              <View style={{ minWidth: buttonsWidth, maxWidth: leftWidth, gap: spacing.lg }}>
                 {primary}
                 {actionsRow}
               </View>
