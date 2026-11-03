@@ -301,6 +301,12 @@ export async function getChildren(api: Api, userId: string, parentId: string, ki
   }
 }
 
+/** The trailer files of an item on the server (not the metadata links). */
+export async function getLocalTrailers(api: Api, userId: string, itemId: string): Promise<BaseItemDto[]> {
+  const res = await getLibraryApi(api).getLocalTrailers({ itemId, userId });
+  return res.data ?? [];
+}
+
 export async function getSimilar(api: Api, userId: string, itemId: string): Promise<BaseItemDto[]> {
   const res = await getLibraryApi(api).getSimilarItems({ itemId, userId, limit: 16, fields: TILE_FIELDS });
   return res.data.Items ?? [];

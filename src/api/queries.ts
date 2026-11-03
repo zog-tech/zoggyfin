@@ -143,6 +143,16 @@ export function useSimilar(itemId: string | undefined, enabled = true) {
   });
 }
 
+/** The trailer files of an item. Loads only when the item says that it has some. */
+export function useLocalTrailers(itemId: string | undefined, enabled = true) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.localTrailers(scope, itemId ?? ''),
+    queryFn: () => jf.getLocalTrailers(api, userId, itemId ?? ''),
+    enabled: enabled && !!itemId,
+  });
+}
+
 const HOUR = 60 * 60 * 1000;
 
 /**

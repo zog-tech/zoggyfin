@@ -106,6 +106,7 @@ Phase 1 ("Foundation"):
 - Library: library grids with sort and filters, shows to seasons to episodes, collections.
 - Music: Albums, Artists, Playlists, Songs and Genres in a swipeable pager.
 - Item pages for movies, shows, seasons, episodes, albums, artists, people and playlists.
+  Movie and show pages have a Trailer button: a trailer file on the server plays in the app, a YouTube link opens outside it.
 - Search, with results grouped by type and recent searches.
 - Every tile has a picture: server art when it exists, generated art when it does not.
 - A persisted query cache, so a cold start shows the last content at once.
