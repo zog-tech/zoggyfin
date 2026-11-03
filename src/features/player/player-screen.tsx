@@ -154,6 +154,8 @@ export function PlayerScreen() {
   const gutter = layout.gutter[breakpointFor(width)];
 
   const [visible, setVisible] = useState(true);
+  // Height of the top bar, so the Together pill sits under it when the title wraps to its own line.
+  const [topBarHeight, setTopBarHeight] = useState(0);
   const [scrubbing, setScrubbing] = useState(false);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [fit, setFit] = useState<VideoFit>('contain');
@@ -765,6 +767,25 @@ export function PlayerScreen() {
 
   const reportedVideo = usePlayerStore((x) => x.video);
   const streamVideo = now && now.kind !== 'audio' ? playingVideo(reportedVideo, now.plan.playMethod, now.plan.original ?? null, now.plan.target ?? null) : null;
+  // Compact windows (a phone in portrait): up to seven buttons leave no room for the title beside them.
+  const compactBar = !isTV && width < 600;
+  const titleBlock = (
+    <View style={[styles.titleBlock, compactBar && styles.titleRow]}>
+      <Text style={styles.title} numberOfLines={1}>
+        {title}
+      </Text>
+      {sub ? (
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {sub}
+        </Text>
+      ) : null}
+      {streamVideo ? (
+        <Text style={styles.streamLine} numberOfLines={1} accessibilityLabel={`Playing at ${videoSummary(streamVideo)}`}>
+          {videoSummary(streamVideo)}
+        </Text>
+      ) : null}
+    </View>
+  );
   const original = now?.plan.original ?? null;
   const method = now?.plan.playMethod === 'Transcode' ? 'Transcoding' : now?.plan.playMethod === 'DirectStream' ? 'Direct stream' : 'Direct play';
   const originalAudio = now?.plan.audio.find((a) => a.index === now.plan.audioIndex)?.label ?? null;
@@ -914,23 +935,12 @@ export function PlayerScreen() {
           <LinearGradient colors={player.topScrim} style={[styles.topScrim, { height: insets.top + 120 }]} pointerEvents="none" />
           <LinearGradient colors={player.bottomScrim} style={[styles.bottomScrim, { height: bottomPad + 180 }]} pointerEvents="none" />
 
-          <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm, paddingLeft: sideInset, paddingRight: sideInset }]} pointerEvents="box-none">
+          <View
+            style={[styles.topBar, compactBar && styles.topBarWrap, { paddingTop: insets.top + spacing.sm, paddingLeft: sideInset, paddingRight: sideInset }]}
+            onLayout={(e) => setTopBarHeight(Math.round(e.nativeEvent.layout.height))}
+            pointerEvents="box-none">
             <RoundButton onFocusChange={trackTop} icon="xmark" label="Close player" size={player.closeSize} glyph={iconSize.sm} onPress={closePlayer} />
-            <View style={styles.titleBlock}>
-              <Text style={styles.title} numberOfLines={1}>
-                {title}
-              </Text>
-              {sub ? (
-                <Text style={styles.subtitle} numberOfLines={1}>
-                  {sub}
-                </Text>
-              ) : null}
-              {streamVideo ? (
-                <Text style={styles.streamLine} numberOfLines={1} accessibilityLabel={`Playing at ${videoSummary(streamVideo)}`}>
-                  {videoSummary(streamVideo)}
-                </Text>
-              ) : null}
-            </View>
+            {compactBar ? <View style={styles.flex} /> : titleBlock}
             <Glass style={styles.pill}>
               <AirPlayButton onOpen={wake} />
               {/* TV: the system can say it has Picture in Picture and still refuse it (Google TV). */}
@@ -950,8 +960,10 @@ export function PlayerScreen() {
                 <PillButton onFocusChange={trackTop} icon="arrow.up.left.and.arrow.down.right" label="Full screen" onPress={() => s.toggleFullscreen(null)} />
               ) : null}
             </Glass>
+            {/* A phone in portrait: the title gets its own line under the buttons, so it is not cut to one letter. */}
+            {compactBar ? titleBlock : null}
           </View>
-          <TogetherPill top={insets.top + spacing.sm + player.closeSize + spacing.sm} left={sideInset} onPress={() => openTogetherSheet('player', null)} />
+          <TogetherPill top={topBarHeight ? topBarHeight + spacing.sm : insets.top + spacing.sm + player.closeSize + spacing.sm} left={sideInset} onPress={() => openTogetherSheet('player', null)} />
 
           {!scrubbing && status !== 'error' ? (
             <View style={styles.center} pointerEvents="box-none">
@@ -1235,6 +1247,9 @@ const styles = StyleSheet.create({
   topScrim: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottomScrim: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  topBarWrap: { flexWrap: 'wrap', rowGap: spacing.sm },
+  titleRow: { flexBasis: '100%' },
+  flex: { flex: 1 },
   titleBlock: { flex: 1, minWidth: 0 },
   title: { ...textStyle(type.headline), color: c.textOnMedia },
   subtitle: { ...textStyle(type.footnote), color: 'rgba(255,255,255,0.72)' },
