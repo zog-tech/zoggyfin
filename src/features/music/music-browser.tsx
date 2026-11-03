@@ -9,7 +9,7 @@ import type { BaseItemDto, ItemSortBy } from '@/api/types';
 import { ItemActionSheet } from '@/components/action-sheet';
 import { Chip, chipRowTV } from '@/components/chip';
 import { ItemGrid } from '@/components/item-grid';
-import { ItemRow } from '@/components/item-row';
+import { ItemRow, RowHeader } from '@/components/item-row';
 import { OptionSheet } from '@/components/option-sheet';
 import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
 import { EmptyState, ErrorState, GridSkeleton, LoadingState } from '@/components/states';
@@ -140,6 +140,7 @@ function PlayedRows({ libraryId }: { libraryId: string }) {
   const recent = usePlayedSongs(libraryId, 'recent');
   const most = usePlayedSongs(libraryId, 'most');
   const player = usePlayer();
+  const l = useLayout();
   const play = (list: BaseItemDto[] | undefined) => (item: BaseItemDto) => {
     if (!list) return;
     player.play({ item, list, index: list.indexOf(item) });
@@ -166,6 +167,12 @@ function PlayedRows({ libraryId }: { libraryId: string }) {
         tileSubtitle={(i) => i.Artists?.[0] ?? i.Album}
         preferredFocus={isTV && !recent.data?.length && !!most.data?.length}
       />
+      {/* With a played row above, the grid gets its own header, so the sort chips do not read as part of that row. */}
+      {recent.data?.length || most.data?.length ? (
+        <View style={{ marginTop: l.sectionGap }}>
+          <RowHeader title="All albums" />
+        </View>
+      ) : null}
     </View>
   );
 }
