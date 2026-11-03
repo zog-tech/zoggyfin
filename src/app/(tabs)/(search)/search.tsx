@@ -25,6 +25,7 @@ import {
   groupSearchResults,
   pushRecentSearch,
   SEARCH_FILTERS,
+  searchBody,
   type SearchFilter,
   topResult,
 } from '@/features/search/group-results';
@@ -106,6 +107,15 @@ export default function SearchScreen() {
   }, [term, hasResults]);
 
   const active = term.length >= 2 || !!genre;
+  const body = searchBody({
+    active,
+    localOnly,
+    pending: q.isPending,
+    placeholder: q.isPlaceholderData,
+    error: !!q.error,
+    hasData: !!q.data,
+    sections: sections.length,
+  });
   // Read when the recent list is on screen; it changes only between searches.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const recent = useMemo(() => readJson<string[]>(RECENT_KEY, []), [active, recentVersion]);
@@ -225,7 +235,7 @@ export default function SearchScreen() {
           </ScrollView>
         ) : null}
 
-        {!active ? (
+        {body === 'idle' ? (
           recent.length ? (
             <View style={s.recent}>
               <RowHeader title="Recent searches" />
@@ -260,11 +270,11 @@ export default function SearchScreen() {
           ) : (
             <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
           )
-        ) : !localOnly && q.isPending ? (
+        ) : body === 'loading' ? (
           <LoadingState />
-        ) : !localOnly && q.error && !q.data ? (
+        ) : body === 'error' ? (
           <ErrorState error={q.error} onRetry={q.refetch} />
-        ) : sections.length === 0 ? (
+        ) : body === 'empty' ? (
           <EmptyState
             icon="magnifyingglass"
             title={term.length >= 2 ? `No results for “${term}”${genre ? ` in ${genre}` : ''}` : `Nothing in ${genre ?? 'this genre'}`}
