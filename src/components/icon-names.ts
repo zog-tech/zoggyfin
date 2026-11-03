@@ -133,6 +133,8 @@ export const ANDROID_SYMBOLS = {
   personalhotspot: 'wifi_tethering',
   camera: 'photo_camera',
   keyboard: 'keyboard',
+  'textformat.size': 'format_size',
+  paintpalette: 'palette',
 } as const satisfies Record<string, AndroidSymbol>;
 
 export type IconName = keyof typeof ANDROID_SYMBOLS;

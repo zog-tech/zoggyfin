@@ -31,7 +31,8 @@ export const player = {
   chapterMarkColor: 'rgba(0,0,0,0.65)',
   topScrim: ['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)'] as const,
   bottomScrim: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.65)'] as const,
-  subtitleBackground: 'rgba(0,0,0,0.55)',
+  /** The subtitle preview in Settings: a mid-tone scene, so every background choice shows. */
+  subtitlePreview: ['#6E7F92', '#3B434E', '#1C2027'] as const,
 } as const;
 
 export const ease = {

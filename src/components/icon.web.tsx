@@ -108,6 +108,8 @@ import {
   Users,
   UserX,
   Ratio,
+  ALargeSmall,
+  Palette,
 } from 'lucide-react';
 
 import { type IconName, isIconName } from './icon-names';
@@ -243,6 +245,8 @@ const LUCIDE: Record<IconName, Glyph> = {
   personalhotspot: { icon: RadioTower },
   camera: { icon: Camera },
   keyboard: { icon: Keyboard },
+  'textformat.size': { icon: ALargeSmall },
+  paintpalette: { icon: Palette },
 };
 
 export function Icon({ name, size, color, weight }: IconProps) {
