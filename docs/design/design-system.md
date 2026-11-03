@@ -611,6 +611,19 @@ insets. Every control, text and focus mark stays inside 5 % of each edge: 96 x 5
 
 TV first (TiviMate style), then the same parts in other windows.
 
+- **Where it opens** (`features/iptv/placement.ts`): a tab on the web and in the Mac app; the side
+  menu on TV; on iPhone, iPad and Android (no room for a sixth tab) a **Live TV tile** in the
+  Library grid after the server's libraries. The tile is 16:9 like the library tiles: the accent
+  gradient (`accent` to `accentPressed`), a white TV glyph, a "Live" pill (`badgeFill`) top left,
+  the title "Live TV" and one line: the favourite count, else the provider name or count. On iOS
+  nothing about Live TV shows until a provider is added in Settings (the App Store build ships no
+  channels).
+- **Home row** "Live TV" (order 22, after Next up; not on TV): the favourite channels, then the
+  channels watched last, at most 20, as 16:9 tiles with the logo on a `surface2` card, the name and
+  the group (the provider with two providers or more). A tap plays the channel; channel up and down
+  move through the row. An "All channels" tile (`accentSoft`, accent icon and text) and the header
+  open Live TV. The row shows only when the account has a provider.
+
 - **TV:** a header (Live TV, the provider and its channel count; provider chips when there is more
   than one; Search, reload and Providers buttons), then three columns: the browse column (200 pt),
   the channel list, and the details panel (290 pt, `surface`, radius `lg`) for the focused channel.

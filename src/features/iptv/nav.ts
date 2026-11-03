@@ -5,9 +5,10 @@
  *
  * Live TV is its own tab only on the web and in the Mac app. iOS and Android
  * already have five tabs: Android's bottom bar cannot hold a sixth (it
- * throws), and iOS would move it into a "More" tab. There, Live TV opens
- * from the top of the Library tab and from Settings. TV has it in the side
- * menu.
+ * throws), and iOS would move it into a "More" tab. There, Live TV is a
+ * tile in the Library grid beside the server's libraries, and Settings has
+ * the providers. TV has it in the side menu. Every platform but TV also has
+ * a Live TV row on Home once a provider exists. placement.ts has the rules.
  */
 import { type Href, useSegments } from 'expo-router';
 import { Platform } from 'react-native';
