@@ -13,6 +13,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Remote control.** "Play on…" in an item's menu starts the item on another Jellyfin app of the
+  same account (a TV, a computer, a phone). "Control a device" in the profile menu opens the Remote
+  screen: what the device plays, the position, play and pause, seek 10 or 30 seconds, next and
+  previous, stop, volume and mute, where the device supports them. Not on TV.
 - **Foundation.** An Expo SDK 58 project on `react-native-tvos`, the Jellyfin API layer, sign-in with
   a password or Quick Connect, the tab shell, Home, library grids, item pages, search and generated art
   for items with no picture.

@@ -15,6 +15,8 @@ import { useExtensions } from '@/extensions/store';
 import { downloadsState, statusOf, useDownloadsStore } from '@/downloads/store';
 import { openAddToPlaylist, openRenamePlaylist } from '@/features/playlists/add-to-playlist';
 import * as playlistOps from '@/features/playlists/ops';
+import { openPlayOn } from '@/features/remote/play-on-sheet';
+import { remoteSupported } from '@/features/remote/use-remote';
 import { confirmDestructive } from '@/lib/confirm';
 import { formatBytes } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
@@ -64,6 +66,7 @@ export function useItemActions(item: BaseItemDto | undefined) {
       setPlayed: (it, played) =>
         guard(() => jf.setPlayed(api, userId, it.Id ?? '', played), played ? 'Marked as played' : 'Marked as unplayed'),
       addToPlaylist: (it) => openAddToPlaylist(it),
+      ...(remoteSupported ? { playOn: (it: BaseItemDto) => openPlayOn(it) } : null),
       renamePlaylist: (it) => openRenamePlaylist(it),
       deletePlaylist: async (it) => {
         const ok = await confirmDestructive(`Delete ${it.Name ?? 'this playlist'}?`, 'The playlist is removed from the server for this account. The songs and videos in it stay in the library.', 'Delete');

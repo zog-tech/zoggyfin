@@ -14,6 +14,7 @@ export type {
   AuthenticationResult,
   QuickConnectResult,
   RecommendationDto,
+  SessionInfoDto,
   CollectionType,
   QueryFiltersLegacy,
   ChapterInfo,

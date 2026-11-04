@@ -45,6 +45,7 @@ import type {
   QueryFiltersLegacy,
   QuickConnectResult,
   RecommendationDto,
+  SessionInfoDto,
   UserDto,
 } from './types';
 
@@ -784,6 +785,40 @@ export async function resolvePlayable(api: Api, userId: string, item: BaseItemDt
 export async function getText(api: Api, url: string): Promise<string> {
   const res = await api.axiosInstance.get<string>(url, { responseType: 'text', transformResponse: (d: unknown) => d });
   return typeof res.data === 'string' ? res.data : String(res.data);
+}
+
+// ---- Remote control ---------------------------------------------------------------
+
+/** How recently a session must have been active to count (s). Matches the Jellyfin web client. */
+const REMOTE_ACTIVE_SECONDS = 960;
+
+/** The sessions this user may control (other clients of the same user, or every client for an admin). */
+export async function getControllableSessions(api: Api, userId: string): Promise<SessionInfoDto[]> {
+  const res = await getSessionApi(api).getSessions({ controllableByUserId: userId, activeWithinSeconds: REMOTE_ACTIVE_SECONDS });
+  return res.data ?? [];
+}
+
+/** Starts playback of items on another session. */
+export async function remotePlay(api: Api, sessionId: string, itemIds: string[], startPositionTicks?: number): Promise<void> {
+  await getSessionApi(api).play({ sessionId, playCommand: 'PlayNow', itemIds, startPositionTicks });
+}
+
+export type RemotePlaystate = 'PlayPause' | 'Pause' | 'Unpause' | 'Stop' | 'NextTrack' | 'PreviousTrack' | 'Seek';
+
+export async function remotePlaystate(api: Api, sessionId: string, command: RemotePlaystate, seekPositionTicks?: number): Promise<void> {
+  await getSessionApi(api).sendPlaystateCommand({ sessionId, command, seekPositionTicks });
+}
+
+/** Sets the volume (0..100) of another session. */
+export async function remoteSetVolume(api: Api, sessionId: string, volume: number): Promise<void> {
+  await getSessionApi(api).sendFullGeneralCommand({
+    sessionId,
+    generalCommand: { Name: 'SetVolume', Arguments: { Volume: String(Math.round(volume)) } },
+  });
+}
+
+export async function remoteToggleMute(api: Api, sessionId: string): Promise<void> {
+  await getSessionApi(api).sendGeneralCommand({ sessionId, command: 'ToggleMute' });
 }
 
 // ---- Playlists -------------------------------------------------------------------
