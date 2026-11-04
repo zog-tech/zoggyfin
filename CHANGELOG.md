@@ -106,6 +106,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- **Live TV placement.** On iPhone, iPad and Android, Live TV is now a tile in the Library grid with the
+  server's libraries, not a row above them. Home has a Live TV row with your favourite channels and the
+  channels you watched last; a tap plays the channel, and "All channels" opens Live TV. The row shows
+  only when you have an IPTV provider (not on TV). On iOS, Live TV still shows only after you add a
+  provider in Settings.
 - **Compact tab pages.** The first page of each tab (Home, Library, Music, Live TV, Search, Downloads)
   has no large title any more: the tab bar already shows where you are, and the content starts at the
   top of the screen. A slim bar stays only where a page has buttons in it (the profile button on Home,
