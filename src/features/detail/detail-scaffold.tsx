@@ -6,11 +6,13 @@ import { type ReactElement, type ReactNode, useCallback, useState } from 'react'
 import { PixelRatio, Platform, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolate,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
   useReducedMotion,
   useScrollOffset,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import type { BaseItemDto } from '@/api/types';
 import { useImageServer } from '@/api/use-api';
@@ -56,7 +58,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 
-import { fitRoundActions, heroHeight, heroLayout } from './hero-layout';
+import { fitRoundActions, heroHeight, heroLayout, solidHeaderAfter } from './hero-layout';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 export type ArtShape = 'poster' | 'square' | 'circle' | 'thumb';
@@ -173,6 +175,21 @@ export function DetailScaffold<Row>({
   const primaryLabel = room?.label ?? playLabel ?? (resumable ? `Resume ${formatClock(position) ?? ''}`.trim() : 'Play');
 
   const facts = meta.filter((m): m is string => !!m);
+
+  // Web and Android: the header gets a solid bar when the hero scrolls away (see solidHeaderAfter).
+  // iOS keeps its native transparent bar (Liquid Glass buttons); TV has no header.
+  const solidAfter = solidHeaderAfter(media, heroH, insets.top + sizes.iconButton + spacing.lg);
+  const watchBar = Platform.OS !== 'ios' && !isTV;
+  const [solidBar, setSolidBar] = useState(false);
+  useAnimatedReaction(
+    () => watchBar && offset.get() > solidAfter,
+    (now, prev) => {
+      if (now !== prev) scheduleOnRN(setSolidBar, now);
+    },
+    [watchBar, solidAfter],
+  );
+  const onMedia = media && !twoColumn ? !solidBar : media && !solidBar && watchBar;
+  const headerTint = onMedia ? mediaColors.white : c.accent;
 
   // Parallax (§7.6): stretch on pull-down, 0.5× speed on scroll up. Off with Reduce Motion.
   const heroStyle = useAnimatedStyle(() => {
@@ -348,7 +365,8 @@ export function DetailScaffold<Row>({
               />
             </View>
             {actionsUnderPoster ? (
-              <View style={{ width: buttonsWidth, gap: spacing.lg }}>
+              // At least the poster's width; wider when the label needs it ("Resume 1:02:14" at 10-foot sizes).
+              <View style={{ minWidth: buttonsWidth, maxWidth: leftWidth, gap: spacing.lg }}>
                 {primary}
                 {actionsRow}
               </View>
@@ -383,10 +401,11 @@ export function DetailScaffold<Row>({
     <>
       <Stack.Screen
         options={{
-          headerTintColor: media && !twoColumn ? mediaColors.white : c.accent,
+          headerTintColor: headerTint,
+          ...(watchBar ? { headerStyle: { backgroundColor: solidBar ? c.bg : 'transparent' } } : null),
           headerRight: () => (
             <Touchable onPress={() => setSheet(true)} radius={20} hitSlop={8} accessibilityRole="button" accessibilityLabel="More actions" style={s.headerButton}>
-              <Icon name="ellipsis" size={iconSize.md} color={media && !twoColumn ? mediaColors.white : c.accent} weight="semibold" />
+              <Icon name="ellipsis" size={iconSize.md} color={headerTint} weight="semibold" />
             </Touchable>
           ),
         }}
