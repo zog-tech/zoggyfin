@@ -3,7 +3,9 @@
  * password. M3U: the playlist address and an optional XMLTV guide. Both: a
  * name and an optional user agent. Save loads the channel list first, so a
  * wrong address or login says so here and nothing is saved. The edit form
- * never shows the saved password: an empty field keeps it.
+ * never shows the saved password: an empty field keeps it. An admin can
+ * share a provider with other users of the server. A provider shared with
+ * this user is read only: the page shows who shared it and no login.
  */
 import { router, Stack } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
@@ -12,16 +14,52 @@ import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { Button } from '@/components/button';
 import { TextField, type TextFieldRef } from '@/components/text-field';
 import { TvScrollView } from '@/features/tv/page-scroll';
-import { iptv, iptvErrorText, type ProviderInput, type ProviderKind, sendsUserAgent } from '@/iptv';
+import { iptv, iptvErrorText, type ProviderInput, type ProviderKind, sendsUserAgent, sharedLabel, useIsAdmin } from '@/iptv';
 import { confirmDestructive } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
 
-import { liveTvHref, useLiveGroup } from './nav';
+import { liveTvHref, shareHref, useLiveGroup } from './nav';
 
-export function ProviderForm({ id, kind: kindParam }: { id?: string; kind?: ProviderKind }) {
+/** A provider an admin shares with this user: read only. */
+function SharedProvider({ id }: { id: string }) {
   const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const record = iptv.provider(id);
+  const [busy, setBusy] = useState(false);
+  if (!record?.sharedBy) return null;
+  const reload = async () => {
+    setBusy(true);
+    await iptv.refresh(id);
+    setBusy(false);
+    toast('Channel list loaded', { icon: 'checkmark' });
+  };
+  return (
+    <>
+      <Stack.Screen options={{ title: record.name, headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
+      <TvScrollView contentInsetAdjustmentBehavior="automatic" style={s.page} contentContainerStyle={s.content}>
+        <View style={s.inner}>
+          {isTV ? <Text style={s.tvTitle}>{record.name}</Text> : null}
+          <Text style={s.lead}>{sharedLabel(record.sharedBy)}</Text>
+          <Text style={s.note}>
+            {`${record.kind === 'xtream' ? 'Xtream' : 'M3U playlist'}. Only ${record.sharedBy.name} can change or remove this provider. You can add its channels to your favourites.`}
+          </Text>
+          <Button title={busy ? 'Loading the channels' : 'Load the channel list again'} loading={busy} onPress={() => void reload()} />
+        </View>
+      </TvScrollView>
+    </>
+  );
+}
+
+export function ProviderForm({ id, kind }: { id?: string; kind?: ProviderKind }) {
+  if (id && iptv.provider(id)?.sharedBy) return <SharedProvider id={id} />;
+  return <EditProvider id={id} kind={kind} />;
+}
+
+function EditProvider({ id, kind: kindParam }: { id?: string; kind?: ProviderKind }) {
+  const s = useStyles(makeStyles);
+  const admin = useIsAdmin();
   const { c } = useTheme();
   const group = useLiveGroup();
   const saved = useMemo(() => (id ? iptv.formValues(id) : null), [id]);
@@ -171,6 +209,7 @@ export function ProviderForm({ id, kind: kindParam }: { id?: string; kind?: Prov
             ) : null}
             <Button title={busy ? 'Loading the channels' : id ? 'Save' : 'Add provider'} loading={busy} disabled={!ready} onPress={() => void save()} />
             {busy ? <Text style={s.note}>A large list can take a minute.</Text> : null}
+            {id && admin ? <Button title="Share with…" variant="text" onPress={() => router.push(shareHref(group, id))} disabled={busy} /> : null}
             {id ? <Button title="Remove provider" variant="text" onPress={() => void remove()} disabled={busy} /> : null}
           </View>
         </TvScrollView>
@@ -186,5 +225,6 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   inner: { width: '100%' as const, maxWidth: scaled(sizes.formMaxWidth), alignSelf: 'center' as const, gap: spacing.lg },
   tvTitle: { ...font(type.largeTitle), color: c.text, paddingTop: spacing.xxl },
   note: { ...font(type.footnote), color: c.text2 },
+  lead: { ...font(type.headline), color: c.text },
   error: { ...font(type.callout), color: c.danger },
 }));

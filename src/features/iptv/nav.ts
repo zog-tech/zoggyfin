@@ -39,3 +39,7 @@ export function providersHref(group: LiveGroup): Href {
 export function providerFormHref(group: LiveGroup, params: { id?: string; kind?: 'xtream' | 'm3u' }): Href {
   return { pathname: `/(tabs)/${group}/live-tv/provider`, params } as unknown as Href;
 }
+
+export function shareHref(group: LiveGroup, id: string): Href {
+  return { pathname: `/(tabs)/${group}/live-tv/share`, params: { id } } as unknown as Href;
+}

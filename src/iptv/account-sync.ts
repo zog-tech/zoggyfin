@@ -191,7 +191,12 @@ function syncedOf(local: LocalState, id: string): SyncedProvider | null {
   return { kind: p.kind, name: p.name, server: p.server, userAgent: p.userAgent, createdAt: p.createdAt, secrets: syncedSecrets(local.secrets[id]) };
 }
 
-const providerIds = (local: LocalState) => local.providers.order.filter((id) => !!local.providers.providers[id]);
+/** The device's own providers (a provider shared by an admin is not part of the user's setup). */
+const providerIds = (local: LocalState) => local.providers.order.filter((id) => !!local.providers.providers[id] && !local.providers.providers[id].sharedBy);
+/** Every provider whose lists sync: own and shared (favourites of a shared provider are the user's own). */
+const listIds = (local: LocalState) => local.providers.order.filter((id) => !!local.providers.providers[id]);
+/** The shared providers on the device. */
+export const sharedIds = (local: LocalState) => local.providers.order.filter((id) => !!local.providers.providers[id]?.sharedBy);
 const settingsHashOf = (order: readonly string[], startWith: string | null | undefined) => hashText(canonical({ order, startWith: startWith ?? null }));
 
 /**
@@ -271,12 +276,13 @@ export function observe(meta: SyncMeta, local: LocalState, now: number): SyncMet
     providerHashes = rest;
   }
   const settingsHash = settingsHashOf(ids, local.providers.startWith);
+  const lids = listIds(local);
   const settingsChanged = settingsHash !== meta.settingsHash;
   // Seeding: the account's order wins; this device's providers go after it.
   const settingsAt = settingsChanged ? (seeding ? 0 : Math.max(now, meta.settingsAt + 1)) : meta.settingsAt;
-  const favourites = observeAll(meta.favourites, ids, (id) => favouritesNow(local.lists[id]), stampNew, now);
-  const recents = observeAll(meta.recents, ids, (id) => recentsNow(local.lists[id]), stampNew, now);
-  const positions = observeAll(meta.positions, ids, (id) => positionsNow(local.vod[id]), stampNew, now);
+  const favourites = observeAll(meta.favourites, lids, (id) => favouritesNow(local.lists[id]), stampNew, now);
+  const recents = observeAll(meta.recents, lids, (id) => recentsNow(local.lists[id]), stampNew, now);
+  const positions = observeAll(meta.positions, lids, (id) => positionsNow(local.vod[id]), stampNew, now);
   if (!seeding && !settingsChanged && providers === meta.providers && favourites === meta.favourites && recents === meta.recents && positions === meta.positions) return meta;
   return { ...meta, seeded: true, providers, providerHashes, settingsAt, settingsHash, favourites, recents, positions };
 }
@@ -299,7 +305,7 @@ export function localBlob(meta: SyncMeta, local: LocalState): SyncBlob {
   const favourites: SyncBlob['favourites'] = {};
   const recents: SyncBlob['recents'] = {};
   const positions: SyncBlob['positions'] = {};
-  for (const id of ids) {
+  for (const id of listIds(local)) {
     const lists = local.lists[id];
     favourites[id] = withValues(meta.favourites[id], (cid) => lists?.snaps[cid]);
     recents[id] = withValues(meta.recents[id], (cid) => lists?.snaps[cid]);
@@ -370,9 +376,12 @@ function orderOf(providers: StampedMap<SyncedProvider>, order: readonly string[]
 /**
  * Merges the device's blob with the account's. Two providers with the same
  * login become the older one (its id stays; the other gets a removal marker
- * and its lists move over). Two names that clash get a number.
+ * and its lists move over). Two names that clash get a number. `keep`: the
+ * shared providers on the device, whose lists sync too. The lists of a
+ * provider this device does not know (shared with another device first)
+ * pass through.
  */
-export function mergeBlobs(local: SyncBlob, remote: SyncBlob | null, now: number): SyncBlob {
+export function mergeBlobs(local: SyncBlob, remote: SyncBlob | null, now: number, keep: readonly string[] = []): SyncBlob {
   const r = remote ?? { schemaVersion: SYNC_SCHEMA_VERSION, providers: {}, settings: { at: -1, order: [], startWith: null }, favourites: {}, recents: {}, positions: {} };
   let providers = mergeStamped(r.providers, local.providers, now, NO_LIMIT);
   // The order: the newer wins; a tie keeps the account's.
@@ -398,7 +407,9 @@ export function mergeBlobs(local: SyncBlob, remote: SyncBlob | null, now: number
     } else byIdentity.set(key, id);
   }
   const order = orderOf(providers, settings.order);
-  for (const id of order) {
+  const known = new Set(Object.keys(providers));
+  const passing = [...new Set([...Object.keys(r.favourites), ...Object.keys(r.recents), ...Object.keys(r.positions)])].filter((id) => !known.has(id));
+  for (const id of [...new Set([...order, ...keep, ...passing])]) {
     let l = listsOf(id);
     for (const [from, to] of Object.entries(into)) {
       if (to !== id) continue;
@@ -427,7 +438,9 @@ export function mergeBlobs(local: SyncBlob, remote: SyncBlob | null, now: number
       providers = rest;
     }
   }
-  const startWith = settings.startWith === ALL_PROVIDERS ? (order.length > 1 ? ALL_PROVIDERS : null) : settings.startWith && order.includes(settings.startWith) ? settings.startWith : null;
+  const count = order.length + keep.length;
+  const startWith =
+    settings.startWith === ALL_PROVIDERS ? (count > 1 ? ALL_PROVIDERS : null) : settings.startWith && (order.includes(settings.startWith) || keep.includes(settings.startWith)) ? settings.startWith : null;
   return { schemaVersion: SYNC_SCHEMA_VERSION, providers, settings: { at: settings.at, order, startWith }, favourites, recents, positions };
 }
 
@@ -437,9 +450,10 @@ export function sameBlob(a: SyncBlob | null, b: SyncBlob | null): boolean {
   return canonical(a) === canonical(b);
 }
 
-/** True when the blob holds nothing (a user with no Live TV gets no blob). */
+/** True when the blob holds nothing (a user with no Live TV gets no blob; favourites of a shared provider count). */
 export function isEmptyBlob(b: SyncBlob): boolean {
-  return !Object.keys(b.providers).length;
+  const none = (r: Record<string, StampedMap<unknown>>) => Object.values(r).every((m) => !Object.keys(m).length);
+  return !Object.keys(b.providers).length && none(b.favourites) && none(b.recents) && none(b.positions);
 }
 
 // ---- Applying a merged blob to the device -----------------------------------------------------------
@@ -534,12 +548,25 @@ export function planApply(local: LocalState, blob: SyncBlob, meta: SyncMeta): Ap
       channelCount: stays ? old.channelCount : 0,
     };
   }
-  const providers: ProvidersSnapshot = { schemaVersion: PROVIDERS_SCHEMA_VERSION, providers: records, order, startWith: blob.settings.startWith };
+  // Shared providers stay where they are; the own providers take the blob's order in the other places.
+  const fullOrder: string[] = [];
+  const own = order.filter((id) => records[id]);
+  let slot = 0;
+  for (const id of have.order) {
+    const p = have.providers[id];
+    if (p?.sharedBy) {
+      records[id] = p;
+      fullOrder.push(id);
+    } else if (p && slot < own.length) fullOrder.push(own[slot++]);
+  }
+  fullOrder.push(...own.slice(slot));
+  const startWith = blob.settings.startWith === ALL_PROVIDERS || (blob.settings.startWith && records[blob.settings.startWith]) ? blob.settings.startWith : null;
+  const providers: ProvidersSnapshot = { schemaVersion: PROVIDERS_SCHEMA_VERSION, providers: records, order: fullOrder, startWith };
   const removed = have.order.filter((id) => !records[id]);
   const lists: Record<string, ChannelLists> = {};
   const vod: Record<string, VodLists> = {};
   const positionStamps: Record<string, StampMap> = {};
-  for (const id of order) {
+  for (const id of fullOrder) {
     const l = listsFrom(blob, id, local.lists[id]);
     if (!sameLists(local.lists[id], l)) lists[id] = l;
     const v = vodFrom(blob, id, local.vod[id]);
@@ -552,11 +579,11 @@ export function planApply(local: LocalState, blob: SyncBlob, meta: SyncMeta): Ap
     ...meta,
     seeded: true,
     providers: stampsOf(blob.providers),
-    providerHashes: Object.fromEntries(order.map((id) => [id, hashText(canonical(syncedOf(after, id)))])),
+    providerHashes: Object.fromEntries(own.map((id) => [id, hashText(canonical(syncedOf(after, id)))])),
     settingsAt: blob.settings.at,
-    settingsHash: settingsHashOf(order, blob.settings.startWith),
-    favourites: Object.fromEntries(order.map((id) => [id, stampsOf(blob.favourites[id])])),
-    recents: Object.fromEntries(order.map((id) => [id, stampsOf(blob.recents[id])])),
+    settingsHash: settingsHashOf(own, startWith),
+    favourites: Object.fromEntries(fullOrder.map((id) => [id, stampsOf(blob.favourites[id])])),
+    recents: Object.fromEntries(fullOrder.map((id) => [id, stampsOf(blob.recents[id])])),
     positions: positionStamps,
   };
   return { providers, secrets, reload, removed, lists, vod, meta: next };
@@ -622,10 +649,15 @@ function providerValue(id: string, v: unknown): SyncedProvider | null {
   return { kind: rec.kind, name: rec.name, server: rec.server, userAgent: rec.userAgent, createdAt: rec.createdAt, secrets };
 }
 
-function perProvider<T>(raw: unknown, ids: Set<string>, read: (v: unknown) => T): Record<string, T> {
+/** Lists per provider: of a provider that exists, or one the blob does not know (a provider shared with the user). */
+function perProvider<T>(raw: unknown, ok: (id: string) => boolean, read: (v: unknown) => T): Record<string, T> {
   const out: Record<string, T> = {};
   if (!isObject(raw)) return out;
-  for (const [id, v] of Object.entries(raw)) if (ids.has(id)) out[id] = read(v);
+  let n = 0;
+  for (const [id, v] of Object.entries(raw)) {
+    if (!ok(id) || n++ >= MAX_SYNC_PROVIDERS) continue;
+    out[id] = read(v);
+  }
   return out;
 }
 
@@ -644,14 +676,16 @@ export function migrateBlob(raw: unknown): SyncBlob | null {
   const alive = new Set(aliveProviders(providers));
   const s = isObject(raw.settings) ? raw.settings : {};
   const order = Array.isArray(s.order) ? s.order.filter((x): x is string => typeof x === 'string' && alive.has(x)) : [];
-  const startWith = typeof s.startWith === 'string' && (s.startWith === ALL_PROVIDERS || alive.has(s.startWith)) ? s.startWith : null;
+  // A start choice can be a shared provider (not in this blob): the device checks it.
+  const startWith = typeof s.startWith === 'string' && s.startWith && (alive.has(s.startWith) || !(s.startWith in providers)) ? s.startWith : null;
+  const listOk = (id: string) => !!id && (alive.has(id) || !(id in providers));
   return {
     schemaVersion: SYNC_SCHEMA_VERSION,
     providers,
     settings: { at: isNum(s.at) ? s.at : 0, order, startWith },
-    favourites: perProvider(raw.favourites, alive, (v) => stampedMap(v, snapValue, MAX_FAVOURITES * 2)),
-    recents: perProvider(raw.recents, alive, (v) => stampedMap(v, snapValue, MAX_RECENTS * 10)),
-    positions: perProvider(raw.positions, alive, (v) => stampedMap(v, positionValue, MAX_SYNC_POSITIONS * 10)),
+    favourites: perProvider(raw.favourites, listOk, (v) => stampedMap(v, snapValue, MAX_FAVOURITES * 2)),
+    recents: perProvider(raw.recents, listOk, (v) => stampedMap(v, snapValue, MAX_RECENTS * 10)),
+    positions: perProvider(raw.positions, listOk, (v) => stampedMap(v, positionValue, MAX_SYNC_POSITIONS * 10)),
   };
 }
 

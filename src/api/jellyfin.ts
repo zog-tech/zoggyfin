@@ -966,6 +966,17 @@ export async function setCustomPrefs(
   await dp.updateDisplayPreferences({ displayPreferencesId: id, client, userId, displayPreferencesDto: { ...data, Client: client, CustomPrefs: prefs } });
 }
 
+/** The users of the server (admins only): id and name. */
+export async function getUsers(api: Api): Promise<{ id: string; name: string }[]> {
+  const { data } = await getUserApi(api).getUsers();
+  return data.filter((u) => !!u.Id).map((u) => ({ id: u.Id as string, name: u.Name ?? 'User' }));
+}
+
+/** True when the signed-in user is an admin of the server. */
+export async function isAdministrator(api: Api): Promise<boolean> {
+  return (await getCurrentUser(api)).Policy?.IsAdministrator === true;
+}
+
 /** True when the server answers. Never throws. */
 export async function ping(baseUrl: string, timeoutMs = 4000): Promise<boolean> {
   if (devOffline()) return false;

@@ -13,7 +13,7 @@ import { Text, View } from 'react-native';
 import { Icon } from '@/components/icon';
 import { Group, makeSettingsStyles, SettingsRow } from '@/features/settings/rows';
 import { TvScrollView } from '@/features/tv/page-scroll';
-import { ALL_PROVIDERS, iptv, type ProviderRecord, syncSoon, useProviders, useStartWith } from '@/iptv';
+import { ALL_PROVIDERS, iptv, type ProviderRecord, sharedLabel, syncSoon, useProviders, useStartWith } from '@/iptv';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
 import { iconSize, scaled, useStyles, useTheme } from '@/theme';
@@ -32,7 +32,7 @@ function ago(ms: number | null): string {
 }
 
 export function describeProvider(p: ProviderRecord): string {
-  const kind = p.kind === 'xtream' ? 'Xtream' : 'M3U';
+  const kind = p.sharedBy ? sharedLabel(p.sharedBy) : p.kind === 'xtream' ? 'Xtream' : 'M3U';
   return `${kind} · ${p.channelCount} ${p.channelCount === 1 ? 'channel' : 'channels'} · ${ago(p.refreshedAt)}`;
 }
 
@@ -68,7 +68,7 @@ export function ProvidersScreen() {
               {providers.map((p, i) => (
                 <SettingsRow
                   key={p.id}
-                  icon={p.kind === 'xtream' ? 'key' : 'list.bullet'}
+                  icon={p.sharedBy ? 'person.2' : p.kind === 'xtream' ? 'key' : 'list.bullet'}
                   label={p.name}
                   value={describeProvider(p)}
                   onPress={() => router.push(providerFormHref(group, { id: p.id }))}

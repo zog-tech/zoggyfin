@@ -57,7 +57,7 @@ export function xtreamLiveUrl(login: XtreamLogin, streamId: number, ext: 'm3u8' 
   return `${login.server}/live/${q(login.username)}/${q(login.password)}/${streamId}.${ext}`;
 }
 
-export type XtreamAuth = { ok: true; expires: number | null; maxConnections: number | null } | { ok: false; reason: 'denied' | 'expired' | 'disabled' | 'answer' };
+export type XtreamAuth = { ok: true; expires: number | null; maxConnections: number | null; activeConnections: number | null } | { ok: false; reason: 'denied' | 'expired' | 'disabled' | 'answer' };
 
 export function obj(v: unknown): Record<string, unknown> | null {
   return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -81,7 +81,21 @@ export function parseXtreamAuth(json: unknown): XtreamAuth {
   if (status === 'expired') return { ok: false, reason: 'expired' };
   if (status && status !== 'active') return { ok: false, reason: 'disabled' };
   const exp = num(info.exp_date);
-  return { ok: true, expires: exp ? exp * 1000 : null, maxConnections: num(info.max_connections) };
+  return { ok: true, expires: exp ? exp * 1000 : null, maxConnections: num(info.max_connections), activeConnections: num(info.active_cons) };
+}
+
+/**
+ * Why a stream did not start, when the account is full: the provider allows
+ * `max_connections` streams at a time and `active_cons` are in use. Null when
+ * the account is not full (or the panel does not say), so the player keeps
+ * its own message. An account that is no longer valid says that instead.
+ */
+export function connectionLimitText(auth: XtreamAuth): string | null {
+  if (!auth.ok) return null;
+  const max = auth.maxConnections;
+  const active = auth.activeConnections;
+  if (max === null || active === null || max < 1 || active < max) return null;
+  return max === 1 ? 'This provider allows 1 stream at a time, and it is in use.' : `This provider allows ${max} streams at a time, and all are in use.`;
 }
 
 /** Category id to name (`get_live_categories`). */

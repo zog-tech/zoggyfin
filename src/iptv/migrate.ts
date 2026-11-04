@@ -57,7 +57,14 @@ function provider(id: string, v: unknown): ProviderRecord | null {
     updatedAt: num(v.updatedAt, 0),
     refreshedAt: typeof v.refreshedAt === 'number' ? v.refreshedAt : null,
     channelCount: num(v.channelCount, 0),
+    ...sharedByOf(v.sharedBy),
   };
+}
+
+/** Who shared a provider, when it is a shared one. */
+function sharedByOf(v: unknown): { sharedBy?: { userId: string; name: string } } {
+  if (!isObject(v) || !str(v.userId)) return {};
+  return { sharedBy: { userId: str(v.userId) as string, name: str(v.name) ?? 'an admin' } };
 }
 
 export function migrateProviders(raw: unknown): ProvidersSnapshot {

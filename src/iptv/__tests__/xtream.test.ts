@@ -3,6 +3,7 @@ import { toBase64 } from '../test-utils/fixtures';
 import type { Channel } from '../types';
 import {
   normalizeXtreamInput,
+  connectionLimitText,
   parseXtreamAuth,
   parseXtreamCategories,
   parseXtreamShortEpg,
@@ -49,11 +50,23 @@ describe('answers', () => {
       ok: true,
       expires: 1_800_000_000_000,
       maxConnections: 2,
+      activeConnections: null,
     });
     expect(parseXtreamAuth({ user_info: { auth: 0 } })).toEqual({ ok: false, reason: 'denied' });
     expect(parseXtreamAuth({ user_info: { auth: 1, status: 'Expired' } })).toEqual({ ok: false, reason: 'expired' });
     expect(parseXtreamAuth({ user_info: { auth: 1, status: 'Banned' } })).toEqual({ ok: false, reason: 'disabled' });
     expect(parseXtreamAuth([])).toEqual({ ok: false, reason: 'answer' });
+  });
+
+  it('says when every stream of the account is in use', () => {
+    const auth = (max: unknown, active: unknown) => parseXtreamAuth({ user_info: { auth: 1, status: 'Active', max_connections: max, active_cons: active } });
+    expect(connectionLimitText(auth('2', '2'))).toBe('This provider allows 2 streams at a time, and all are in use.');
+    expect(connectionLimitText(auth(3, 4))).toBe('This provider allows 3 streams at a time, and all are in use.');
+    expect(connectionLimitText(auth('1', '1'))).toBe('This provider allows 1 stream at a time, and it is in use.');
+    expect(connectionLimitText(auth('2', '1'))).toBeNull();
+    expect(connectionLimitText(auth(undefined, '1'))).toBeNull();
+    expect(connectionLimitText(auth('0', '0'))).toBeNull();
+    expect(connectionLimitText(parseXtreamAuth({ user_info: { auth: 0 } }))).toBeNull();
   });
 
   it('reads categories and streams', () => {

@@ -13,6 +13,13 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Share IPTV providers with other users.** A server admin opens a provider and chooses "Share
+  with…": some users of the server, or everyone (also users added later). The users get the provider
+  on all their devices, marked "Shared by" and the admin's name. They cannot change it, remove it or
+  see its login, but they can add its channels to their favourites. When the admin stops sharing, it
+  goes from their devices.
+- **Full IPTV accounts.** When an Xtream stream does not start because every stream of the account is
+  in use, the player says so: "This provider allows N streams at a time, and all are in use."
 - **Live TV in your Jellyfin account.** IPTV providers (with their logins), their order, what Live TV
   opens on, favourite and recently watched channels and film positions sync through the Jellyfin user.
   A phone, a TV, the Mac app or the web that signs in as the same user gets them with no typing.
