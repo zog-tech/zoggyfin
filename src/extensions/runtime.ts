@@ -3,7 +3,8 @@
  * actions, Home rows and share targets, and runs them. It reads only data
  * from an extension and makes HTTP requests to the extension's origin.
  */
-import { getLibraryApi, getUserApi } from '@jellyfin/sdk/lib/utils/api';
+import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api/library-api';
+import { getUserApi } from '@jellyfin/sdk/lib/utils/api/user-api';
 import { router } from 'expo-router';
 import { create } from 'zustand';
 

@@ -1,4 +1,6 @@
-import { type Api, Jellyfin } from '@jellyfin/sdk';
+import type { Api } from '@jellyfin/sdk';
+// The class file, not the package index: the index pulls in every API module of the SDK.
+import { Jellyfin } from '@jellyfin/sdk/lib/jellyfin';
 import { type AxiosInstance, create as createAxios, isAxiosError } from 'axios';
 
 import { clientIdentity } from '@/auth/identity';

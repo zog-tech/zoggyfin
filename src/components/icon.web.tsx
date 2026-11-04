@@ -1,114 +1,114 @@
-import {
-  Airplay,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  AudioWaveform,
-  Bluetooth,
-  Book,
-  Camera,
-  Captions,
-  Cast,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Circle,
-  CircleArrowDown,
-  CircleCheck,
-  CircleUser,
-  CircleX,
-  Drama,
-  Ellipsis,
-  Equal,
-  FastForward,
-  Film,
-  Folder,
-  GalleryVerticalEnd,
-  Gauge,
-  Guitar,
-  Heart,
-  History,
-  House,
-  Image,
-  Info,
-  Keyboard,
-  Layers,
-  LayoutGrid,
-  List,
-  ListEnd,
-  ListFilter,
-  ListMusic,
-  ListOrdered,
-  ListPlus,
-  ListStart,
-  LogOut,
-  type LucideIcon,
-  Maximize,
-  Menu,
-  MessageSquareQuote,
-  Mic,
-  MicVocal,
-  Moon,
-  MoonStar,
-  Music,
-  Pause,
-  PictureInPicture2,
-  Play,
-  QrCode,
-  Radio,
-  RadioTower,
-  Repeat,
-  Repeat1,
-  Rewind,
-  RotateCcw,
-  RotateCw,
-  Search,
-  Server,
-  Settings,
-  Ban,
-  CalendarClock,
-  FileText,
-  KeyRound,
-  MessageSquare,
-  MonitorSmartphone,
-  Power,
-  ShieldCheck,
-  Square,
-  SquareArrowOutUpRight,
-  Shuffle,
-  SkipBack,
-  SkipForward,
-  SquarePlay,
-  Sun,
-  SunMoon,
-  Timer,
-  Trash2,
-  TriangleAlert,
-  Tv,
-  Undo2,
-  User,
-  Video,
-  Volume,
-  Volume2,
-  VolumeX,
-  WandSparkles,
-  WifiOff,
-  X,
-  CloudOff,
-  HardDrive,
-  CirclePause,
-  Pencil,
-  Plus,
-  Wifi,
-  Globe,
-  UserPlus,
-  Lock,
-  Users,
-  UserX,
-  Ratio,
-} from 'lucide-react';
+// Each icon comes from its own file. Metro does not drop unused exports, so the
+// package index would put all 3,700 Lucide icons (about 1.4 MB) into the web bundle.
+import type { LucideIcon } from 'lucide-react';
+import Airplay from 'lucide-react/dist/esm/icons/airplay';
+import ArrowDown from 'lucide-react/dist/esm/icons/arrow-down';
+import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
+import ArrowUpDown from 'lucide-react/dist/esm/icons/arrow-up-down';
+import AudioWaveform from 'lucide-react/dist/esm/icons/audio-waveform';
+import Ban from 'lucide-react/dist/esm/icons/ban';
+import Bluetooth from 'lucide-react/dist/esm/icons/bluetooth';
+import Book from 'lucide-react/dist/esm/icons/book';
+import CalendarClock from 'lucide-react/dist/esm/icons/calendar-clock';
+import Camera from 'lucide-react/dist/esm/icons/camera';
+import Captions from 'lucide-react/dist/esm/icons/captions';
+import Cast from 'lucide-react/dist/esm/icons/cast';
+import Check from 'lucide-react/dist/esm/icons/check';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
+import ChevronUp from 'lucide-react/dist/esm/icons/chevron-up';
+import Circle from 'lucide-react/dist/esm/icons/circle';
+import CircleArrowDown from 'lucide-react/dist/esm/icons/circle-arrow-down';
+import CircleCheck from 'lucide-react/dist/esm/icons/circle-check';
+import CirclePause from 'lucide-react/dist/esm/icons/circle-pause';
+import CircleUser from 'lucide-react/dist/esm/icons/circle-user';
+import CircleX from 'lucide-react/dist/esm/icons/circle-x';
+import CloudOff from 'lucide-react/dist/esm/icons/cloud-off';
+import Drama from 'lucide-react/dist/esm/icons/drama';
+import Ellipsis from 'lucide-react/dist/esm/icons/ellipsis';
+import Equal from 'lucide-react/dist/esm/icons/equal';
+import FastForward from 'lucide-react/dist/esm/icons/fast-forward';
+import FileText from 'lucide-react/dist/esm/icons/file-text';
+import Film from 'lucide-react/dist/esm/icons/film';
+import Folder from 'lucide-react/dist/esm/icons/folder';
+import GalleryVerticalEnd from 'lucide-react/dist/esm/icons/gallery-vertical-end';
+import Gauge from 'lucide-react/dist/esm/icons/gauge';
+import Globe from 'lucide-react/dist/esm/icons/globe';
+import Guitar from 'lucide-react/dist/esm/icons/guitar';
+import HardDrive from 'lucide-react/dist/esm/icons/hard-drive';
+import Heart from 'lucide-react/dist/esm/icons/heart';
+import History from 'lucide-react/dist/esm/icons/history';
+import House from 'lucide-react/dist/esm/icons/house';
+import Image from 'lucide-react/dist/esm/icons/image';
+import Info from 'lucide-react/dist/esm/icons/info';
+import KeyRound from 'lucide-react/dist/esm/icons/key-round';
+import Keyboard from 'lucide-react/dist/esm/icons/keyboard';
+import Layers from 'lucide-react/dist/esm/icons/layers';
+import LayoutGrid from 'lucide-react/dist/esm/icons/layout-grid';
+import List from 'lucide-react/dist/esm/icons/list';
+import ListEnd from 'lucide-react/dist/esm/icons/list-end';
+import ListFilter from 'lucide-react/dist/esm/icons/list-filter';
+import ListMusic from 'lucide-react/dist/esm/icons/list-music';
+import ListOrdered from 'lucide-react/dist/esm/icons/list-ordered';
+import ListPlus from 'lucide-react/dist/esm/icons/list-plus';
+import ListStart from 'lucide-react/dist/esm/icons/list-start';
+import Lock from 'lucide-react/dist/esm/icons/lock';
+import LogOut from 'lucide-react/dist/esm/icons/log-out';
+import Maximize from 'lucide-react/dist/esm/icons/maximize';
+import Menu from 'lucide-react/dist/esm/icons/menu';
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
+import MessageSquareQuote from 'lucide-react/dist/esm/icons/message-square-quote';
+import Mic from 'lucide-react/dist/esm/icons/mic';
+import MicVocal from 'lucide-react/dist/esm/icons/mic-vocal';
+import MonitorSmartphone from 'lucide-react/dist/esm/icons/monitor-smartphone';
+import Moon from 'lucide-react/dist/esm/icons/moon';
+import MoonStar from 'lucide-react/dist/esm/icons/moon-star';
+import Music from 'lucide-react/dist/esm/icons/music';
+import Pause from 'lucide-react/dist/esm/icons/pause';
+import Pencil from 'lucide-react/dist/esm/icons/pencil';
+import PictureInPicture2 from 'lucide-react/dist/esm/icons/picture-in-picture-2';
+import Play from 'lucide-react/dist/esm/icons/play';
+import Plus from 'lucide-react/dist/esm/icons/plus';
+import Power from 'lucide-react/dist/esm/icons/power';
+import QrCode from 'lucide-react/dist/esm/icons/qr-code';
+import Radio from 'lucide-react/dist/esm/icons/radio';
+import RadioTower from 'lucide-react/dist/esm/icons/radio-tower';
+import Ratio from 'lucide-react/dist/esm/icons/ratio';
+import Repeat from 'lucide-react/dist/esm/icons/repeat';
+import Repeat1 from 'lucide-react/dist/esm/icons/repeat-1';
+import Rewind from 'lucide-react/dist/esm/icons/rewind';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
+import RotateCw from 'lucide-react/dist/esm/icons/rotate-cw';
+import Search from 'lucide-react/dist/esm/icons/search';
+import Server from 'lucide-react/dist/esm/icons/server';
+import Settings from 'lucide-react/dist/esm/icons/settings';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
+import Shuffle from 'lucide-react/dist/esm/icons/shuffle';
+import SkipBack from 'lucide-react/dist/esm/icons/skip-back';
+import SkipForward from 'lucide-react/dist/esm/icons/skip-forward';
+import Square from 'lucide-react/dist/esm/icons/square';
+import SquareArrowOutUpRight from 'lucide-react/dist/esm/icons/square-arrow-out-up-right';
+import SquarePlay from 'lucide-react/dist/esm/icons/square-play';
+import Sun from 'lucide-react/dist/esm/icons/sun';
+import SunMoon from 'lucide-react/dist/esm/icons/sun-moon';
+import Timer from 'lucide-react/dist/esm/icons/timer';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
+import TriangleAlert from 'lucide-react/dist/esm/icons/triangle-alert';
+import Tv from 'lucide-react/dist/esm/icons/tv';
+import Undo2 from 'lucide-react/dist/esm/icons/undo-2';
+import User from 'lucide-react/dist/esm/icons/user';
+import UserPlus from 'lucide-react/dist/esm/icons/user-plus';
+import UserX from 'lucide-react/dist/esm/icons/user-x';
+import Users from 'lucide-react/dist/esm/icons/users';
+import Video from 'lucide-react/dist/esm/icons/video';
+import Volume from 'lucide-react/dist/esm/icons/volume';
+import Volume2 from 'lucide-react/dist/esm/icons/volume-2';
+import VolumeX from 'lucide-react/dist/esm/icons/volume-x';
+import WandSparkles from 'lucide-react/dist/esm/icons/wand-sparkles';
+import Wifi from 'lucide-react/dist/esm/icons/wifi';
+import WifiOff from 'lucide-react/dist/esm/icons/wifi-off';
+import X from 'lucide-react/dist/esm/icons/x';
 
 import { type IconName, isIconName } from './icon-names';
 import type { IconProps } from './icon';
