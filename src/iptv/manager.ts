@@ -54,9 +54,12 @@ import {
   type ProviderInput,
   type ProviderRecord,
   type ProviderSecrets,
+  type ProvidersSnapshot,
+  type ChannelLists,
 } from './types';
 import { splitM3uVod } from './m3u-vod';
-import { removeVodData, resetVodState, setM3uVod } from './vod-store';
+import { removeVodData, resetVodState, saveVodLists, setM3uVod, setVodState, vodState } from './vod-store';
+import type { VodLists } from './vod-types';
 import { parseXmltv } from './xmltv';
 import { normalizeXtreamInput, parseXtreamAuth, parseXtreamCategories, parseXtreamShortEpg, parseXtreamStreams, type XtreamLogin, xtreamApiUrl } from './xtream';
 
@@ -379,6 +382,49 @@ export async function removeProvider(id: string): Promise<void> {
   });
   if (st.activeId === id || (st.activeId === ALL_PROVIDERS && order.length < 2)) setActiveProvider(order[0] ?? null);
   await iptvFiles.remove(dirOf(id));
+}
+
+/** What account sync changes on this device (see `account-sync.ts` `planApply`). */
+export interface SyncedChanges {
+  providers: ProvidersSnapshot;
+  secrets: Record<string, ProviderSecrets>;
+  reload: string[];
+  removed: string[];
+  lists: Record<string, ChannelLists>;
+  vod: Record<string, VodLists>;
+}
+
+/**
+ * Makes this device match the Live TV setup of the account: removes the
+ * providers the account no longer has (with everything of them), writes new
+ * logins to the secure store, saves the providers, favourites, recents and
+ * positions. A provider whose login changed loads its channels again.
+ */
+export async function applySynced(changes: SyncedChanges): Promise<void> {
+  const scope = requireScope();
+  for (const id of changes.removed) await removeProvider(id);
+  for (const [id, secrets] of Object.entries(changes.secrets)) writeSecrets(id, secrets);
+  for (const id of changes.reload) {
+    const st = iptvState();
+    setIptvState({ data: without(st.data, id), guides: without(st.guides, id), guideNames: without(st.guideNames, id), guideStatus: without(st.guideStatus, id) });
+    await iptvFiles.remove(dirOf(id));
+  }
+  saveSnapshot(scope, changes.providers.providers, changes.providers.order, changes.providers.startWith ?? null);
+  if (Object.keys(changes.lists).length) {
+    setIptvState({ lists: { ...iptvState().lists, ...changes.lists } });
+    for (const [id, lists] of Object.entries(changes.lists)) saveLists(id, lists);
+  }
+  if (Object.keys(changes.vod).length) {
+    setVodState({ vodLists: { ...vodState().vodLists, ...changes.vod } });
+    for (const [id, lists] of Object.entries(changes.vod)) saveVodLists(id, lists);
+  }
+  const st = iptvState();
+  const order = st.providers.order;
+  if (!(st.activeId === ALL_PROVIDERS ? order.length > 1 : st.activeId && st.providers.providers[st.activeId])) {
+    setActiveProvider(resolveActive(st.providers.startWith, null, order));
+  }
+  // A changed login: a list on screen loads again from the provider.
+  for (const id of changes.reload) if (iptvState().lists[id]) void ensureLoaded(id);
 }
 
 /** What the edit form shows: the saved values, without the password. */

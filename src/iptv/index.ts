@@ -49,6 +49,7 @@ export { browseEntries, type BrowseEntry, type BrowseSection, defaultGroup, merg
 export { providerChannelKey } from './merged';
 export { iptvErrorText } from './errors';
 export { progressOf } from './guide';
+export { startIptvSync, syncSoon } from './sync';
 // Films and series (phase 3).
 export * from './vod-hooks';
 

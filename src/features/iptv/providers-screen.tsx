@@ -3,15 +3,17 @@
  * login, reload, remove); two rows add an Xtream login or an M3U playlist.
  * With two providers or more: what Live TV opens on (the last one used,
  * "All providers" or one provider) and the order (chips, the browse column
- * and "All providers" follow it). Settings rows (design system §7.15).
+ * and "All providers" follow it). A note says that providers sync to the
+ * Jellyfin account. Settings rows (design system §7.15).
  */
 import { router, Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Group, makeSettingsStyles, SettingsRow } from '@/features/settings/rows';
 import { TvScrollView } from '@/features/tv/page-scroll';
-import { ALL_PROVIDERS, iptv, type ProviderRecord, useProviders, useStartWith } from '@/iptv';
+import { ALL_PROVIDERS, iptv, type ProviderRecord, syncSoon, useProviders, useStartWith } from '@/iptv';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
 import { iconSize, scaled, useStyles, useTheme } from '@/theme';
@@ -34,12 +36,17 @@ export function describeProvider(p: ProviderRecord): string {
   return `${kind} · ${p.channelCount} ${p.channelCount === 1 ? 'channel' : 'channels'} · ${ago(p.refreshedAt)}`;
 }
 
+/** Sync is always on (`@/iptv` sync.ts): the page says so, with who can read the logins. */
+const SYNC_NOTE = 'Your providers sync to your Jellyfin account, so your other devices get them. Admins of your server can read the provider logins.';
+
 export function ProvidersScreen() {
   const styles = useStyles(makeSettingsStyles);
   const { c } = useTheme();
   const providers = useProviders();
   const startWith = useStartWith();
   const group = useLiveGroup();
+  // Changes from another device show when the page opens.
+  useEffect(() => syncSoon(), []);
   const starts: { value: string | null; label: string; icon: 'clock.arrow.circlepath' | 'square.stack' | 'tv' }[] = [
     { value: null, label: 'The last one used', icon: 'clock.arrow.circlepath' },
     { value: ALL_PROVIDERS, label: 'All providers', icon: 'square.stack' },
@@ -55,7 +62,9 @@ export function ProvidersScreen() {
         <View style={styles.inner}>
           {isTV ? <Text style={styles.name}>IPTV Providers</Text> : null}
           {providers.length ? (
-            <Group title="Providers" footer="Providers belong to this account on this device. Passwords and list addresses stay in the device's secure storage.">
+            <Group
+              title="Providers"
+              footer={SYNC_NOTE}>
               {providers.map((p, i) => (
                 <SettingsRow
                   key={p.id}
@@ -106,9 +115,11 @@ export function ProvidersScreen() {
           <Group
             title="Add a provider"
             footer={
-              features.iptvNeedsCors
-                ? 'In a browser, a provider works only when it allows web pages to read its lists. The apps for phones, TVs and the Mac work with every provider.'
-                : 'Your provider gives you either an Xtream login (server, user name and password) or an M3U playlist address.'
+              `${
+                features.iptvNeedsCors
+                  ? 'In a browser, a provider works only when it allows web pages to read its lists. The apps for phones, TVs and the Mac work with every provider.'
+                  : 'Your provider gives you either an Xtream login (server, user name and password) or an M3U playlist address.'
+              }${providers.length ? '' : `\n\n${SYNC_NOTE}`}`
             }>
             <SettingsRow icon="key" label="Xtream login" onPress={() => router.push(providerFormHref(group, { kind: 'xtream' }))} />
             <SettingsRow icon="list.bullet" label="M3U playlist" onPress={() => router.push(providerFormHref(group, { kind: 'm3u' }))} last />

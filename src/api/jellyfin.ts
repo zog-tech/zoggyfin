@@ -5,6 +5,7 @@
  */
 import type { Api } from '@jellyfin/sdk';
 import { getArtistApi } from '@jellyfin/sdk/lib/utils/api/artist-api';
+import { getDisplayPreferenceApi } from '@jellyfin/sdk/lib/utils/api/display-preference-api';
 import { getAuthenticationApi } from '@jellyfin/sdk/lib/utils/api/authentication-api';
 import { getFilterApi } from '@jellyfin/sdk/lib/utils/api/filter-api';
 import { getGenreApi } from '@jellyfin/sdk/lib/utils/api/genre-api';
@@ -935,6 +936,34 @@ export async function updatePlayState(
       LastPlayedDate: new Date(state.at).toISOString(),
     },
   });
+}
+
+/**
+ * The custom values of a per-user display preferences entry (`id` for one
+ * `client`). The app keeps its own data there under its own id, so the web
+ * client's settings never change. Values are strings.
+ */
+export async function getCustomPrefs(api: Api, userId: string, id: string, client: string): Promise<Record<string, string | null>> {
+  const { data } = await getDisplayPreferenceApi(api).getDisplayPreferences({ displayPreferencesId: id, client, userId });
+  return { ...(data.CustomPrefs ?? {}) };
+}
+
+/**
+ * Replaces the custom values of a display preferences entry with
+ * `update(current values)`. The server keeps exactly the keys sent: a key
+ * left out is removed. The other fields go back as the server gave them.
+ */
+export async function setCustomPrefs(
+  api: Api,
+  userId: string,
+  id: string,
+  client: string,
+  update: (current: Record<string, string | null>) => Record<string, string>,
+): Promise<void> {
+  const dp = getDisplayPreferenceApi(api);
+  const { data } = await dp.getDisplayPreferences({ displayPreferencesId: id, client, userId });
+  const prefs = update({ ...(data.CustomPrefs ?? {}) });
+  await dp.updateDisplayPreferences({ displayPreferencesId: id, client, userId, displayPreferencesDto: { ...data, Client: client, CustomPrefs: prefs } });
 }
 
 /** True when the server answers. Never throws. */

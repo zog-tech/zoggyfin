@@ -56,7 +56,8 @@ Zoggyfin is not affiliated with the Jellyfin project.
   stop, volume and mute. Open it from the profile menu with "Control a device".
 - **Live TV (IPTV).** Add an Xtream or M3U provider and watch live channels in the same player.
   Channel groups, favourites, recently watched, search, now and next from the guide, and channel
-  up and down. On the plain web, the provider must allow cross-origin requests.
+  up and down. On the plain web, the provider must allow cross-origin requests. Providers and favourites
+  sync through your Jellyfin account, so your other devices get them.
 - **IPTV films and series.** Browse an Xtream provider's films and series (and the films and
   episodes of an M3U list) by category, search titles, keep favourites, and resume where you
   stopped. Series play on to the next episode. Positions stay on the device and never go to
