@@ -4,6 +4,17 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.12 (2026-11-04)
+
+- Live TV: add an IPTV provider (M3U or Xtream) in Settings, then watch channels, films and series in the Live TV tab
+- Home: a Live TV row of favourite and recent channels
+- Remote: "Play on…" starts an item on another Jellyfin device, and the Remote screen controls it
+- Settings: subtitle size, colour, background and position, with a preview
+- Settings: Quick Connect approves the code that a TV or browser shows
+- Movie and show pages: a Trailer button
+- Faster start: a smaller app bundle
+- Fixes: the item page header after a scroll, Search results, the player title on narrow windows
+
 ## 0.1.11 (2026-10-30)
 
 - Home: "Because you watched" rows, a "Short on time" row and a genre of the day
