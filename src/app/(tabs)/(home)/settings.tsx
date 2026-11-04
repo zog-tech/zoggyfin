@@ -16,6 +16,7 @@ import { openAddServer, signOutUser } from '@/features/servers/actions';
 import { providersHref } from '@/features/iptv/nav';
 import { ConnectionStatus } from '@/features/servers/connection-status';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
+import { SubtitlesSection } from '@/features/settings/subtitles-section';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { UpdateSettingsRow } from '@/features/updates/update-row';
 import { confirmDestructive as confirm } from '@/lib/confirm';
@@ -97,6 +98,8 @@ export default function SettingsScreen() {
           {isTV ? null : <AppearanceSection />}
 
           <PlaybackSection />
+
+          <SubtitlesSection />
 
           {downloadsSupported ? <DownloadsSection /> : null}
 

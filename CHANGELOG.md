@@ -105,6 +105,11 @@ first commit to today. All of it was built in the first weeks of the project.
 - **IPTV providers.** Choose what Live TV opens on (the last one used, All providers or one
   provider) and the order of the providers. Two providers never share a name ("Playlist 2"). Removing
   a provider also removes its recent searches and the audio and subtitle choices of its titles.
+- **Subtitle appearance.** Settings has a Subtitles section with a live preview: text size (Small to
+  Extra large), text colour (white or yellow), background (none, outline and shadow, or a translucent
+  box) and position (normal or raised). The sizes grow on TV. Subtitles from the server use them on
+  every platform, and the Mac app passes them to libmpv. Subtitles inside a Live TV stream or an IPTV
+  film follow them on the web; on iPhone, iPad and Android they use the caption settings of the device.
 
 ### Changed
 

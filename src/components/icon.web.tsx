@@ -1,6 +1,8 @@
 // Each icon comes from its own file. Metro does not drop unused exports, so the
 // package index would put all 3,700 Lucide icons (about 1.4 MB) into the web bundle.
 import type { LucideIcon } from 'lucide-react';
+import ALargeSmall from 'lucide-react/dist/esm/icons/a-large-small';
+import Palette from 'lucide-react/dist/esm/icons/palette';
 import Airplay from 'lucide-react/dist/esm/icons/airplay';
 import ArrowDown from 'lucide-react/dist/esm/icons/arrow-down';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
@@ -243,6 +245,8 @@ const LUCIDE: Record<IconName, Glyph> = {
   personalhotspot: { icon: RadioTower },
   camera: { icon: Camera },
   keyboard: { icon: Keyboard },
+  'textformat.size': { icon: ALargeSmall },
+  paintpalette: { icon: Palette },
 };
 
 export function Icon({ name, size, color, weight }: IconProps) {
