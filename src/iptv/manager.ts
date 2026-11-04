@@ -61,7 +61,7 @@ import { splitM3uVod } from './m3u-vod';
 import { removeVodData, resetVodState, saveVodLists, setM3uVod, setVodState, vodState } from './vod-store';
 import type { VodLists } from './vod-types';
 import { parseXmltv } from './xmltv';
-import { normalizeXtreamInput, parseXtreamAuth, parseXtreamCategories, parseXtreamShortEpg, parseXtreamStreams, type XtreamLogin, xtreamApiUrl } from './xtream';
+import { connectionLimitText, normalizeXtreamInput, parseXtreamAuth, parseXtreamCategories, parseXtreamShortEpg, parseXtreamStreams, type XtreamLogin, xtreamApiUrl } from './xtream';
 
 const HOUR = 3_600_000;
 /** A saved list older than this loads again in the background when the page opens. */
@@ -323,6 +323,8 @@ function fromInput(input: ProviderInput, base: Pick<ProviderRecord, 'id' | 'crea
 export async function saveProvider(input: ProviderInput, id?: string): Promise<string> {
   const scope = requireScope();
   const old = id ? providerById(id) : null;
+  // A shared provider is read only: only its admin changes it.
+  if (old?.sharedBy) throw new IptvError('denied');
   const pid = old?.id ?? randomId();
   const { record, secrets } = fromInput(input, { id: pid, createdAt: old?.createdAt ?? Date.now() }, id ? readSecrets(pid) : {});
   const r = await fetchChannels(record, secrets);
@@ -427,11 +429,40 @@ export async function applySynced(changes: SyncedChanges): Promise<void> {
   for (const id of changes.reload) if (iptvState().lists[id]) void ensureLoaded(id);
 }
 
+/**
+ * Providers an admin shares with this user (`shared.ts` `planShared`): adds
+ * or updates them next to the user's own, and removes the ones no longer
+ * shared, with their files. Logins go to the secure store only.
+ */
+export async function applyShared(upsert: { record: ProviderRecord; secrets: ProviderSecrets; reload: boolean }[], remove: readonly string[]): Promise<void> {
+  const scope = requireScope();
+  for (const id of remove) await removeProvider(id);
+  if (!upsert.length) return;
+  for (const u of upsert) {
+    writeSecrets(u.record.id, u.secrets);
+    if (u.reload) {
+      const st = iptvState();
+      setIptvState({ data: without(st.data, u.record.id), guides: without(st.guides, u.record.id), guideNames: without(st.guideNames, u.record.id), guideStatus: without(st.guideStatus, u.record.id) });
+      await iptvFiles.remove(dirOf(u.record.id));
+    }
+  }
+  const st = iptvState();
+  const providers = { ...st.providers.providers };
+  const order = st.providers.order.slice();
+  for (const u of upsert) {
+    providers[u.record.id] = u.record;
+    if (!order.includes(u.record.id)) order.push(u.record.id);
+  }
+  saveSnapshot(scope, providers, order);
+  for (const u of upsert) if (u.reload && iptvState().lists[u.record.id]) void ensureLoaded(u.record.id);
+}
+
 /** What the edit form shows: the saved values, without the password. */
 export function formValues(id: string): ProviderInput | null {
   const record = providerById(id);
   if (!record) return null;
-  const s = readSecrets(id);
+  // A shared provider shows no login at all (its list address can hold a token too).
+  const s = record.sharedBy ? {} : readSecrets(id);
   if (record.kind === 'xtream') return { kind: 'xtream', name: record.name, server: record.server ?? '', username: s.username ?? '', password: '', userAgent: record.userAgent };
   return { kind: 'm3u', name: record.name, playlistUrl: s.playlistUrl ?? '', guideUrl: s.guideUrl ?? null, userAgent: record.userAgent };
 }
@@ -659,7 +690,20 @@ function sourceFor(providerId: string): LiveSource {
     onStart(channelId) {
       markWatched(providerId, channelId);
     },
+    explainFailure: () => explainFailure(providerId),
   };
+}
+
+/** Xtream: asks the panel whether every stream of the account is in use (`connectionLimitText`). */
+async function explainFailure(providerId: string): Promise<string | null> {
+  const record = providerById(providerId);
+  const login = record ? xtreamLogin(record, readSecrets(providerId)) : null;
+  if (!record || !login) return null;
+  try {
+    return connectionLimitText(parseXtreamAuth(await transport.json(xtreamApiUrl(login), { userAgent: record.userAgent, maxBytes: MAX_JSON_BYTES })));
+  } catch {
+    return null;
+  }
 }
 
 /** The play request for a channel in a list (channel up and down move through the list). */
@@ -693,6 +737,10 @@ function mergedSource(): LiveSource {
     onStart(key) {
       const k = split(key);
       if (k) markWatched(k.providerId, k.channelId);
+    },
+    async explainFailure(key) {
+      const k = split(key);
+      return k ? explainFailure(k.providerId) : null;
     },
     titleOf(key) {
       const k = split(key);

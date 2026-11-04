@@ -23,6 +23,11 @@ export interface ProviderRecord {
   /** When the channel list was last loaded, or null. */
   refreshedAt: number | null;
   channelCount: number;
+  /**
+   * A provider a server admin shares with this user (`shared.ts`): read only,
+   * not part of the user's own synced setup. Its id is `sh_<the admin's id>`.
+   */
+  sharedBy?: { userId: string; name: string };
 }
 
 /** The secret part of a provider (secure store). */

@@ -74,6 +74,11 @@ export interface LiveSource {
   /** A channel started to play (Recently watched). */
   onStart?(channelId: string): void;
   /**
+   * After every stream form failed: a clearer reason from the provider (all
+   * streams of the account in use), or null. Never throws, never holds a URL.
+   */
+  explainFailure?(channelId: string): Promise<string | null>;
+  /**
    * The provider and the provider's own channel id, when the source mixes
    * providers and its channel ids are its own keys. The track choices and
    * the item id use these. Left out: `providerId` and the channel id.

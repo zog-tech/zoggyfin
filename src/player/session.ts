@@ -712,6 +712,16 @@ class VideoSession {
     // The player's own error text can hold the stream URL (and the credentials in it): never show it.
     const text = a?.unsupported ?? (error && !/https?:|\/\//i.test(error) ? error : null) ?? 'The channel could not be played.';
     setPlayerState({ status: 'error', error: text, playing: false });
+    // The provider may say why (every stream of the account in use): that text replaces the general one.
+    const live = playerState().now?.live;
+    const ch = live?.channels[live.index];
+    if (!a || a.unsupported || !live?.source.explainFailure || !ch) return;
+    void live.source.explainFailure(ch.id).then(
+      (why) => {
+        if (why && this.liveAttempt === a && a.id === this.loadId && playerState().status === 'error') setPlayerState({ error: why });
+      },
+      () => undefined,
+    );
   }
 
   /** Channel up (+1) or down (-1) in the list the channel was played from. */

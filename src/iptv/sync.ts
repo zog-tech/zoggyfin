@@ -35,11 +35,13 @@ import {
   planApply,
   planIsEmpty,
   sameBlob,
+  sharedIds,
   type SyncBlob,
   type SyncMeta,
   withBlob,
 } from './account-sync';
 import { applySynced, bindSession } from './manager';
+import { pullShared, runShares, useShareStore } from './share-sync';
 import { readSecrets } from './secrets';
 import { iptvState, loadLists, type Scope, scopeId, useIptvStore } from './store';
 import type { ProviderSecrets } from './types';
@@ -138,16 +140,30 @@ async function cycle(kind: Kind): Promise<void> {
     // The device's own changes made while the request ran count too.
     const local = readLocal();
     meta = observe(meta, local, Date.now());
-    const blob = mergeBlobs(localBlob(meta, local), remote, Date.now());
+    const blob = mergeBlobs(localBlob(meta, local), remote, Date.now(), sharedIds(local));
     meta = await apply(local, blob, meta);
     if (!same()) return;
     // A user with no Live TV anywhere gets no blob.
-    if (!sameBlob(blob, remote) && !(isEmptyBlob(blob) && !remote)) {
+    const pushed = !sameBlob(blob, remote) && !(isEmptyBlob(blob) && !remote);
+    if (pushed) {
       saveMeta(scope, { ...meta, dirty: true });
       await push(scope, blob);
     }
     saveMeta(scope, { ...meta, dirty: false });
     lastError = null;
+    // Providers an admin shares with this user; and, for an admin, the users it shares with.
+    if (kind === 'pull') {
+      applying = true;
+      try {
+        await pullShared();
+      } finally {
+        applying = false;
+      }
+    }
+    if (same()) {
+      const admin = useShareStore.getState().admin[sid];
+      if (kind === 'pull' || (pushed && admin)) void runShares(kind !== 'pull');
+    }
   } catch (e) {
     if (same()) saveMeta(scope, { ...meta, dirty: true });
     lastError = errorText(e);

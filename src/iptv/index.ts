@@ -36,6 +36,7 @@ import {
 import { ALL_PROVIDERS, type ChannelLookup, mergedFavourites, mergedRecents, mergeSearchHits, type ProviderChannel, providerChannelKey, providersMissingSnaps } from './merged';
 import { searchChannels, searchChannelsRanked } from './search';
 import { EMPTY_DATA, loadLists, type ProviderData, setIptvState, iptvState, useIptvStore } from './store';
+import { checkAdmin, loadShareTargets, setShareChoice, useShareStore } from './share-sync';
 import { needsHls } from './stream-url';
 import { transport } from './transport';
 import type { Channel, ChannelLists, NowNext, ProviderRecord } from './types';
@@ -50,6 +51,7 @@ export { providerChannelKey } from './merged';
 export { iptvErrorText } from './errors';
 export { progressOf } from './guide';
 export { startIptvSync, syncSoon } from './sync';
+export { sharedLabel, type ShareChoice } from './shared';
 // Films and series (phase 3).
 export * from './vod-hooks';
 
@@ -77,7 +79,21 @@ export const iptv = {
   /** Keeps a search the person used (they played one of its channels). */
   rememberSearch: rememberSearchFor,
   clearSearches,
+  /** Admins: the server's users and who each provider is shared with. */
+  shareTargets: loadShareTargets,
+  /** Admins: shares a provider with users (or everyone), or stops (null). */
+  share: setShareChoice,
 };
+
+/** True when the signed-in user is an admin of the server (false while unknown). */
+export function useIsAdmin(): boolean {
+  const scope = useIptvStore((s) => s.scope);
+  const admin = useShareStore((s) => (scope ? s.admin[scope] : undefined));
+  useEffect(() => {
+    if (scope && admin === undefined) void checkAdmin().catch(() => undefined);
+  }, [scope, admin]);
+  return admin === true;
+}
 
 /** The recent channel searches of a provider, newest first. */
 export function useRecentSearches(providerId: string | null): string[] {

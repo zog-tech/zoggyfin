@@ -23,6 +23,7 @@ import {
   planApply,
   planIsEmpty,
   sameBlob,
+  sharedIds,
   SYNC_CHUNK_CHARS,
   type SyncBlob,
   type SyncMeta,
@@ -62,7 +63,7 @@ interface Dev {
 /** One device's sync against the account blob: what `sync.ts` does, with no I/O. Returns the device and the new account blob. */
 function sync(d: Dev, remote: SyncBlob | null, now: number): Dev & { remote: SyncBlob } {
   const meta = observe(d.meta, d.local, now);
-  const blob = mergeBlobs(localBlob(meta, d.local), remote, now);
+  const blob = mergeBlobs(localBlob(meta, d.local), remote, now, sharedIds(d.local));
   const plan = planApply(d.local, blob, meta);
   const local: LocalState = {
     providers: plan.providers,
@@ -198,6 +199,22 @@ describe('providers on two devices', () => {
     a = sync(a, b.remote, T0 + 3);
     expect(a.local.providers.order).toEqual(['y', 'x']);
     expect(a.local.providers.startWith).toBe('y');
+  });
+});
+
+describe('shared providers', () => {
+  const shared = (id: string): ProviderRecord => ({ ...record(id, 'xtream', 'Shared'), sharedBy: { userId: 'admin1', name: 'Sam' } });
+
+  it('are not part of the user setup, keep their place, and their favourites sync', () => {
+    const local = device([record('own', 'm3u', 'Own', 1), shared('sh_p1')], {}, { sh_p1: listsWith(['f']) });
+    const first = sync(fresh(local), null, T0);
+    expect(Object.keys(first.remote.providers)).toEqual(['own']);
+    expect(first.local.providers.order).toEqual(['own', 'sh_p1']);
+    expect(first.remote.favourites.sh_p1.f).toBeDefined();
+    // Another device of the user that does not have the shared provider yet keeps its favourites in the blob.
+    const other = sync(fresh(device([])), first.remote, T0 + 10);
+    expect(other.remote.favourites.sh_p1.f).toBeDefined();
+    expect(other.local.providers.order).toEqual(['own']);
   });
 });
 
