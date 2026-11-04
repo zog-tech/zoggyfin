@@ -3,7 +3,7 @@
  * that shows the progress of extension tasks. A row that fails shows a
  * small note; it never blocks Home.
  */
-import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api';
+import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api/library-api';
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';

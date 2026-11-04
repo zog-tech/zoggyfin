@@ -2,20 +2,20 @@ import { initialTogether } from '@/together/store';
 
 import { connectionPlace, downloadsDetail, type MenuInput, menuRows, roomPeople } from '../menu-model';
 
-const base: MenuInput = { admin: false, pendingInvites: null, together: true, roomPeople: null, downloads: true, downloadCount: 0, active: [] };
+const base: MenuInput = { admin: false, pendingInvites: null, together: true, roomPeople: null, remote: true, downloads: true, downloadCount: 0, active: [] };
 const ids = (i: MenuInput) => menuRows(i).map((r) => r.id);
 
 describe('profile menu rows', () => {
   it('has the order of the spec, with the admin rows only for an admin', () => {
-    expect(ids({ ...base, admin: true })).toEqual(['invite', 'together', 'downloads', 'admin', 'extensions', 'settings', 'signout']);
-    expect(ids(base)).toEqual(['together', 'downloads', 'extensions', 'settings', 'signout']);
+    expect(ids({ ...base, admin: true })).toEqual(['invite', 'together', 'remote', 'downloads', 'admin', 'extensions', 'settings', 'signout']);
+    expect(ids(base)).toEqual(['together', 'remote', 'downloads', 'extensions', 'settings', 'signout']);
     // Not known yet: no admin rows (they come when the check answers).
     expect(ids({ ...base, admin: null })).not.toContain('admin');
     expect(ids({ ...base, admin: null })).not.toContain('invite');
   });
 
-  it('leaves out Together and Downloads where they cannot run', () => {
-    expect(ids({ ...base, together: false, downloads: false })).toEqual(['extensions', 'settings', 'signout']);
+  it('leaves out Together, Remote and Downloads where they cannot run', () => {
+    expect(ids({ ...base, together: false, remote: false, downloads: false })).toEqual(['extensions', 'settings', 'signout']);
   });
 
   it('shows the pending invites', () => {

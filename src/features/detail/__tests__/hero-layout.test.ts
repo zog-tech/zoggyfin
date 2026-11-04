@@ -1,4 +1,4 @@
-import { fitRoundActions, heroHeight, heroLayout } from '../hero-layout';
+import { fitRoundActions, heroHeight, heroLayout, solidHeaderAfter } from '../hero-layout';
 
 describe('heroLayout', () => {
   it('uses the wide hero for a video with only a wide primary image', () => {
@@ -46,5 +46,17 @@ describe('fitRoundActions', () => {
   });
   it('shows all actions before the first layout', () => {
     expect(fitRoundActions(row, 0, 56, [20, 8]).items).toHaveLength(7);
+  });
+});
+
+describe('solidHeaderAfter', () => {
+  it('waits until the hero scrolls out from under the bar', () => {
+    expect(solidHeaderAfter(true, 500, 60)).toBe(440);
+  });
+  it('never goes below the top of the page for a short hero', () => {
+    expect(solidHeaderAfter(true, 40, 60)).toBe(0);
+  });
+  it('gives a page with no hero the solid bar once content moves under it', () => {
+    expect(solidHeaderAfter(false, 0, 60)).toBe(1);
   });
 });

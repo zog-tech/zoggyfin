@@ -60,9 +60,9 @@ export function inScope(queryKey: readonly unknown[], ref: AccountRef | null): b
 export const CACHE_BUSTER = 'v1';
 export const CACHE_MAX_AGE = 7 * DAY;
 
-/** Search results are not worth keeping across launches. */
+/** Search results and live sessions (Remote) are not worth keeping across launches. */
 export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {
-  return queryKey[3] !== 'search';
+  return queryKey[3] !== 'search' && queryKey[3] !== 'remoteSessions';
 }
 
 /** Drops every cached page of every account, in memory and on disk. */

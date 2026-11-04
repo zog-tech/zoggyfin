@@ -28,6 +28,8 @@ export interface AppActionApi {
   download?(item: BaseItemDto): void;
   removeDownload?(item: BaseItemDto): void | Promise<void>;
   openDownloads?(): void;
+  /** Remote control: start the item on another device of this account. Left out on TV. */
+  playOn?(item: BaseItemDto): void;
 }
 
 export interface ItemActionContext {

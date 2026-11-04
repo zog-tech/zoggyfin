@@ -86,6 +86,10 @@ export default function SettingsScreen() {
             <ConnectionStatus serverId={session.serverId} inset />
           </Group>
 
+          <Group footer="Sign in on a TV or another device with a code, not a password.">
+            <SettingsRow icon="qrcode" label="Quick Connect" onPress={() => router.push('/(tabs)/(home)/quick-connect')} last />
+          </Group>
+
           <ServersSection />
 
           <AdminSettingsGroup />

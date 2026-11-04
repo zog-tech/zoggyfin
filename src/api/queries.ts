@@ -81,7 +81,7 @@ export function usePrefetchItemOnFocus(delayMs = 300): (item: BaseItemDto) => vo
   );
 }
 
-export function useLibrary(q: LibraryQuery) {
+export function useLibrary(q: LibraryQuery, enabled = true) {
   const { api, userId, scope } = useApi();
   return useInfiniteQuery({
     queryKey: queryKeys.library(scope, q),
@@ -92,6 +92,7 @@ export function useLibrary(q: LibraryQuery) {
       return last.items.length > 0 && next < last.total ? next : undefined;
     },
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -139,6 +140,16 @@ export function useSimilar(itemId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.similar(scope, itemId ?? ''),
     queryFn: () => jf.getSimilar(api, userId, itemId ?? ''),
+    enabled: enabled && !!itemId,
+  });
+}
+
+/** The trailer files of an item. Loads only when the item says that it has some. */
+export function useLocalTrailers(itemId: string | undefined, enabled = true) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.localTrailers(scope, itemId ?? ''),
+    queryFn: () => jf.getLocalTrailers(api, userId, itemId ?? ''),
     enabled: enabled && !!itemId,
   });
 }
@@ -235,5 +246,21 @@ export function useSearch(term: string, genre?: string) {
     enabled: t.length >= 2 || !!genre,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * The sessions this user can control. `pollMs` refetches while the caller is
+ * on screen (the Remote screen polls every 2 s); the sheet loads once.
+ */
+export function useRemoteSessions(opts: { enabled?: boolean; pollMs?: number | false } = {}) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.remoteSessions(scope),
+    queryFn: () => jf.getControllableSessions(api, userId),
+    enabled: opts.enabled ?? true,
+    refetchInterval: opts.pollMs ?? false,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
   });
 }

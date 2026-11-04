@@ -28,6 +28,7 @@ import { GENRE_POOL_SIZE, pickDailyGenre, spotlightItems, spotlightTitle } from 
 import { recommendationRows } from '@/features/home/recommendations';
 import { SHORT_POOL_SIZE, shortOnTime } from '@/features/home/short-on-time';
 import { useDay } from '@/features/home/use-day';
+import { LiveTvHomeRow } from '@/features/iptv/home-row';
 import { isSupportedView } from '@/features/library/library-kind';
 import { episodeLabel, formatDuration } from '@/lib/format';
 import { itemHref, useTabGroup, videoGenreHref } from '@/lib/navigation';
@@ -228,6 +229,8 @@ export function registerBuiltinHomeSections(): void {
   homeSections.register({ id: 'builtin.downloadedOffline', order: 5, component: DownloadedFirst });
   homeSections.register({ id: 'builtin.continueWatching', order: 10, component: ContinueWatching });
   homeSections.register({ id: 'builtin.nextUp', order: 20, component: NextUp });
+  // Live TV after the rows of things already started: favourite channels are a "watch now" choice too.
+  homeSections.register({ id: 'builtin.liveTv', order: 22, component: LiveTvHomeRow });
   homeSections.register({ id: 'builtin.becauseYouWatched', order: 25, component: BecauseYouWatched });
   homeSections.register({ id: 'builtin.continueListening', order: 30, component: ContinueListening });
   homeSections.register({ id: 'builtin.shortOnTime', order: 35, component: ShortOnTime });

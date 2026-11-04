@@ -17,7 +17,10 @@ export default function LibraryGridScreen() {
   const itemTypes = useMemo(() => gridItemTypes(kind), [kind]);
   const filters = useFiltersFor(id);
 
-  const lib = useLibrary({ parentId: id, includeItemTypes: itemTypes, ...filters });
+  // The item types come from the library's kind. Wait for the libraries list (or its
+  // first failure), so a cold open does not load the grid twice with two type sets.
+  const kindKnown = views.data !== undefined || views.failureCount > 0;
+  const lib = useLibrary({ parentId: id, includeItemTypes: itemTypes, ...filters }, kindKnown);
   const items = useMemo(() => lib.data?.pages.flatMap((p) => p.items) ?? [], [lib.data]);
 
   return (
