@@ -80,6 +80,8 @@ export const queryKeys = {
   /** The items of the genre of the day. The day is in the key, so the row moves on at midnight. */
   genreOfDay: (s: SessionScope, day: string, genreId: string) => [...scopeKey(s), 'genreOfDay', day, genreId] as const,
   similar: (s: SessionScope, itemId: string) => [...scopeKey(s), 'similar', itemId] as const,
+  /** The trailer files of a movie or show on the server. */
+  localTrailers: (s: SessionScope, itemId: string) => [...scopeKey(s), 'localTrailers', itemId] as const,
   search: (s: SessionScope, term: string, genre = '') =>
     [...scopeKey(s), 'search', term.trim().toLowerCase(), genre] as const,
 };
