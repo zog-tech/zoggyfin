@@ -21,6 +21,8 @@ import { downloads, downloadsSupported } from '@/downloads';
 import { ExtensionsHost } from '@/extensions/ui/host';
 import { setNoAccountOpen, useNoAccountStore } from '@/features/offline/use-offline-entries';
 import { AddToPlaylistHost } from '@/features/playlists/add-to-playlist';
+import { PlayOnHost } from '@/features/remote/play-on-sheet';
+import { remoteSupported } from '@/features/remote/use-remote';
 import { UpdateCardHost } from '@/features/updates/update-card';
 import { startOfflineServices } from '@/features/offline/bootstrap';
 import { toast } from '@/lib/toast';
@@ -119,6 +121,7 @@ function Root({ session }: { session: boolean }) {
                 <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="extension-install" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="extension-panel" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="remote" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="share" />
               </Stack.Protected>
               <Stack.Protected guard={!session}>
@@ -155,6 +158,7 @@ function Root({ session }: { session: boolean }) {
             </Stack>
             {session ? <AddToPlaylistHost /> : null}
             {session ? <ExtensionsHost /> : null}
+            {session && remoteSupported ? <PlayOnHost /> : null}
             <UpdateCardHost />
             <RefreshSpinnerHost />
             <ToastHost />

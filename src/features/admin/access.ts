@@ -3,7 +3,8 @@
  * of that server whose policy has `IsAdministrator`: the active account when
  * it is an admin, else the first other saved admin account.
  */
-import { type Api, Jellyfin } from '@jellyfin/sdk';
+import type { Api } from '@jellyfin/sdk';
+import { Jellyfin } from '@jellyfin/sdk/lib/jellyfin';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { create as createAxios } from 'axios';
 import { useMemo } from 'react';

@@ -14,6 +14,7 @@ import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles 
 
 import { DetailScaffold } from './detail-scaffold';
 import { EpisodeRow, personToItem, TrackRow } from './rows';
+import { useTrailerAction } from './trailer-action';
 
 interface ViewProps {
   item: BaseItemDto;
@@ -72,14 +73,19 @@ function Block({ children }: { children: ReactNode }) {
 // ---- Movie / video -------------------------------------------------------------
 
 export function MovieDetail({ item, onRefresh }: ViewProps) {
+  const trailer = useTrailerAction(item);
   return (
-    <DetailScaffold
-      item={item}
-      meta={[year(item), genre(item), formatDuration(item.RunTimeTicks), item.OfficialRating, ...videoFacts(item)]}
-      playable
-      onRefresh={onRefresh}
-      footer={<CastAndSimilar item={item} />}
-    />
+    <>
+      <DetailScaffold
+        item={item}
+        meta={[year(item), genre(item), formatDuration(item.RunTimeTicks), item.OfficialRating, ...videoFacts(item)]}
+        playable
+        onRefresh={onRefresh}
+        extraActions={trailer.action ? [trailer.action] : undefined}
+        footer={<CastAndSimilar item={item} />}
+      />
+      {trailer.sheet}
+    </>
   );
 }
 
@@ -89,42 +95,47 @@ export function SeriesDetail({ item, onRefresh }: ViewProps) {
   const seasons = useSeasons(item.Id ?? undefined);
   const nextUp = useNextUp(item.Id ?? undefined);
   const next = nextUp.data?.[0];
+  const trailer = useTrailerAction(item);
   return (
-    <DetailScaffold
-      item={item}
-      meta={[
-        year(item),
-        genre(item),
-        item.ChildCount ? `${item.ChildCount} season${item.ChildCount === 1 ? '' : 's'}` : null,
-        item.OfficialRating,
-        rating(item),
-      ]}
-      playable
-      playLabel={next ? `${next.UserData?.PlaybackPositionTicks ? 'Resume' : 'Play'} ${episodeLabel(next) ?? ''}`.trim() : 'Play'}
-      onRefresh={onRefresh}
-      footer={
-        <>
-          {next ? <ItemRow title="Next up" shape="thumb" items={[next]} tileSubtitle={(e) => episodeLabel(e)} tileTitle={(e) => e.Name} /> : null}
-          {seasons.error && !seasons.data ? (
-            <Block>
-              <RowHeader title="Seasons" />
-              <ErrorState error={seasons.error} onRetry={seasons.refetch} compact />
-            </Block>
-          ) : (
-            <ItemRow
-              title="Seasons"
-              shape="poster"
-              items={seasons.data}
-              isLoading={seasons.isPending}
-              hideWhenEmpty={false}
-              tileTitle={(s) => s.Name}
-              tileSubtitle={(s) => (s.ChildCount ? `${s.ChildCount} episodes` : null)}
-            />
-          )}
-          <CastAndSimilar item={item} />
-        </>
-      }
-    />
+    <>
+      <DetailScaffold
+        item={item}
+        meta={[
+          year(item),
+          genre(item),
+          item.ChildCount ? `${item.ChildCount} season${item.ChildCount === 1 ? '' : 's'}` : null,
+          item.OfficialRating,
+          rating(item),
+        ]}
+        playable
+        playLabel={next ? `${next.UserData?.PlaybackPositionTicks ? 'Resume' : 'Play'} ${episodeLabel(next) ?? ''}`.trim() : 'Play'}
+        onRefresh={onRefresh}
+        extraActions={trailer.action ? [trailer.action] : undefined}
+        footer={
+          <>
+            {next ? <ItemRow title="Next up" shape="thumb" items={[next]} tileSubtitle={(e) => episodeLabel(e)} tileTitle={(e) => e.Name} /> : null}
+            {seasons.error && !seasons.data ? (
+              <Block>
+                <RowHeader title="Seasons" />
+                <ErrorState error={seasons.error} onRetry={seasons.refetch} compact />
+              </Block>
+            ) : (
+              <ItemRow
+                title="Seasons"
+                shape="poster"
+                items={seasons.data}
+                isLoading={seasons.isPending}
+                hideWhenEmpty={false}
+                tileTitle={(s) => s.Name}
+                tileSubtitle={(s) => (s.ChildCount ? `${s.ChildCount} episodes` : null)}
+              />
+            )}
+            <CastAndSimilar item={item} />
+          </>
+        }
+      />
+      {trailer.sheet}
+    </>
   );
 }
 

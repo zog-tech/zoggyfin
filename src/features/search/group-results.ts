@@ -92,3 +92,26 @@ export function filterSections(sections: readonly SearchSection[], filter: Searc
 export function topResult(sections: readonly SearchSection[]): BaseItemDto | null {
   return sections[0]?.items[0] ?? null;
 }
+
+export type SearchBody = 'idle' | 'loading' | 'error' | 'empty' | 'results';
+
+/**
+ * What the search page shows under the field. While a new search loads, the
+ * query keeps the last results (`placeholder`). When those were empty, the
+ * page shows the loading rows, not "No results" with the new words: that
+ * message would flash and then go away when the results come.
+ */
+export function searchBody(o: {
+  active: boolean;
+  localOnly: boolean;
+  pending: boolean;
+  placeholder: boolean;
+  error: boolean;
+  hasData: boolean;
+  sections: number;
+}): SearchBody {
+  if (!o.active) return 'idle';
+  if (!o.localOnly && (o.pending || (o.placeholder && o.sections === 0))) return 'loading';
+  if (!o.localOnly && o.error && !o.hasData) return 'error';
+  return o.sections === 0 ? 'empty' : 'results';
+}

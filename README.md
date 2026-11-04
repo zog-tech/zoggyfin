@@ -51,6 +51,9 @@ Zoggyfin is not affiliated with the Jellyfin project.
 - **Server discovery.** The first screen finds Jellyfin servers on the local network.
 - **Watch and listen together.** Use Jellyfin SyncPlay groups over the internet, or start a
   nearby session with no internet and no server.
+- **Remote control.** Start a film, an episode or music on another Jellyfin app of your account
+  with "Play on…", and control it from the Remote screen: play and pause, seek, next and previous,
+  stop, volume and mute. Open it from the profile menu with "Control a device".
 - **Live TV (IPTV).** Add an Xtream or M3U provider and watch live channels in the same player.
   Channel groups, favourites, recently watched, search, now and next from the guide, and channel
   up and down. On the plain web, the provider must allow cross-origin requests.
@@ -107,6 +110,7 @@ Phase 1 ("Foundation"):
 - Library: library grids with sort and filters, shows to seasons to episodes, collections.
 - Music: Albums, Artists, Playlists, Songs and Genres in a swipeable pager.
 - Item pages for movies, shows, seasons, episodes, albums, artists, people and playlists.
+  Movie and show pages have a Trailer button: a trailer file on the server plays in the app, a YouTube link opens outside it.
 - Search, with results grouped by type and recent searches.
 - Every tile has a picture: server art when it exists, generated art when it does not.
 - A persisted query cache, so a cold start shows the last content at once.

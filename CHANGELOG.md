@@ -13,11 +13,17 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Remote control.** "Play on…" in an item's menu starts the item on another Jellyfin app of the
+  same account (a TV, a computer, a phone). "Control a device" in the profile menu opens the Remote
+  screen: what the device plays, the position, play and pause, seek 10 or 30 seconds, next and
+  previous, stop, volume and mute, where the device supports them. Not on TV.
 - **Foundation.** An Expo SDK 58 project on `react-native-tvos`, the Jellyfin API layer, sign-in with
   a password or Quick Connect, the tab shell, Home, library grids, item pages, search and generated art
   for items with no picture.
 - **Quick Connect approval.** Settings, Quick Connect takes the six-digit code that another device
   shows (a TV, a browser, another Jellyfin app) and signs that device in as this account.
+- **Trailers.** Movie and show pages have a Trailer button. A trailer file on the server plays in the
+  player; a trailer link from the metadata (YouTube) opens in the browser or the YouTube app.
 - **Design system.** The Ember accent on graphite, a light and a dark theme, one icon set per platform
   and rules for Arabic text. See `docs/design`.
 - **Video player.** Direct play or HLS from a device profile, a full-screen player with trickplay,
@@ -102,6 +108,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- **Live TV placement.** On iPhone, iPad and Android, Live TV is now a tile in the Library grid with the
+  server's libraries, not a row above them. Home has a Live TV row with your favourite channels and the
+  channels you watched last; a tap plays the channel, and "All channels" opens Live TV. The row shows
+  only when you have an IPTV provider (not on TV). On iOS, Live TV still shows only after you add a
+  provider in Settings.
 - **Compact tab pages.** The first page of each tab (Home, Library, Music, Live TV, Search, Downloads)
   has no large title any more: the tab bar already shows where you are, and the content starts at the
   top of the screen. A slim bar stays only where a page has buttons in it (the profile button on Home,

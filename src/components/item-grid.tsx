@@ -30,6 +30,8 @@ interface ItemGridProps {
   focusFirstTile?: boolean;
   /** The screen has no header bar (a tab's root page): the iOS 26 refresh spinner sits higher. */
   headerless?: boolean;
+  /** Draws its own tile for an item it knows (the Live TV tile in the Library). Null keeps the media tile. */
+  renderTile?: (item: BaseItemDto, tile: { width: number; preferredFocus: boolean }) => ReactElement | null;
 }
 
 /**
@@ -58,6 +60,7 @@ export function ItemGrid({
   autoInset = true,
   focusFirstTile = true,
   headerless = false,
+  renderTile,
 }: ItemGridProps) {
   const l = useLayout();
   const tabBottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset });
@@ -116,24 +119,26 @@ export function ItemGrid({
           paddingLeft: ((index % columns) * gap) / columns,
           paddingRight: ((columns - 1 - (index % columns)) * gap) / columns,
         }}>
-        <Tile
-          item={item}
-          width={tileWidth}
-          shape={shape}
-          onPress={open}
-          preferredFocus={l.tv && focusFirstTile && index === 0}
-          onFocusItem={
-            l.tv
-              ? (it) => {
-                  prefetch(it);
-                  centerRow(index);
-                }
-              : undefined
-          }
-        />
+        {renderTile?.(item, { width: tileWidth, preferredFocus: l.tv && focusFirstTile && index === 0 }) ?? (
+          <Tile
+            item={item}
+            width={tileWidth}
+            shape={shape}
+            onPress={open}
+            preferredFocus={l.tv && focusFirstTile && index === 0}
+            onFocusItem={
+              l.tv
+                ? (it) => {
+                    prefetch(it);
+                    centerRow(index);
+                  }
+                : undefined
+            }
+          />
+        )}
       </View>
     ),
-    [columns, gap, tileWidth, shape, open, l.tv, prefetch, centerRow, focusFirstTile],
+    [columns, gap, tileWidth, shape, open, l.tv, prefetch, centerRow, focusFirstTile, renderTile],
   );
 
   return (

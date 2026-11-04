@@ -61,3 +61,16 @@ export function fitRoundActions<T extends { spare?: boolean }>(items: readonly T
   }
   return { items: kept, gap: last };
 }
+
+/**
+ * The scroll offset after which the transparent header of an item page gets
+ * a solid bar. Over a media hero (backdrop or wide image) the back and More
+ * buttons are white on the top scrim. When the hero scrolls out from under
+ * the bar, the bar gets the page colour and the buttons the accent, so the
+ * buttons never sit white on a white page or on top of the Play button. A
+ * page with no hero gets the solid bar as soon as content moves under it.
+ * The scroll handler compares the offset with this number. Pure.
+ */
+export function solidHeaderAfter(media: boolean, heroH: number, barH: number): number {
+  return media ? Math.max(0, heroH - barH) : 1;
+}

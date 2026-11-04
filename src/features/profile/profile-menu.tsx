@@ -31,6 +31,7 @@ import { openAdmin } from '@/features/admin/nav';
 import { openInvite } from '@/features/admin/invite';
 import { inviteAdminKey } from '@/features/invite/invite-section';
 import { openAddServer, signOutUser, switchAccount } from '@/features/servers/actions';
+import { openRemote, remoteSupported } from '@/features/remote/use-remote';
 import { homeTogether } from '@/features/together/home-entry';
 import { getUsers, isAdministrator } from '@/invite/api';
 import { pendingInvites, readRecords } from '@/invite/records';
@@ -67,6 +68,7 @@ function useMenuState() {
     pendingInvites: pending.data?.length ?? null,
     together: homeTogether,
     roomPeople: people,
+    remote: remoteSupported,
     downloads: downloadsSupported,
     downloadCount: count,
     active,
@@ -93,6 +95,8 @@ function ProfileMenuOpen({ onClose }: { onClose: () => void }) {
         return close(() => openInvite({ serverId: session.serverId }));
       case 'together':
         return close(() => openTogetherSheet(roomOpen ? 'room' : 'hub', null));
+      case 'remote':
+        return close(() => openRemote());
       case 'downloads':
         return close(() => router.navigate('/(tabs)/(saved)/downloads'));
       case 'admin':
