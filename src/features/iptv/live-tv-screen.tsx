@@ -50,6 +50,7 @@ import {
   RECENTS_GROUP,
   resolveGroup,
   SEARCH_ENTRY,
+  syncSoon,
   useChannels,
   useChannelView,
   useFavouriteKeys,
@@ -93,6 +94,8 @@ export function LiveTvScreen() {
   const bottomPad = useTabBottomPadding(isTV ? spacing.xxl : undefined);
   const group = useLiveGroup();
   const providers = useProviders();
+  // Live TV in the Jellyfin account: changes from another device show when the page opens.
+  useEffect(() => syncSoon(), []);
   // A provider id, or ALL_PROVIDERS ("All providers").
   const liveView = useLiveView();
   const all = liveView === ALL_PROVIDERS;

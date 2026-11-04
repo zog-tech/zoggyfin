@@ -31,6 +31,7 @@ import { startOtaChecks } from '@/platform/updates/ota';
 import { audioSession } from '@/player/audio/session';
 import '@/invite/wiring';
 import { useInviteLinks } from '@/invite/use-invite-links';
+import { startIptvSync } from '@/iptv';
 import { isTV } from '@/platform/tv';
 import { mediaColors, useTheme } from '@/theme';
 import { nearby } from '@/together/nearby';
@@ -112,6 +113,8 @@ function Root({ session }: { session: boolean }) {
     if (!session) return;
     startOfflineServices();
     audioSession().restore();
+    // Live TV in the Jellyfin account: pull the setup now and follow account switches.
+    startIptvSync();
   }, [session]);
   return (
           <View style={[styles.flex, { backgroundColor: c.bg }]}>

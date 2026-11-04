@@ -13,6 +13,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Live TV in your Jellyfin account.** IPTV providers (with their logins), their order, what Live TV
+  opens on, favourite and recently watched channels and film positions sync through the Jellyfin user.
+  A phone, a TV, the Mac app or the web that signs in as the same user gets them with no typing.
+  Changes go to the account a few seconds later, or when the server answers again. Providers and
+  favourites added on two devices all stay; a provider removed on one device goes from all of them.
+  The provider logins are stored on the Jellyfin server, and its admins can read them.
 - **Remote control.** "Play on…" in an item's menu starts the item on another Jellyfin app of the
   same account (a TV, a computer, a phone). "Control a device" in the profile menu opens the Remote
   screen: what the device plays, the position, play and pause, seek 10 or 30 seconds, next and
