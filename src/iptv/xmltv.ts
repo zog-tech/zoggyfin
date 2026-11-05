@@ -56,6 +56,13 @@ function firstText(body: string, name: string): string | null {
   return decodeXml(body.slice(gt + 1, close)).trim();
 }
 
+/** A sink that sees every programme in its own window, before `maxPerChannel` and the parser window apply. */
+export interface XmltvCollect {
+  from: number;
+  to: number;
+  add(guideId: string, start: number, stop: number, title: string): void;
+}
+
 export interface XmltvOptions {
   /** The window to keep, ms. */
   from: number;
@@ -72,6 +79,8 @@ export interface XmltvOptions {
   maxPerChannel?: number;
   /** Descriptions are cut to this many characters. */
   maxDescription?: number;
+  /** Receives every kept channel's programmes in its own window (the programme search index). */
+  collect?: XmltvCollect | null;
 }
 
 /** Incremental XMLTV parser: `push` text chunks, then `end`. */
@@ -166,8 +175,12 @@ export class XmltvWindowParser {
     if (!id || (this.opts.keep && !this.opts.keep.has(id))) return;
     const start = parseXmltvTime(a.start);
     const stop = parseXmltvTime(a.stop);
-    if (!Number.isFinite(start) || !Number.isFinite(stop) || stop <= this.opts.from || start >= this.opts.to || stop <= start) return;
-    const prog: Programme = { start, stop, title: firstText(body, 'title') || 'No title' };
+    if (!Number.isFinite(start) || !Number.isFinite(stop)) return;
+    const title = firstText(body, 'title') || 'No title';
+    const collect = this.opts.collect;
+    if (collect && stop > collect.from && start < collect.to && stop > start) collect.add(id, start, stop, title);
+    if (stop <= this.opts.from || start >= this.opts.to || stop <= start) return;
+    const prog: Programme = { start, stop, title };
     const desc = firstText(body, 'desc');
     if (desc) prog.description = desc.length > this.maxDesc ? `${desc.slice(0, this.maxDesc - 1)}…` : desc;
     const list = (this.channels[id] ??= []);
