@@ -1,6 +1,6 @@
 # Live TV: find the channel a programme is on
 
-Date: 2026-11-04. State: draft, waiting for approval.
+Date: 2026-11-04. State: approved, built.
 
 ## Why
 
@@ -63,12 +63,12 @@ Success: the maintainer types "Arsenal" in Live TV search at match time and play
 - New per-provider "title index": for each linked guide id, the programmes with start, stop and title only. No descriptions.
 - It keeps only the next 48 hours (from 30 minutes ago), not the whole guide. The search needs only "now" and the next hour, and a full guide of a large panel is 1 to 3 million programmes. Programmes of channels with no link in the provider's list are dropped during the parse.
 - Titles repeat a lot ("Live Football", news). Store each distinct title once and refer to it by number, so the file stays small.
-- In memory, only the slice that the search needs (now to now + 2 hours) is held, rebuilt from the file at start and when the slice runs out. This keeps memory low on Fire TV and Android TV boxes.
+- In memory, only the slice that the search needs (now to now + 3 hours) is held, rebuilt from the file at start and when less than 70 minutes of it are left (more than the 60-minute look-ahead). This keeps memory low on Fire TV and Android TV boxes.
 - Saved as a file next to the other IPTV files (`iptv/<providerId>/…`), with a schema version and a migration that never throws.
 - Xtream source: `xmltv.php` with the same login (built next to `xtreamApiUrl`). M3U source: the guide URL that exists today.
-- Refresh: at app start (and on foreground), in the background, when the saved index is missing or its programmes end within 24 hours. In practice this is about once a day. One provider at a time.
+- Refresh: about 45 seconds after app start at an idle moment (and on foreground, on sign-in and when a provider is added), in the background, when the saved index is missing or its programmes end within 24 hours. A good build is never followed by another within 20 hours, so a guide that covers less than a day is not downloaded at every start. In practice this is about once a day. One provider at a time.
 - On iPhone, iPad and Android: download only on Wi-Fi or Ethernet. The Mac app, web and TV have no such limit.
-- A failed download (the panel has no `xmltv.php`, an empty file, not XMLTV, too large) keeps the old index. The next try for that provider waits at least 12 hours, so a broken panel is not asked at every start. No error is shown in search. No fallback to per-channel guide calls: that provider simply has no programme hits.
+- A failed download (the panel has no `xmltv.php`, an empty file, not XMLTV, too large) keeps the old index. The next try for that provider waits at least 12 hours, so a broken panel is not asked at every start. A build marks its attempt before the download, so an app killed during the download or the parse also waits 12 hours. No error is shown in search. No fallback to per-channel guide calls: that provider simply has no programme hits.
 - Plain web (not the Mac app): no programme index. Its files over 2 MB stay in memory only, so each page load would download the full guide again.
 - When a provider is removed, or its login or guide link changes, its index goes (as the guide does today in `manager.ts`).
 - Shared providers (`sh_…`) get an index like other providers.
