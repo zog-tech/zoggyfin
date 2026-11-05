@@ -11,6 +11,7 @@
  */
 import { guideIdFor } from './guide';
 import type { SlicedProgramme } from './programme-index';
+import { asProviderChannel, type ProviderChannel } from './merged';
 import { foldText } from './search';
 import type { Channel } from './types';
 
@@ -102,4 +103,22 @@ export function searchProgrammes(
       (a.hit.title < b.hit.title ? -1 : a.hit.title > b.hit.title ? 1 : 0),
   );
   return found.slice(0, limit).map((c) => c.hit);
+}
+
+/**
+ * The list a programme hit plays in: each hit's first stream, in hit order,
+ * each channel once. Channel up and down then move through the hits.
+ */
+export function programmePlayList(hits: readonly ProgrammeHit[]): ProviderChannel[] {
+  const seen = new Set<string>();
+  const out: ProviderChannel[] = [];
+  for (const hit of hits) {
+    const first = hit.channels[0];
+    if (!first) continue;
+    const item = asProviderChannel(hit.providerId, first);
+    if (seen.has(item.key)) continue;
+    seen.add(item.key);
+    out.push(item);
+  }
+  return out;
 }

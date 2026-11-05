@@ -1,4 +1,4 @@
-import { channelsByGuideId, searchProgrammes, type ProgrammeSource } from '../programme-search';
+import { channelsByGuideId, programmePlayList, type ProgrammeHit, searchProgrammes, type ProgrammeSource } from '../programme-search';
 import { foldText } from '../search';
 import type { SlicedProgramme } from '../programme-index';
 import type { Channel } from '../types';
@@ -101,5 +101,31 @@ describe('searchProgrammes', () => {
     const hits = searchProgrammes(sources, 'arsenal', NOW);
     expect(performance.now() - t).toBeLessThan(50);
     expect(hits.length).toBe(50);
+  });
+});
+
+describe('programmePlayList', () => {
+  const hit = (providerId: string, channels: Channel[], start: number): ProgrammeHit => ({
+    key: `${providerId}:g:${start}`,
+    providerId,
+    title: 'Match',
+    start,
+    stop: start + 60 * MIN,
+    onNow: true,
+    channels,
+  });
+
+  it('takes the first stream of each hit, in hit order, each channel once', () => {
+    const a = ch('1', 'Sport 1 HD');
+    const a2 = ch('2', 'Sport 1 FHD');
+    const b = ch('3', 'Sport 2');
+    const list = programmePlayList([hit('p1', [a, a2], NOW), hit('p2', [b], NOW), hit('p1', [a], NOW + 30 * MIN), hit('p2', [], NOW)]);
+    expect(list.map((x) => x.key)).toEqual(['p1|1', 'p2|3']);
+    expect(list[0].channel).toBe(a);
+  });
+
+  it('keeps the same channel id of two providers apart', () => {
+    const list = programmePlayList([hit('p1', [ch('1', 'A')], NOW), hit('p2', [ch('1', 'A')], NOW)]);
+    expect(list.map((x) => x.key)).toEqual(['p1|1', 'p2|1']);
   });
 });

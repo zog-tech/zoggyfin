@@ -33,8 +33,10 @@ import {
   streamPlatform,
   toggleFavourite,
 } from './manager';
+import { ensureSlices, programmeIndexEnabled } from './programme-manager';
+import { channelsByGuideId, type ProgrammeHit, type ProgrammeSource, searchProgrammes } from './programme-search';
 import { ALL_PROVIDERS, type ChannelLookup, mergedFavourites, mergedRecents, mergeSearchHits, type ProviderChannel, providerChannelKey, providersMissingSnaps } from './merged';
-import { searchChannels, searchChannelsRanked } from './search';
+import { foldText, searchChannels, searchChannelsRanked } from './search';
 import { EMPTY_DATA, loadLists, type ProviderData, setIptvState, iptvState, useIptvStore } from './store';
 import { checkAdmin, loadShareTargets, setShareChoice, useShareStore } from './share-sync';
 import { needsHls } from './stream-url';
@@ -49,6 +51,8 @@ export { ALL_PROVIDERS, asProviderChannel, type ProviderChannel } from './merged
 export { browseEntries, type BrowseEntry, type BrowseSection, defaultGroup, mergedBrowseEntries, mergedDefaultGroup, type ProviderEntry, providerEntryKey, PROVIDERS_ENTRY, resolveGroup, SEARCH_ENTRY } from './browse';
 export { providerChannelKey } from './merged';
 export { iptvErrorText } from './errors';
+export type { ProgrammeHit } from './programme-search';
+export { programmePlayList } from './programme-search';
 export { progressOf } from './guide';
 export { startIptvSync, syncSoon } from './sync';
 export { sharedLabel, type ShareChoice } from './shared';
@@ -232,6 +236,59 @@ export function useChannelView(providerId: string | null, group: string, query: 
   }, [data.channels, data.index, lists, group, query]);
   return { groups, channels };
 }
+
+/** Channels by guide id, built once per loaded list and guide names. */
+const byGuideIdCache = new WeakMap<readonly Channel[], { names: Record<string, string> | undefined; map: Map<string, Channel[]> }>();
+function byGuideId(channels: readonly Channel[], names: Record<string, string> | undefined): Map<string, Channel[]> {
+  const hit = byGuideIdCache.get(channels);
+  if (hit && hit.names === names) return hit.map;
+  const map = channelsByGuideId(channels, names ? new Map(Object.entries(names)) : null);
+  byGuideIdCache.set(channels, { names, map });
+  return map;
+}
+
+const NO_HITS: ProgrammeHit[] = [];
+
+/**
+ * Programmes on now or soon whose title matches the search: one provider
+ * (`liveView` is its id) or every provider (ALL_PROVIDERS). Empty on the
+ * plain web (no programme index) and for a query under two letters. It loads
+ * the saved programme slices; the page loads the channel lists, as for the
+ * channel search.
+ */
+export function useProgrammeSearch(liveView: string | null, query: string): ProgrammeHit[] {
+  bindSession();
+  const active = !!liveView && programmeIndexEnabled() && foldText(query).length >= 2;
+  const ids = useIptvStore(
+    useShallow((s) => (!active || !liveView ? NO_IDS : liveView === ALL_PROVIDERS ? s.providers.order : s.providers.order.includes(liveView) ? [liveView] : NO_IDS)),
+  );
+  const slices = useIptvStore((s) => s.programmeSlices);
+  const data = useIptvStore((s) => s.data);
+  const guideNames = useIptvStore((s) => s.guideNames);
+  const now = useMinute();
+  useEffect(() => {
+    if (!active) return;
+    // Cheap when the slices are fresh; a slice near its end loads again. The lists the page shows load as well.
+    void ensureSlices().catch(() => undefined);
+    if (liveView === ALL_PROVIDERS) void ensureAllLoaded();
+    else if (liveView) void ensureLoaded(liveView).catch(() => undefined);
+  }, [active, liveView, now]);
+  return useMemo(() => {
+    if (!active || !ids.length) return NO_HITS;
+    const sources: ProgrammeSource[] = [];
+    for (const id of ids) {
+      const slice = slices[id];
+      const channels = data[id]?.channels;
+      if (!slice || !slice.programmes.length || !channels?.length) continue;
+      sources.push({ providerId: id, programmes: slice.programmes, channelsByGuideId: byGuideId(channels, guideNames[id]) });
+    }
+    if (!sources.length) return NO_HITS;
+    const hits = searchProgrammes(sources, query, now);
+    return hits.length ? hits : NO_HITS;
+  }, [active, ids, slices, data, guideNames, query, now]);
+}
+
+const NO_IDS: string[] = [];
 
 /** The time now, to the minute (now and next move on by themselves). */
 export function useMinute(): number {
