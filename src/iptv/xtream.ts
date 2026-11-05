@@ -52,6 +52,11 @@ export function xtreamApiUrl(login: XtreamLogin, action?: string, params: Record
   return url;
 }
 
+/** The panel's full XMLTV guide (`xmltv.php`). It carries the login, so it is never logged. */
+export function xtreamGuideUrl(login: XtreamLogin): string {
+  return `${login.server}/xmltv.php?username=${q(login.username)}&password=${q(login.password)}`;
+}
+
 /** The live stream URL. `ext` is `m3u8` (HLS) or `ts`. */
 export function xtreamLiveUrl(login: XtreamLogin, streamId: number, ext: 'm3u8' | 'ts'): string {
   return `${login.server}/live/${q(login.username)}/${q(login.password)}/${streamId}.${ext}`;
