@@ -4,7 +4,7 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
-## 0.1.13 (unreleased)
+## 0.1.13 (2026-11-04)
 
 - Live TV: search shows an "On now" section with programmes that match your words and run now or start within the hour
 

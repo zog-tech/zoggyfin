@@ -1,6 +1,6 @@
 [package]
 name = "zoggyfin-desktop"
-version = "0.1.12"
+version = "0.1.13"
 description = "Zoggyfin desktop: the web app in a Tauri window, with libmpv for video"
 license = "MPL-2.0"
 repository = "https://github.com/zog-tech/zoggyfin"
