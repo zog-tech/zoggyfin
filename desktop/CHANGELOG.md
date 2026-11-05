@@ -4,6 +4,10 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.13 (unreleased)
+
+- Live TV: search shows an "On now" section with programmes that match your words and run now or start within the hour
+
 ## 0.1.12 (2026-11-04)
 
 - Live TV: add an IPTV provider (M3U or Xtream) in Settings, then watch channels, films and series in the Live TV tab
