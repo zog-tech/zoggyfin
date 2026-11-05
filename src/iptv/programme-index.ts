@@ -19,7 +19,13 @@ export const INDEX_BACK_MS = 30 * 60_000;
 /** Rebuild when the index covers less than this much of the future. */
 const MIN_AHEAD_MS = 24 * HOUR;
 /** After a failed build, wait this long before trying again. */
-const RETRY_AFTER_FAIL_MS = 12 * HOUR;
+export const RETRY_AFTER_FAIL_MS = 12 * HOUR;
+/**
+ * After a good build, wait at least this long before the next one, even when
+ * the guide covers less than 24 hours: a short guide must not make the app
+ * download the full guide at every start.
+ */
+export const MIN_REBUILD_GAP_MS = 20 * HOUR;
 
 export interface ProgrammeIndex {
   schemaVersion: number;
@@ -144,10 +150,16 @@ export interface IndexLedger {
   failedAt: number | null;
 }
 
-/** True when the index is missing or covers less than 24 hours ahead, unless a build failed in the last 12 hours. */
+/**
+ * True when the index is missing or covers less than 24 hours ahead, unless
+ * a build failed (or started and never ended) in the last 12 hours, or the
+ * last good build is less than 20 hours old. A time in the future (the clock
+ * moved back) counts as expired.
+ */
 export function needsIndexRefresh(ledger: IndexLedger | null, now: number): boolean {
   if (!ledger) return true;
-  if (ledger.failedAt !== null && now - ledger.failedAt < RETRY_AFTER_FAIL_MS) return false;
-  if (ledger.builtAt === null || ledger.to === null) return true;
+  if (ledger.failedAt !== null && ledger.failedAt <= now && now - ledger.failedAt < RETRY_AFTER_FAIL_MS) return false;
+  if (ledger.builtAt === null || ledger.to === null || ledger.builtAt > now) return true;
+  if (now - ledger.builtAt < MIN_REBUILD_GAP_MS) return false;
   return ledger.to < now + MIN_AHEAD_MS;
 }

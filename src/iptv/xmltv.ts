@@ -176,11 +176,17 @@ export class XmltvWindowParser {
     const start = parseXmltvTime(a.start);
     const stop = parseXmltvTime(a.stop);
     if (!Number.isFinite(start) || !Number.isFinite(stop)) return;
-    const title = firstText(body, 'title') || 'No title';
+    if (stop <= start) return;
     const collect = this.opts.collect;
-    if (collect && stop > collect.from && start < collect.to && stop > start) collect.add(id, start, stop, title);
-    if (stop <= this.opts.from || start >= this.opts.to || stop <= start) return;
-    const prog: Programme = { start, stop, title };
+    const collected = !!collect && stop > collect.from && start < collect.to;
+    const inWindow = stop > this.opts.from && start < this.opts.to;
+    // Most programmes of a large guide are outside both windows: their title is never read.
+    if (!collected && !inWindow) return;
+    const found = firstText(body, 'title');
+    // A programme with no title is not worth a search hit.
+    if (collected && found) collect.add(id, start, stop, found);
+    if (!inWindow) return;
+    const prog: Programme = { start, stop, title: found || 'No title' };
     const desc = firstText(body, 'desc');
     if (desc) prog.description = desc.length > this.maxDesc ? `${desc.slice(0, this.maxDesc - 1)}…` : desc;
     const list = (this.channels[id] ??= []);

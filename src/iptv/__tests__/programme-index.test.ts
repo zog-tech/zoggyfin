@@ -1,4 +1,4 @@
-import { INDEX_BACK_MS, INDEX_KEEP_MS, ProgrammeIndexBuilder, migrateProgrammeIndex, needsIndexRefresh, sliceIndex } from '../programme-index';
+import { INDEX_BACK_MS, INDEX_KEEP_MS, MIN_REBUILD_GAP_MS, ProgrammeIndexBuilder, migrateProgrammeIndex, needsIndexRefresh, sliceIndex } from '../programme-index';
 import { XmltvWindowParser, parseXmltv } from '../xmltv';
 import { bigXmltv, inChunks, xmltvTime } from '../test-utils/fixtures';
 
@@ -70,10 +70,44 @@ describe('programme index', () => {
     const now = T0;
     expect(needsIndexRefresh(null, now)).toBe(true);
     expect(needsIndexRefresh({ builtAt: now - HOUR, to: now + 30 * HOUR, failedAt: null }, now)).toBe(false);
-    expect(needsIndexRefresh({ builtAt: now - HOUR, to: now + 23 * HOUR, failedAt: null }, now)).toBe(true);
+    expect(needsIndexRefresh({ builtAt: now - 21 * HOUR, to: now + 23 * HOUR, failedAt: null }, now)).toBe(true);
     expect(needsIndexRefresh({ builtAt: null, to: null, failedAt: now - 11 * HOUR }, now)).toBe(false);
     expect(needsIndexRefresh({ builtAt: null, to: null, failedAt: now - 13 * HOUR }, now)).toBe(true);
     expect(needsIndexRefresh({ builtAt: now - 48 * HOUR, to: now + 30 * HOUR, failedAt: now - HOUR }, now)).toBe(false);
+  });
+
+  it('a short guide is not rebuilt until 20 hours after a good build', () => {
+    expect(MIN_REBUILD_GAP_MS).toBe(20 * HOUR);
+    // The guide ends 20 hours ahead: less than the 24 hours wanted.
+    const ledger = { builtAt: T0, to: T0 + 20 * HOUR, failedAt: null };
+    expect(needsIndexRefresh(ledger, T0 + HOUR)).toBe(false);
+    expect(needsIndexRefresh(ledger, T0 + 12 * HOUR)).toBe(false);
+    expect(needsIndexRefresh(ledger, T0 + 20 * HOUR)).toBe(true);
+  });
+
+  it('a time in the future (the clock moved back) counts as expired', () => {
+    // A failure "in the future" does not block the next try.
+    expect(needsIndexRefresh({ builtAt: null, to: null, failedAt: T0 + 5 * HOUR }, T0)).toBe(true);
+    // A build "in the future" does not count as fresh.
+    expect(needsIndexRefresh({ builtAt: T0 + 5 * HOUR, to: T0 + 50 * HOUR, failedAt: null }, T0)).toBe(true);
+  });
+
+  it('collect skips a programme with no title; the guide window keeps it as "No title"', () => {
+    const xml = [
+      '<tv>',
+      `<programme start="${xmltvTime(T0)}" stop="${xmltvTime(T0 + HOUR)}" channel="x1"></programme>`,
+      `<programme start="${xmltvTime(T0 + HOUR)}" stop="${xmltvTime(T0 + 2 * HOUR)}" channel="x1"><title></title></programme>`,
+      `<programme start="${xmltvTime(T0 + 2 * HOUR)}" stop="${xmltvTime(T0 + 3 * HOUR)}" channel="x1"><title>Real</title></programme>`,
+      '</tv>',
+    ].join('\n');
+    const builder = new ProgrammeIndexBuilder('p1', T0, T0 + INDEX_KEEP_MS);
+    const p = new XmltvWindowParser({ from: T0, to: T0 + 4 * HOUR, collect: builder });
+    p.push(xml);
+    const guide = p.end();
+    const index = builder.build(T0);
+    expect(index.titles).toEqual(['Real']);
+    expect(index.channels.x1).toHaveLength(3);
+    expect(guide.channels.x1.map((x) => x.title)).toEqual(['No title', 'No title', 'Real']);
   });
 
   it('builds 2000 channels x 48 programmes and slices in under 500 ms', () => {

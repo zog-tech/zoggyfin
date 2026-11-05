@@ -69,11 +69,15 @@ import type { NetworkSnapshot } from '@/servers/wifi-rule';
 // eslint-disable-next-line import/first
 import { iptvFiles } from '../files';
 // eslint-disable-next-line import/first
-import { removeProvider, saveProvider } from '../manager';
+import { refresh, removeProvider, saveProvider } from '../manager';
 // eslint-disable-next-line import/first
 import { migrateProgrammeIndex } from '../programme-index';
 // eslint-disable-next-line import/first
-import { dropProgrammeIndex, ensureSlices, refreshDue, setProgrammeIndexDeps } from '../programme-manager';
+import { dropProgrammeIndex, ensureSlices, LAUNCH_DELAY_MS, refreshDue, setProgrammeIndexDeps, startProgrammeIndex } from '../programme-manager';
+// eslint-disable-next-line import/first
+import { searchProgrammes } from '../programme-search';
+// eslint-disable-next-line import/first
+import { useSessionStore } from '@/auth/session-store';
 // eslint-disable-next-line import/first
 import { iptvState, patchData, setIptvState } from '../store';
 
@@ -101,6 +105,8 @@ function guide(ids: string[], hours: number): string {
 
 let net: NetworkSnapshot | null = { type: 'wifi', ssid: null };
 let phone = true;
+/** Runs that `refreshSoon` scheduled: the wait and the run. */
+const scheduled: { ms: number; run: () => void }[] = [];
 const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 beforeEach(() => {
@@ -116,7 +122,8 @@ beforeEach(() => {
   (iptvFiles as { persistent: boolean }).persistent = true;
   net = { type: 'wifi', ssid: null };
   phone = true;
-  setProgrammeIndexDeps({ isPhone: () => phone, network: async () => net, now: () => T0 });
+  scheduled.length = 0;
+  setProgrammeIndexDeps({ isPhone: () => phone, network: async () => net, now: () => T0, schedule: (ms, run) => void scheduled.push({ ms, run }) });
   warn.mockClear();
 });
 
@@ -268,27 +275,27 @@ describe('programme index refresh', () => {
     expect(iptvState().programmeSlices[id]).toBeUndefined();
   });
 
-  it('ensureSlices loads only the 2-hour slice into the store', async () => {
+  it('ensureSlices loads only the 3-hour slice into the store', async () => {
     const id = await addXtream();
     mockTexts.set(GUIDE, guide(['news.example', 'sport.example'], 60));
     await refreshDue(T0);
     setIptvState({ programmeSlices: {} });
     await ensureSlices(T0);
     const slice = iptvState().programmeSlices[id];
-    expect(slice).toMatchObject({ from: T0, to: T0 + 2 * HOUR });
-    // Two programmes per channel are on between T0 and T0 + 2 h.
-    expect(slice.programmes).toHaveLength(4);
+    expect(slice).toMatchObject({ from: T0, to: T0 + 3 * HOUR });
+    // Three programmes per channel are on between T0 and T0 + 3 h.
+    expect(slice.programmes).toHaveLength(6);
     for (const p of slice.programmes) {
       expect(p.stop).toBeGreaterThan(T0);
-      expect(p.start).toBeLessThan(T0 + 2 * HOUR);
+      expect(p.start).toBeLessThan(T0 + 3 * HOUR);
     }
-    // Still good for more than 30 minutes: the same slice.
-    await ensureSlices(T0 + 10 * 60_000);
-    expect(iptvState().programmeSlices[id]).toBe(slice);
-    // Ends within 30 minutes: a new slice.
+    // Still good for more than 70 minutes: the same slice.
     await ensureSlices(T0 + 100 * 60_000);
+    expect(iptvState().programmeSlices[id]).toBe(slice);
+    // Ends within 70 minutes: a new slice.
+    await ensureSlices(T0 + 115 * 60_000);
     expect(iptvState().programmeSlices[id]).not.toBe(slice);
-    expect(iptvState().programmeSlices[id].from).toBe(T0 + 100 * 60_000);
+    expect(iptvState().programmeSlices[id].from).toBe(T0 + 115 * 60_000);
   });
 
   it('M3U cold start: a stale saved guide and the index share one download', async () => {
@@ -369,6 +376,126 @@ describe('programme index refresh', () => {
     mockReads.length = 0;
     await ensureSlices(T0 + 5 * 60_000);
     expect(mockReads).toEqual([`iptv/${m}/programmes.json`]);
+  });
+
+  it('the slice always holds the 60-minute look-ahead of the search', async () => {
+    const id = await addXtream();
+    const MIN = 60_000;
+    const xml = [
+      '<tv>',
+      `<programme start="${xmltvTime(T0 - HOUR)}" stop="${xmltvTime(T0 + 140 * MIN)}" channel="news.example"><title>Long Show</title></programme>`,
+      `<programme start="${xmltvTime(T0 + 140 * MIN)}" stop="${xmltvTime(T0 + 240 * MIN)}" channel="news.example"><title>Late Match</title></programme>`,
+      '</tv>',
+    ].join('\n');
+    mockTexts.set(GUIDE, xml);
+    await refreshDue(T0);
+    setIptvState({ programmeSlices: {} });
+    await ensureSlices(T0);
+    for (const at of [T0 + 85 * MIN, T0 + 90 * MIN]) {
+      await ensureSlices(at);
+      const channels = iptvState().data[id]?.channels ?? [];
+      const byId = new Map([['news.example', channels.filter((c) => c.epgId === 'news.example')]]);
+      const hits = searchProgrammes([{ providerId: id, programmes: iptvState().programmeSlices[id].programmes, channelsByGuideId: byId }], 'late match', at);
+      expect(hits.map((h) => h.start)).toEqual([T0 + 140 * MIN]);
+    }
+  });
+
+  it('waits for a channel list that is still loading, and never keeps the whole guide', async () => {
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example', 'sport.example', 'other.example'], 60));
+    // The list is loading (another caller started it) when the refresh runs.
+    patchData(id, { status: 'idle', channels: [], index: null });
+    const load = refresh(id);
+    expect(iptvState().data[id]?.status).toBe('loading');
+    await refreshDue(T0);
+    await load;
+    const index = migrateProgrammeIndex(JSON.parse(mockFiles.get(`iptv/${id}/programmes.json`) ?? 'null'));
+    expect(Object.keys(index?.channels ?? {}).sort()).toEqual(['news.example', 'sport.example']);
+  });
+
+  it('a provider with no channels is skipped without a download or a failure', async () => {
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    patchData(id, { status: 'error', channels: [], index: null });
+    await refreshDue(T0);
+    expect(mockRequested).toHaveLength(0);
+    expect(ledgerOf(id)).toBeNull();
+  });
+
+  it('a run killed during the download is not tried again for 12 hours', async () => {
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    // The ledger as it is when the download starts: what a kill at that moment leaves.
+    let atDownload: string | undefined;
+    mockHook.onText = () => {
+      atDownload = mockKv.get(`iptv.progidx.${id}`);
+    };
+    await refreshDue(T0);
+    expect(JSON.parse(atDownload ?? 'null')).toEqual({ builtAt: null, to: null, failedAt: T0 });
+    // A good run clears the marker.
+    expect(ledgerOf(id)).toMatchObject({ builtAt: T0, failedAt: null });
+    // The process "restarts" with only the marker saved.
+    mockKv.set(`iptv.progidx.${id}`, atDownload ?? '');
+    mockHook.onText = null;
+    mockRequested.length = 0;
+    await refreshDue(T0 + HOUR);
+    await refreshDue(T0 + 11 * HOUR);
+    expect(mockRequested).toHaveLength(0);
+    await refreshDue(T0 + 13 * HOUR);
+    expect(mockRequested).toHaveLength(1);
+  });
+
+  it('a new guide address in the M3U playlist drops the index', async () => {
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    const id = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    await flush();
+    mockTexts.set(M3U_GUIDE, guide(['news.example', 'sport.example'], 60));
+    await refreshDue(T0);
+    expect(ledgerOf(id)).not.toBeNull();
+    // The same playlist again: the index stays.
+    await refresh(id);
+    expect(ledgerOf(id)).not.toBeNull();
+    mockTexts.set(PLAYLIST, SAMPLE_M3U.replace(/guide\.xml\.gz/g, 'other.xml'));
+    await refresh(id);
+    expect(ledgerOf(id)).toBeNull();
+    expect(mockFiles.has(`iptv/${id}/programmes.json`)).toBe(false);
+  });
+
+  it('ensureSlices calls made together share one file read', async () => {
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    await refreshDue(T0);
+    setIptvState({ programmeSlices: {} });
+    mockReads.length = 0;
+    await Promise.all([ensureSlices(T0), ensureSlices(T0), ensureSlices(T0)]);
+    expect(mockReads).toEqual([`iptv/${id}/programmes.json`]);
+  });
+
+  it('waits after the start, and runs again on sign-in and when a provider is added', async () => {
+    startProgrammeIndex();
+    // The first run waits for the launch delay; nothing downloads during the start.
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0].ms).toBe(LAUNCH_DELAY_MS);
+    scheduled.shift()?.run();
+    await refreshDue();
+
+    // A new provider asks for a run (one at a time).
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    expect(scheduled).toHaveLength(1);
+    expect(mockRequested).toHaveLength(0);
+    scheduled.shift()?.run();
+    // The run it started (refreshDue returns the one that runs).
+    await refreshDue();
+    expect(mockRequested).toHaveLength(1);
+    expect(ledgerOf(id)?.builtAt).toBe(T0);
+
+    // Another account signs in.
+    const signIn = (userId: string) =>
+      useSessionStore.setState({ session: { serverUrl: 'http://jf.example', serverId: 's1', serverName: 'Home', serverVersion: null, userId, userName: 'Jane Doe', userImageTag: null, token: 't' } });
+    signIn('u2');
+    expect(scheduled.length).toBeGreaterThanOrEqual(1);
+    signIn('u1');
   });
 });
 

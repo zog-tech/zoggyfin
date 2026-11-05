@@ -20,7 +20,7 @@ import { EMPTY_GUIDE, guideIdFor, isStale, nowNext, withProgrammes } from './gui
 import { addRecent, EMPTY_LISTS, snapOf, toggleFavourite as toggleIn, withSnaps } from './lists';
 import { ALL_PROVIDERS, moveInOrder, type ProviderChannel, resolveActive, splitProviderChannelKey, uniqueProviderName } from './merged';
 import { parseM3u } from './m3u';
-import { dropProgrammeIndex } from './programme-manager';
+import { dropProgrammeIndex } from './programme-files';
 import { migrateChannelsFile, migrateGuide } from './migrate';
 import { buildSearchIndex, EMPTY_RECENT_SEARCHES, rememberSearch, type RecentSearches } from './search';
 import { readSecrets, removeSecrets, writeSecrets } from './secrets';
@@ -232,7 +232,11 @@ export function refresh(id: string): Promise<void> {
       const secrets = readSecrets(id);
       const r = await fetchChannels(record, secrets);
       if (!providerById(id)) return;
-      if (r.playlistGuideUrl !== secrets.playlistGuideUrl) writeSecrets(id, { ...secrets, playlistGuideUrl: r.playlistGuideUrl });
+      if (r.playlistGuideUrl !== secrets.playlistGuideUrl) {
+        writeSecrets(id, { ...secrets, playlistGuideUrl: r.playlistGuideUrl });
+        // The playlist names another guide (and the person typed none): the programme index of the old one goes.
+        if (record.kind === 'm3u' && !secrets.guideUrl) await dropProgrammeIndex(id);
+      }
       showChannels(id, r.channels);
       await writeChannels(id, r.channels);
       updateRecord(id, { refreshedAt: Date.now(), channelCount: liveCount(id, r.channels.length), hasGuide: record.kind === 'xtream' || !!(secrets.guideUrl || r.playlistGuideUrl) });
@@ -248,12 +252,32 @@ export function refresh(id: string): Promise<void> {
   return job;
 }
 
+/** Saved channel lists being read (`ensureLoaded`), so a caller can wait for one that another caller started. */
+const reading = new Map<string, Promise<void>>();
+
 /** Shows the saved list (or loads it), and refreshes a list that is a day old. */
-export async function ensureLoaded(id: string): Promise<void> {
+export function ensureLoaded(id: string): Promise<void> {
   const data = iptvState().data[id];
   if (!iptvState().lists[id]) setIptvState({ lists: { ...iptvState().lists, [id]: loadLists(id) } });
-  if (data && data.status !== 'idle') return;
+  if (data && data.status !== 'idle') return Promise.resolve();
   patchData(id, { status: 'loading', error: null });
+  const job = readSaved(id).finally(() => reading.delete(id));
+  reading.set(id, job);
+  return job;
+}
+
+/**
+ * The provider's channels once no load of them runs: it starts one if
+ * needed, then waits for a file read or a download that another caller
+ * started. An empty list means the load failed or the provider has none.
+ */
+export async function channelsWhenLoaded(id: string): Promise<readonly Channel[]> {
+  await ensureLoaded(id).catch(() => undefined);
+  for (let job = reading.get(id) ?? inFlight.get(id); job; job = reading.get(id) ?? inFlight.get(id)) await job.catch(() => undefined);
+  return iptvState().data[id]?.channels ?? [];
+}
+
+async function readSaved(id: string): Promise<void> {
   const raw = await iptvFiles.read(channelsPath(id));
   let file: ChannelsFile | null = null;
   if (raw) {
