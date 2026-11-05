@@ -27,7 +27,7 @@ import { iptvFiles } from './files';
 import { bindSession, ensureLoaded, guideKeepFor, guideWindowOptions, providerById, saveGuideResult, xtreamLogin } from './manager';
 import { INDEX_BACK_MS, INDEX_KEEP_MS, type IndexLedger, migrateProgrammeIndex, needsIndexRefresh, type ProgrammeIndex, ProgrammeIndexBuilder, sliceIndex } from './programme-index';
 import { readSecrets } from './secrets';
-import { iptvState, setIptvState } from './store';
+import { iptvState, type LoadStatus, setIptvState } from './store';
 import { transport } from './transport';
 import { MAX_LIST_BYTES } from './transport-types';
 import { xtreamGuideUrl } from './xtream';
@@ -104,50 +104,65 @@ function guideUrlOf(id: string): string | null {
   return secrets.guideUrl ?? secrets.playlistGuideUrl ?? null;
 }
 
+/** Providers with no saved index file, so `ensureSlices` does not read again until a build or a drop. */
+const noFile = new Set<string>();
+
+function setGuideStatus(id: string, status: LoadStatus): void {
+  setIptvState({ guideStatus: { ...iptvState().guideStatus, [id]: status } });
+}
+
 async function buildOne(id: string, url: string, now: number): Promise<void> {
   const ledger = readLedger(id);
+  const isM3u = providerById(id)?.kind === 'm3u';
+  // M3U: mark the guide as loading, so `loadGuide` (from `ensureLoaded`) does not download it a second time.
+  const before = iptvState().guideStatus[id];
+  if (isM3u) setGuideStatus(id, 'loading');
+  // A changed login or guide address during the download: the result is of the old one.
+  const current = () => !!providerById(id) && guideUrlOf(id) === url;
+  let ok = false;
   try {
     await ensureLoaded(id);
     const record = providerById(id);
     if (!record) return;
     const { keep, matchNames } = guideKeepFor(iptvState().data[id]?.channels ?? []);
     const builder = new ProgrammeIndexBuilder(id, now - INDEX_BACK_MS, now + INDEX_KEEP_MS);
-    const isM3u = record.kind === 'm3u';
     // M3U: the same parse fills the now-and-next window. Xtream: no window (it asks per channel).
     const window = isM3u ? guideWindowOptions(now) : { from: 0, to: 0, maxPerChannel: 0 };
     const r = await parseXmltv(transport.text(url, { userAgent: record.userAgent, maxBytes: MAX_LIST_BYTES }), { ...window, keep, matchNames, collect: builder });
     if (!r.looksLikeXmltv) throw new IptvError('notXmltv');
     const index = builder.build(now);
     if (!Object.keys(index.channels).length) throw new IptvError('empty');
-    // The provider may have gone while the guide loaded.
-    if (!providerById(id)) return;
+    if (!current()) return;
+    ok = true;
     if (isM3u) await saveGuideResult(id, r, matchNames);
     await iptvFiles.write(indexPath(id), JSON.stringify(index));
     writeJson(ledgerKey(id), { builtAt: now, to: index.to, failedAt: null } satisfies IndexLedger);
+    noFile.delete(id);
     setSlice(id, index, now);
   } catch (e) {
-    if (!providerById(id)) return;
+    if (!current()) return;
     writeJson(ledgerKey(id), { builtAt: ledger?.builtAt ?? null, to: ledger?.to ?? null, failedAt: now } satisfies IndexLedger);
     console.warn('[iptv] programme index failed:', iptvErrorText(e));
+  } finally {
+    // Not saved (a failure, or the source changed): the status we set goes back, unless someone else has changed it since.
+    if (isM3u && !ok && iptvState().guideStatus[id] === 'loading' && current()) setGuideStatus(id, before === 'ready' ? 'ready' : 'error');
   }
 }
 
 let running: Promise<void> | null = null;
 
-/** Builds the index of each provider that is due, one after another. Skips everything when the device or network does not allow it. */
+/** Builds the index of each provider that is due, one after another. Stops when the device or network does not allow it (checked before each download). */
 export function refreshDue(now?: number): Promise<void> {
   if (running) return running;
   running = (async () => {
     if (!programmeIndexEnabled()) return;
     bindSession();
     const at = now ?? deps.now();
-    let allowed: boolean | null = null;
     for (const id of iptvState().providers.order.slice()) {
       if (!needsIndexRefresh(readLedger(id), at)) continue;
       const url = guideUrlOf(id);
       if (!url) continue;
-      allowed ??= await networkAllows();
-      if (!allowed) return;
+      if (!(await networkAllows())) return;
       await buildOne(id, url, at);
     }
   })().finally(() => {
@@ -156,28 +171,34 @@ export function refreshDue(now?: number): Promise<void> {
   return running;
 }
 
-/** Loads the saved index files into the store's two-hour slices, where one is missing or ends within 30 minutes. */
+/**
+ * Loads the saved index files into the store's two-hour slices, where one is
+ * missing or ends within 30 minutes. Cheap on repeat calls: a valid slice is
+ * kept, and a provider with no file is not read again until a build or a drop.
+ */
 export async function ensureSlices(now?: number): Promise<void> {
   if (!programmeIndexEnabled()) return;
   const at = now ?? deps.now();
   for (const id of iptvState().providers.order.slice()) {
     const slice = iptvState().programmeSlices[id];
     if (slice && slice.from <= at && slice.to - at > SLICE_RENEW_MS) continue;
+    if (noFile.has(id)) continue;
     const raw = await iptvFiles.read(indexPath(id));
-    if (!raw) continue;
     let index: ProgrammeIndex | null = null;
     try {
-      index = migrateProgrammeIndex(JSON.parse(raw));
+      index = raw ? migrateProgrammeIndex(JSON.parse(raw)) : null;
     } catch {
       index = null;
     }
-    if (index && providerById(id)) setSlice(id, index, at);
+    if (!index) noFile.add(id);
+    else if (providerById(id)) setSlice(id, index, at);
   }
 }
 
 /** Removes a provider's programme index: the file, the ledger and the slice. */
 export async function dropProgrammeIndex(providerId: string): Promise<void> {
   storage.remove(ledgerKey(providerId));
+  noFile.delete(providerId);
   const slices = iptvState().programmeSlices;
   if (slices[providerId]) {
     const { [providerId]: _gone, ...rest } = slices;

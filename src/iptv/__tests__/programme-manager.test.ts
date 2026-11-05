@@ -12,6 +12,8 @@ const mockFiles = new Map<string, string>();
 const mockResponses = new Map<string, unknown>();
 const mockTexts = new Map<string, string>();
 const mockRequested: string[] = [];
+const mockReads: string[] = [];
+const mockHook: { onText: ((url: string) => void) | null } = { onText: null };
 
 jest.mock('@/storage/kv', () => ({
   storage: {
@@ -27,7 +29,10 @@ jest.mock('@/storage/secure', () => ({
 jest.mock('../files', () => ({
   iptvFiles: {
     persistent: true,
-    read: async (p: string) => mockFiles.get(p) ?? null,
+    read: async (p: string) => {
+      mockReads.push(p);
+      return mockFiles.get(p) ?? null;
+    },
     write: async (p: string, t: string) => void mockFiles.set(p, t),
     remove: async (p: string) => {
       for (const k of [...mockFiles.keys()]) if (k.startsWith(p)) mockFiles.delete(k);
@@ -41,6 +46,7 @@ jest.mock('../transport', () => {
       sendsUserAgent: true,
       text(url: string) {
         mockRequested.push(url);
+        mockHook.onText?.(url);
         const t = mockTexts.get(url);
         if (t === undefined) throw new IptvError('http', 404);
         return jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
@@ -69,7 +75,7 @@ import { migrateProgrammeIndex } from '../programme-index';
 // eslint-disable-next-line import/first
 import { dropProgrammeIndex, ensureSlices, refreshDue, setProgrammeIndexDeps } from '../programme-manager';
 // eslint-disable-next-line import/first
-import { iptvState, setIptvState } from '../store';
+import { iptvState, patchData, setIptvState } from '../store';
 
 const HOUR = 3_600_000;
 const T0 = Date.UTC(2026, 10, 4, 12);
@@ -104,6 +110,8 @@ beforeEach(() => {
   mockResponses.clear();
   mockTexts.clear();
   mockRequested.length = 0;
+  mockReads.length = 0;
+  mockHook.onText = null;
   setIptvState({ scope: null, programmeSlices: {} });
   (iptvFiles as { persistent: boolean }).persistent = true;
   net = { type: 'wifi', ssid: null };
@@ -123,6 +131,8 @@ async function addXtream(): Promise<string> {
   mockRequested.length = 0;
   return id;
 }
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const ledgerOf = (id: string) => {
   const raw = mockKv.get(`iptv.progidx.${id}`);
@@ -280,4 +290,85 @@ describe('programme index refresh', () => {
     expect(iptvState().programmeSlices[id]).not.toBe(slice);
     expect(iptvState().programmeSlices[id].from).toBe(T0 + 100 * 60_000);
   });
+
+  it('M3U cold start: a stale saved guide and the index share one download', async () => {
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    const id = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    await flush();
+    // A cold start: the list is in its file, the saved guide window has ended.
+    mockFiles.set(`iptv/${id}/guide.json`, JSON.stringify({ schemaVersion: 1, from: 0, to: 0, channels: {} }));
+    patchData(id, { status: 'idle', channels: [], index: null });
+    setIptvState({ guides: {}, guideStatus: {}, guideNames: {} });
+    mockTexts.set(M3U_GUIDE, guide(['news.example', 'sport.example'], 60));
+    mockRequested.length = 0;
+    await refreshDue(T0);
+    await flush();
+    await flush();
+    expect(mockRequested.filter((u) => u === M3U_GUIDE)).toHaveLength(1);
+    expect(iptvState().guideStatus[id]).toBe('ready');
+    expect(mockFiles.has(`iptv/${id}/programmes.json`)).toBe(true);
+  });
+
+  it('M3U: a failed download leaves the guide status as an error, not loading', async () => {
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    const id = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    await flush();
+    mockTexts.set(M3U_GUIDE, '<html>login</html>');
+    await refreshDue(T0);
+    expect(iptvState().guideStatus[id]).toBe('error');
+  });
+
+  it('a login change during the download discards the old index', async () => {
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    mockHook.onText = () => {
+      const secrets = JSON.parse(mockSecure.get(`iptv.${id}`) ?? '{}');
+      mockSecure.set(`iptv.${id}`, JSON.stringify({ ...secrets, password: 'n3w' }));
+    };
+    await refreshDue(T0);
+    expect(mockRequested).toHaveLength(1);
+    expect(mockFiles.has(`iptv/${id}/programmes.json`)).toBe(false);
+    expect(ledgerOf(id)).toBeNull();
+    expect(iptvState().programmeSlices[id]).toBeUndefined();
+  });
+
+  it('stops after the current provider when the phone leaves Wi-Fi', async () => {
+    const x = await addXtream();
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    const m = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    await flush();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    mockTexts.set(M3U_GUIDE, guide(['news.example'], 60));
+    mockHook.onText = () => {
+      net = { type: 'cellular', ssid: null };
+    };
+    mockRequested.length = 0;
+    await refreshDue(T0);
+    expect(mockRequested).toEqual([GUIDE]);
+    expect(ledgerOf(x)?.builtAt).toBe(T0);
+    expect(ledgerOf(m)).toBeNull();
+  });
+
+  it('ensureSlices does no file read on a repeat call', async () => {
+    const id = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    // A second provider with no index file.
+    const m = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    await flush();
+    await refreshDue(T0);
+    expect(mockFiles.has(`iptv/${m}/programmes.json`)).toBe(false);
+    setIptvState({ programmeSlices: {} });
+    await ensureSlices(T0);
+    expect(iptvState().programmeSlices[id]).toBeDefined();
+    mockReads.length = 0;
+    await ensureSlices(T0 + 5 * 60_000);
+    expect(mockReads).toEqual([]);
+    // A built index is read again (its slice is set by the build).
+    await dropProgrammeIndex(m);
+    mockReads.length = 0;
+    await ensureSlices(T0 + 5 * 60_000);
+    expect(mockReads).toEqual([`iptv/${m}/programmes.json`]);
+  });
 });
+
