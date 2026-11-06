@@ -41,6 +41,7 @@ import {
   withBlob,
 } from './account-sync';
 import { applySynced, bindSession } from './manager';
+import { programmeIndexEnabled, startProgrammeIndex } from './programme-manager';
 import { pullShared, runShares, useShareStore } from './share-sync';
 import { readSecrets } from './secrets';
 import { iptvState, loadLists, type Scope, scopeId, useIptvStore } from './store';
@@ -218,6 +219,7 @@ export function startIptvSync(): void {
   if (started) return;
   started = true;
   void pull();
+  if (programmeIndexEnabled()) startProgrammeIndex();
   useSessionStore.subscribe((s, prev) => {
     if (s.session?.serverId === prev.session?.serverId && s.session?.userId === prev.session?.userId) return;
     // Another account (or a sign-in): a pull from its own server.

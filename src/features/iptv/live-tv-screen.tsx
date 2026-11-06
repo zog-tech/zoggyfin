@@ -13,7 +13,10 @@
  * column (TV: it opens the field and the keyboard at once), the Search button
  * in the TV header, and the field on phones. Results follow every key press
  * and match the channel name and number; a search used to play a channel is
- * kept as a recent search.
+ * kept as a recent search. Above the channels, "On now" lists programmes
+ * from the providers' guides whose titles match (on now or within the hour;
+ * not on the plain web); a tap plays the channel, and channel up and down
+ * move through those programmes' channels.
  *
  * Several providers: "All providers" (two providers or more) merges
  * Favourites, Recently watched and Search of every provider; each row names
@@ -44,6 +47,8 @@ import {
   iptv,
   mergedBrowseEntries,
   mergedDefaultGroup,
+  type ProgrammeHit,
+  programmePlayList,
   type ProviderChannel,
   providerChannelKey,
   providerEntryKey,
@@ -60,6 +65,7 @@ import {
   useMinute,
   usePlayChannel,
   usePlayMerged,
+  useProgrammeSearch,
   useProviders,
   useRecentSearches,
   useVodKinds,
@@ -77,6 +83,7 @@ import { ChannelDetails } from './channel-details';
 import { focusChannel, useFocusedChannel } from './focused-channel';
 import { CHANNEL_ROW_HEIGHT, ChannelRow, HEART_TV } from './channel-row';
 import { providerFormHref, providersHref, useLiveGroup } from './nav';
+import { ProgrammeRow } from './programme-row';
 import { takeChannelSearch } from './search-request';
 import { liveTvSections, type LiveTvSection } from './sections';
 
@@ -127,6 +134,8 @@ export function LiveTvScreen() {
   // "All providers": Favourites and Recently watched of every provider, and a search over all of them.
   const merged = useMergedLists(all);
   const mergedSearch = useMergedSearch(all && searching, query);
+  // Programmes on now (or within the hour) whose title matches: one provider, or every provider.
+  const programmes = useProgrammeSearch(searching ? liveView : null, query);
   const groupKey = all ? mergedDefaultGroup(merged.favourites.length, merged.recents.length, picked) : resolveGroup(base.groups, picked);
   const view = useChannelView(providerId, groupKey, searching ? query : '');
   // The provider switch, with two providers or more: "All providers" first, then the user's order.
@@ -186,6 +195,18 @@ export function LiveTvScreen() {
     },
     [all, providerId, liveView, play, playMerged, rows, rowOf, searching, query],
   );
+  const onPlayProgramme = useCallback(
+    (hit: ProgrammeHit, channel: Channel) => {
+      if (query && liveView) iptv.rememberSearch(liveView, query);
+      const item = asProviderChannel(hit.providerId, channel);
+      // The first stream: channel up and down move through the programmes. Another stream: through that programme's streams.
+      if (channel === hit.channels[0]) playMerged(programmePlayList(programmes), item);
+      else playMerged(hit.channels.map((ch) => asProviderChannel(hit.providerId, ch)), item);
+    },
+    [query, liveView, playMerged, programmes],
+  );
+  // The list header's height: the item offsets start below it (the "On now" part can be tall).
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   // TV: the focused row (the menu key favourites it; the details panel shows it).
   const focused = useRef<ProviderChannel | null>(null);
@@ -478,6 +499,18 @@ export function LiveTvScreen() {
       </Text>
     ) : null;
 
+  const onNow =
+    searching && query && programmes.length ? (
+      <View style={s.onNow}>
+        <Text style={[s.recentTitle, s.upper]} accessibilityRole="header">
+          On now
+        </Text>
+        {programmes.map((hit) => (
+          <ProgrammeRow key={hit.key} hit={hit} providerName={all ? (names.get(hit.providerId) ?? null) : null} now={now} onPlay={onPlayProgramme} />
+        ))}
+      </View>
+    ) : null;
+
   const loading = !all && data.status === 'loading' && !data.channels.length;
   const failed = !all && data.status === 'error' && !data.channels.length;
 
@@ -507,7 +540,7 @@ export function LiveTvScreen() {
       style={[s.flex, listWidth !== undefined ? { width: listWidth } : null]}
       // TV: room for the heart's focus scale and ring at the trailing edge (the list clips).
       contentContainerStyle={{ paddingLeft: wide ? 0 : l.gutter, paddingRight: isTV ? tvFocusBleed(HEART_TV) : wide ? 0 : l.gutter, paddingBottom: bottomPad, paddingTop: spacing.xs, flexGrow: 1 }}
-      getItemLayout={(_d, index) => ({ length: CHANNEL_ROW_HEIGHT, offset: CHANNEL_ROW_HEIGHT * index, index })}
+      getItemLayout={(_d, index) => ({ length: CHANNEL_ROW_HEIGHT, offset: headerHeight + CHANNEL_ROW_HEIGHT * index, index })}
       initialNumToRender={14}
       // TV: fewer rows mounted and rendered per batch, so a slow TV stick keeps up with the D-pad.
       maxToRenderPerBatch={isTV ? 8 : 16}
@@ -521,22 +554,26 @@ export function LiveTvScreen() {
       // The search field, recent searches and the count sit in the list's header: the list must be a
       // direct child of the row (TV: its focus guide takes no size from a column around it).
       ListHeaderComponent={
-        wide ? (
-          <>
-            {isTV && searchOpen ? searchField('column') : null}
-            {recentChips}
-            {results}
-          </>
-        ) : (
-          (results ?? undefined)
-        )
+        <View
+          onLayout={(e) => {
+            const h = Math.round(e.nativeEvent.layout.height);
+            if (h !== headerHeight) setHeaderHeight(h);
+          }}>
+          {wide && isTV && searchOpen ? searchField('column') : null}
+          {wide ? recentChips : null}
+          {onNow}
+          {results}
+        </View>
       }
       ListEmptyComponent={
-        <View style={[s.listEmpty, searching && s.listEmptyTop]}>
-          <Icon name={empty.icon} size={scaled(iconSize.lg)} color={c.text3} />
-          <Text style={s.listEmptyTitle}>{empty.title}</Text>
-          <Text style={s.listEmptyText}>{empty.text}</Text>
-        </View>
+        // Programmes but no channels: "On now" is the answer, so no "No channels match".
+        onNow ? undefined : (
+          <View style={[s.listEmpty, searching && s.listEmptyTop]}>
+            <Icon name={empty.icon} size={scaled(iconSize.lg)} color={c.text3} />
+            <Text style={s.listEmptyTitle}>{empty.title}</Text>
+            <Text style={s.listEmptyText}>{empty.text}</Text>
+          </View>
+        )
       }
       renderItem={renderItem}
     />
@@ -667,6 +704,8 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   chipsContent: { gap: spacing.sm, paddingVertical: spacing.xs },
   recent: { gap: spacing.xxs, marginBottom: spacing.xs },
   recentTitle: { ...font(type.caption1), fontWeight: '600' as const, letterSpacing: 0.5, color: c.text3, marginLeft: spacing.xs },
+  onNow: { gap: spacing.xxs, marginBottom: spacing.sm },
+  upper: { textTransform: 'uppercase' as const },
   resultCount: { ...font(type.footnote), color: c.text3, marginLeft: spacing.sm, marginBottom: spacing.xs },
   banner: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surface2, marginBottom: spacing.sm },
   bannerText: { ...font(type.footnote), color: c.text2, flex: 1 },

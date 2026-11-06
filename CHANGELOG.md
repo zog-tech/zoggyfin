@@ -13,6 +13,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Search Live TV programmes.** Search in Live TV now has an "On now" section. It lists programmes
+  whose title matches your words and that are on now or start within the hour. Tap one to watch its
+  channel. Streams that share one guide show as one row with "+N streams". The app downloads the
+  guide in the background, on Wi-Fi or Ethernet only on phones. The plain web has no programme
+  results (the Mac app has them).
 - **Share IPTV providers with other users.** A server admin opens a provider and chooses "Share
   with…": some users of the server, or everyone (also users added later). The users get the provider
   on all their devices, marked "Shared by" and the admin's name. They cannot change it, remove it or

@@ -11,6 +11,7 @@ import { storage } from '@/storage/kv';
 
 import { EMPTY_LISTS } from './lists';
 import { EMPTY_PROVIDERS, migrateLists, migrateProviders } from './migrate';
+import type { SlicedProgramme } from './programme-index';
 import { migrateRecentSearches, type RecentSearches, type SearchIndex } from './search';
 import type { Channel, ChannelLists, GuideWindow, ProvidersSnapshot } from './types';
 
@@ -47,6 +48,14 @@ export interface IptvState {
   guideStatus: Record<string, LoadStatus>;
   /** Recent channel searches per provider (loaded on first use). */
   searches: Record<string, RecentSearches>;
+  /** Per provider: the programmes on in `from`..`to` (about two hours), from the saved programme index. */
+  programmeSlices: Record<string, ProgrammeSlice>;
+}
+
+export interface ProgrammeSlice {
+  from: number;
+  to: number;
+  programmes: SlicedProgramme[];
 }
 
 export const useIptvStore = create<IptvState>(() => ({
@@ -59,6 +68,7 @@ export const useIptvStore = create<IptvState>(() => ({
   guideNames: {},
   guideStatus: {},
   searches: {},
+  programmeSlices: {},
 }));
 
 export const iptvState = () => useIptvStore.getState();
