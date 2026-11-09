@@ -14,6 +14,8 @@ const mockFiles = new Map<string, string>();
 const mockResponses = new Map<string, unknown>();
 const mockTexts = new Map<string, string>();
 const mockRequested: string[] = [];
+/** While set, file reads wait for it (a slow disk). */
+const mockReadHold: { promise: Promise<void> | null } = { promise: null };
 
 jest.mock('@/storage/kv', () => ({
   storage: {
@@ -29,7 +31,12 @@ jest.mock('@/storage/secure', () => ({
 jest.mock('../files', () => ({
   iptvFiles: {
     persistent: true,
-    read: async (p: string) => mockFiles.get(p) ?? null,
+    read: async (p: string) => {
+      // The read sees the file as it is now, and answers late.
+      const text = mockFiles.get(p) ?? null;
+      if (mockReadHold.promise) await mockReadHold.promise;
+      return text;
+    },
     write: async (p: string, t: string) => void mockFiles.set(p, t),
     remove: async (p: string) => {
       for (const k of [...mockFiles.keys()]) if (k.startsWith(p)) mockFiles.delete(k);
@@ -69,7 +76,7 @@ import { ALL_CATEGORY, episodeRequest, filmRequest, findFilm, findSeries, loadAl
 // eslint-disable-next-line import/first
 import { catalogueKey, categoryKey, infoKey, resetVodState, vodState } from '../vod-store';
 // eslint-disable-next-line import/first
-import type { SeriesInfo } from '../vod-types';
+import { type SeriesInfo, VOD_CACHE_SCHEMA_VERSION } from '../vod-types';
 
 const XTREAM = 'http://panel.example.com:8080';
 const api = (q: string) => `${XTREAM}/player_api.php?username=jane&password=s3cret${q}`;
@@ -82,6 +89,7 @@ beforeEach(() => {
   mockResponses.clear();
   mockTexts.clear();
   mockRequested.length = 0;
+  mockReadHold.promise = null;
   setIptvState({ scope: null });
   resetVodState();
 });
@@ -247,6 +255,24 @@ describe('IPTV films and series', () => {
     expect(mockKv.has(`iptv.vod.${id}`)).toBe(false);
     expect([...mockFiles.keys()]).toEqual([]);
     expect(Object.keys(vodState().categories)).toEqual([]);
+  });
+
+  it('a forced load during a normal load wins: the saved copy never replaces the fresh data', async () => {
+    const id = await addXtream();
+    const old = { schemaVersion: VOD_CACHE_SCHEMA_VERSION, providerId: id, savedAt: Date.now(), data: [{ id: '99', name: 'Old' }] };
+    mockFiles.set(`iptv/${id}/vod/film-cats.json`, JSON.stringify(old));
+    let release!: () => void;
+    mockReadHold.promise = new Promise<void>((r) => (release = r));
+    const normal = loadCategories(id, 'film');
+    const forced = loadCategories(id, 'film', true);
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    mockReadHold.promise = null;
+    release();
+    await Promise.all([normal, forced]);
+    expect(vodState().categories[catalogueKey(id, 'film')]?.data.map((c) => c.name)).toEqual(['Action', 'Drama', 'Other']);
+    // A normal load during the forced one joins it: no third request.
+    await Promise.all([loadCategories(id, 'film', true), loadCategories(id, 'film')]);
+    expect(asked('&action=get_vod_categories')).toBe(2);
   });
 
   it('another account starts with no catalogues in memory', async () => {

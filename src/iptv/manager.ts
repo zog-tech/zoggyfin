@@ -7,6 +7,7 @@
 import { Platform } from 'react-native';
 
 import { useSessionStore } from '@/auth/session-store';
+import { createKeyedGate } from '@/lib/async-gate';
 import { randomId } from '@/lib/id';
 import { tsBridge } from '@/native/ts-bridge';
 import { isDesktop } from '@/platform/desktop';
@@ -97,6 +98,9 @@ function applyScope(scope: Scope | null): void {
   const activeId = resolveActive(providers.startWith, scope ? loadActive(scope) : null, providers.order);
   // Another account: its providers only; the memory of the old ones goes.
   guideOwner.resetAll();
+  listGate.cancelAll();
+  inFlight.clear();
+  reading.clear();
   setIptvState({ scope: id, providers, activeId, data: {}, lists: {}, guides: {}, guideNames: {}, guideStatus: {}, programmeSlices: {} });
   resetVodState();
 }
@@ -223,11 +227,28 @@ async function writeChannels(id: string, channels: Channel[]): Promise<void> {
 }
 
 const inFlight = new Map<string, Promise<void>>();
+/** Saved channel lists being read (`ensureLoaded`), so a caller can wait for one that another caller started. */
+const reading = new Map<string, Promise<void>>();
+/**
+ * The channel list loads of each provider: a load whose provider was saved,
+ * removed or loaded again by sync since it began is stale, and writes
+ * nothing (no channels, no secrets, no guide).
+ */
+const listGate = createKeyedGate<string>();
 
-/** Loads the channel list from the provider again and saves it. */
+/** Makes the running list loads of a provider stale, so the next caller starts a new one. */
+function resetList(id: string): void {
+  listGate.cancel(id);
+  inFlight.delete(id);
+  reading.delete(id);
+}
+
+/** Loads the channel list from the provider again and saves it. A call while one runs joins it. */
 export function refresh(id: string): Promise<void> {
   const running = inFlight.get(id);
   if (running) return running;
+  const token = listGate.begin(id);
+  const current = () => listGate.current(id, token) && !!providerById(id);
   const job = (async () => {
     const record = providerById(id);
     if (!record) return;
@@ -236,29 +257,31 @@ export function refresh(id: string): Promise<void> {
     try {
       const secrets = readSecrets(id);
       const r = await fetchChannels(record, secrets);
-      if (!providerById(id)) return;
+      if (!current()) return;
       if (r.playlistGuideUrl !== secrets.playlistGuideUrl) {
         writeSecrets(id, { ...secrets, playlistGuideUrl: r.playlistGuideUrl });
         // The playlist names another guide (and the person typed none): the programme index of the old one goes.
         if (record.kind === 'm3u' && !secrets.guideUrl) await dropProgrammeIndex(id);
+        if (!current()) return;
       }
       showChannels(id, r.channels);
       await writeChannels(id, r.channels);
+      if (!current()) return;
       updateRecord(id, { refreshedAt: Date.now(), channelCount: liveCount(id, r.channels.length), hasGuide: record.kind === 'xtream' || !!(secrets.guideUrl || r.playlistGuideUrl) });
       void loadGuide(id, true);
     } catch (e) {
+      if (!current()) return;
       const text = iptvErrorText(e);
       const now = iptvState().data[id] ?? EMPTY_DATA;
       // A refresh that fails keeps the saved list; the error shows above it.
       patchData(id, now.channels.length ? { status: 'ready', refreshing: false, error: text } : { status: 'error', error: text, refreshing: false });
     }
-  })().finally(() => inFlight.delete(id));
+  })().finally(() => {
+    if (inFlight.get(id) === job) inFlight.delete(id);
+  });
   inFlight.set(id, job);
   return job;
 }
-
-/** Saved channel lists being read (`ensureLoaded`), so a caller can wait for one that another caller started. */
-const reading = new Map<string, Promise<void>>();
 
 /** Shows the saved list (or loads it), and refreshes a list that is a day old. */
 export function ensureLoaded(id: string): Promise<void> {
@@ -266,7 +289,9 @@ export function ensureLoaded(id: string): Promise<void> {
   if (!iptvState().lists[id]) setIptvState({ lists: { ...iptvState().lists, [id]: loadLists(id) } });
   if (data && data.status !== 'idle') return Promise.resolve();
   patchData(id, { status: 'loading', error: null });
-  const job = readSaved(id).finally(() => reading.delete(id));
+  const job = readSaved(id).finally(() => {
+    if (reading.get(id) === job) reading.delete(id);
+  });
   reading.set(id, job);
   return job;
 }
@@ -283,7 +308,10 @@ export async function channelsWhenLoaded(id: string): Promise<readonly Channel[]
 }
 
 async function readSaved(id: string): Promise<void> {
+  const token = listGate.begin(id);
   const raw = await iptvFiles.read(channelsPath(id));
+  // A refresh, an edit or a sync reload began during the read: the file may be of the old list.
+  if (!listGate.current(id, token) || !providerById(id)) return;
   let file: ChannelsFile | null = null;
   if (raw) {
     try {
@@ -360,6 +388,8 @@ export async function saveProvider(input: ProviderInput, id?: string): Promise<s
   const { record, secrets } = fromInput(input, { id: pid, createdAt: old?.createdAt ?? Date.now() }, oldSecrets);
   const r = await fetchChannels(record, secrets);
   const full: ProviderSecrets = { ...secrets, playlistGuideUrl: r.playlistGuideUrl };
+  // A refresh that began before this save would write the old list and login back.
+  if (old) resetList(pid);
   writeSecrets(pid, full);
   // A changed login or guide address: the programme index of the old one goes.
   if (old && guideSourceOf(old, oldSecrets) !== guideSourceOf(record, full)) await dropProgrammeIndex(pid);
@@ -415,6 +445,7 @@ export async function removeProvider(id: string): Promise<void> {
   removeVodData(id);
   forgetProviderTracks(id);
   guideOwner.reset(id);
+  resetList(id);
   setIptvState({
     data: without(st.data, id),
     guides: without(st.guides, id),
@@ -450,6 +481,7 @@ export async function applySynced(changes: SyncedChanges): Promise<void> {
   for (const [id, secrets] of Object.entries(changes.secrets)) writeSecrets(id, secrets);
   for (const id of changes.reload) {
     guideOwner.reset(id);
+    resetList(id);
     const st = iptvState();
     setIptvState({ data: without(st.data, id), guides: without(st.guides, id), guideNames: without(st.guideNames, id), guideStatus: without(st.guideStatus, id) });
     await dropProgrammeIndex(id);
@@ -486,6 +518,7 @@ export async function applyShared(upsert: { record: ProviderRecord; secrets: Pro
     writeSecrets(u.record.id, u.secrets);
     if (u.reload) {
       guideOwner.reset(u.record.id);
+      resetList(u.record.id);
       const st = iptvState();
       setIptvState({ data: without(st.data, u.record.id), guides: without(st.guides, u.record.id), guideNames: without(st.guideNames, u.record.id), guideStatus: without(st.guideStatus, u.record.id) });
       await dropProgrammeIndex(u.record.id);
