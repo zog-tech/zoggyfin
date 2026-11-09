@@ -2,13 +2,12 @@
  * The "Play on…" sheet: the other devices of this account that Jellyfin can
  * control, with what each one plays. A tap starts the item there, and the
  * toast offers the Remote screen. One host at the root; any screen opens it
- * with `openPlayOn(item)`.
+ * with `openPlayOn(item)`. The phases and the rule that a late request never
+ * acts on a newer open are in `play-on-store.ts`.
  */
-import { useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { create } from 'zustand';
 
-import type { BaseItemDto, SessionInfoDto } from '@/api/types';
+import type { SessionInfoDto } from '@/api/types';
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { makeSheetStyles, Sheet, SheetRow } from '@/components/sheet';
@@ -18,35 +17,34 @@ import { toast } from '@/lib/toast';
 import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, useStyles, useTheme } from '@/theme';
 
 import { deviceKind, sessionDetail, sessionName, sessionsFor, startTicksFor } from './logic';
+import { beginPlayOn, closePlayOn, endPlayOn, usePlayOn } from './play-on-store';
 import { openRemote, useControllableSessions, useRemoteActions } from './use-remote';
 
-const usePlayOn = create<{ item: BaseItemDto | null }>(() => ({ item: null }));
-
-export function openPlayOn(item: BaseItemDto): void {
-  if (item.Id) usePlayOn.setState({ item });
-}
+export { openPlayOn } from './play-on-store';
 
 export function PlayOnHost() {
-  const item = usePlayOn((s) => s.item);
-  return <PlayOnSheet item={item} onClose={() => usePlayOn.setState({ item: null })} />;
+  return <PlayOnSheet />;
 }
 
-function PlayOnSheet({ item, onClose }: { item: BaseItemDto | null; onClose: () => void }) {
+function PlayOnSheet() {
   const s = useStyles(makeStyles);
   const sheet = useStyles(makeSheetStyles);
   const { c } = useTheme();
+  const phase = usePlayOn((st) => st.phase);
+  const item = phase.name === 'closed' ? null : phase.item;
+  const busy = phase.name === 'starting' ? phase.target : null;
   const q = useControllableSessions({ enabled: !!item });
   const actions = useRemoteActions();
-  const [busy, setBusy] = useState<string | null>(null);
   const targets = item ? sessionsFor(q.sessions, item) : [];
 
   const play = async (target: SessionInfoDto) => {
-    if (!item?.Id || !target.Id || busy) return;
-    setBusy(target.Id);
-    const ok = await actions.play(target.Id, [item.Id], startTicksFor(item));
-    setBusy(null);
+    if (!item?.Id || !target.Id) return;
+    const run = beginPlayOn(target.Id);
+    if (!run?.item.Id) return;
+    const ok = await actions.play(target.Id, [run.item.Id], startTicksFor(run.item));
+    endPlayOn(run.token, ok);
     if (!ok) return;
-    onClose();
+    // The item plays there even when the sheet was closed in the meantime.
     const id = target.Id;
     toast(`Playing on ${sessionName(target)}`, { icon: 'checkmark', action: { label: 'Control', onPress: () => openRemote(id) } });
   };
@@ -89,7 +87,7 @@ function PlayOnSheet({ item, onClose }: { item: BaseItemDto | null; onClose: () 
   }
 
   return (
-    <Sheet visible={!!item} title={item?.Name ? `Play “${item.Name}” on` : 'Play on'} onClose={onClose} doneLabel="Cancel">
+    <Sheet visible={!!item} title={item?.Name ? `Play “${item.Name}” on` : 'Play on'} onClose={closePlayOn} doneLabel="Cancel">
       <TvScrollView style={s.scroll} contentContainerStyle={s.content}>
         {body}
       </TvScrollView>
