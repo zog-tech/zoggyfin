@@ -163,6 +163,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Seeking with the remote or a double tap no longer opens the full controls.** On Android TV
+  and Fire TV with the controls hidden, a double Left or Right starts a seek run: each further press
+  seeks 10 s at once, and rewind and fast forward do the same. On phones, tablets and touch screens,
+  a double tap on a side does the same with taps. Only a bubble with the total (for example +30 s)
+  and a thin progress line show, until the run ends.
 - Late results no longer overwrite newer state. A slow step that ends after you moved on is now dropped:
   - A quick switch to a channel or film no longer stops it with an error.
   - A finished queue no longer stops the song you just started.
