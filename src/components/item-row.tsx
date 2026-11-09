@@ -75,7 +75,7 @@ export function ItemRow({
       tvFocusRest.push(() => {
         if (billboard) showOnBillboard(it);
         prefetch(it);
-      });
+      }, it);
     },
     [billboard, prefetch],
   );

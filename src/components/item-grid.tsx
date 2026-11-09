@@ -104,7 +104,7 @@ export function ItemGrid({
   const onTileFocus = useCallback(
     (it: BaseItemDto, index: number) => {
       centerRow(index);
-      tvFocusRest.push(() => prefetch(it));
+      tvFocusRest.push(() => prefetch(it), it);
     },
     [centerRow, prefetch],
   );

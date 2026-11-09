@@ -6,6 +6,7 @@ import type { BaseItemDto } from '@/api/types';
 import { DownloadBadge, downloadLabel } from '@/components/download-indicator';
 import { Icon } from '@/components/icon';
 import { useDownloadStatus } from '@/downloads';
+import { tvFocusRest } from '@/features/tv/focus-settle';
 import { playedFraction, remainingLabel, subtitleFor } from '@/lib/format';
 import { isTV } from '@/platform/tv';
 import { createStyles,
@@ -47,7 +48,10 @@ export interface TileProps {
   preferredFocus?: boolean;
   /** Only the artwork, no title under it (TV Home: the billboard shows the focused title). */
   artOnly?: boolean;
-  /** The tile took the focus (TV). Pass a stable function: the tile is a memo. */
+  /**
+   * The tile took the focus (TV). Pass a stable function: the tile is a memo.
+   * Work for `tvFocusRest` must use the item as its key: the tile drops it on blur.
+   */
   onFocusItem?: (item: BaseItemDto, index: number) => void;
   /** The tile's place in its row or grid, passed back to `onFocusItem`. */
   index?: number;
@@ -106,6 +110,8 @@ export const Tile = memo(function Tile({
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       firstFocus={preferredFocus}
       onFocus={onFocusItem ? () => onFocusItem(item, index) : undefined}
+      // The focus left before it rested: the work this tile pushed (keyed by its item) must not run.
+      onBlur={onFocusItem ? () => tvFocusRest.drop(item) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ width }}>

@@ -7,6 +7,11 @@
  * the focus only passes does nothing: no store write, no re-render, no fetch.
  * One timer serves every row on the screen, so a move to another row also
  * drops the work of the row that the focus left.
+ * A tile that loses the focus drops its own work (`drop` with its key), so a
+ * move from a tile to a control that is not a tile (a "See all" header, the
+ * side menu) runs nothing. `drop` touches only work with the same key, so the
+ * order of blur and focus between two tiles does not matter: the new tile's
+ * work always stays.
  */
 
 /** How long the focus must stay on a tile before its work runs (ms). */
@@ -23,25 +28,34 @@ const realTimers: SettleTimers = {
 };
 
 export interface Settle<T> {
-  /** A new value: it replaces the waiting one and the wait starts again. */
-  push: (value: T) => void;
+  /** A new value: it replaces the waiting one and the wait starts again. `key` names its owner for `drop`. */
+  push: (value: T, key?: unknown) => void;
+  /** Drops the waiting value only if it has this key. */
+  drop: (key: unknown) => void;
   /** Drops the waiting value. */
   cancel: () => void;
 }
 
 export function createSettle<T>(delayMs: number, onSettle: (value: T) => void, timers: SettleTimers = realTimers): Settle<T> {
   let handle: unknown = null;
+  let owner: unknown = undefined;
   const cancel = () => {
     if (handle !== null) timers.clear(handle);
     handle = null;
+    owner = undefined;
   };
   return {
-    push: (value) => {
+    push: (value, key) => {
       cancel();
+      owner = key;
       handle = timers.set(() => {
         handle = null;
+        owner = undefined;
         onSettle(value);
       }, delayMs);
+    },
+    drop: (key) => {
+      if (handle !== null && key !== undefined && owner === key) cancel();
     },
     cancel,
   };

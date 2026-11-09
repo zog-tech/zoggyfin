@@ -7,7 +7,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { forgetContentFocus, noteControlFocus, noteControlMounted, notePreferredControl, rememberContentFocus, TvPageContext, tvPageFocus } from '@/features/tv/focus';
 import { focusFromKeyboard } from '@/lib/input-modality';
@@ -47,6 +47,9 @@ export interface TouchableProps extends Omit<PressableProps, 'style' | 'children
 }
 
 const STANDARD = Easing.bezier(...motion.easing.standard);
+
+/** TV: the shared value behind the focus mark. Other platforms make none (they keep the state path). */
+const useFocusMark: () => SharedValue<number> | null = isTV ? () => useSharedValue(0) : () => null;
 
 function pressScale(kind: TouchKind): number {
   if (kind === 'tile') return motion.press.tileScale;
@@ -100,7 +103,7 @@ export function Touchable({
   // The real focus, for the scale in the press and hover handlers (the state may not follow it on TV).
   const focusedNow = useRef(false);
   // TV: 1 while the control shows its focus mark (ring or row fill).
-  const mark = useSharedValue(0);
+  const mark = useFocusMark();
   const page = useContext(TvPageContext);
   // A function child or style reads the state, so it needs the re-render on focus.
   const readsState = typeof children === 'function' || typeof style === 'function';
@@ -141,15 +144,12 @@ export function Touchable({
   };
 
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
-  const markStyle = useAnimatedStyle(() => ({ opacity: disabled ? 0 : mark.get() }));
 
   const ringWidth = isTV ? tv.focusRingWidth : 2;
   const ringGap = isTV ? tv.focusRingGap : 2;
   // TV rows: the fill is the only focus mark (a ring on top of a fill read as two).
   const tvRow = isTV && kind === 'row';
-  // TV draws both marks always and shows them by opacity (markStyle).
-  const showRing = ring && !tvRow && (isTV || (focused && !disabled));
-  const showFill = tvRow && isTV;
+  const showRing = ring && !tvRow && focused && !disabled;
   const lifted = lifts && (hovered || focused) && !disabled;
 
   const inner = typeof style === 'function' ? style(state) : style;
@@ -184,7 +184,7 @@ export function Touchable({
         focusedNow.current = visible;
         if (!isTV || readsState) setFocused(visible);
         if (isTV) {
-          mark.set(visible ? 1 : 0);
+          mark?.set(visible ? 1 : 0);
           rememberContentFocus(own.current);
         }
         if (visible) scale.set(withTiming(restScale(hovered, true), { duration: motion.duration.fast, easing: STANDARD }));
@@ -193,7 +193,7 @@ export function Touchable({
       onBlur={(e) => {
         if (isTV) {
           noteControlFocus(page, false);
-          mark.set(0);
+          mark?.set(0);
         }
         focusedNow.current = false;
         if (!isTV || readsState) setFocused(false);
@@ -207,7 +207,7 @@ export function Touchable({
       {/* TV: no shadow; an elevation shadow under a scaling tile is slow on a TV stick. */}
       <Animated.View style={[inner, animated, lifted && !isTV && t.shadow('raised')]}>
         {/* Under the content, over the row's own background. */}
-        {showFill ? <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.tvRowFill, { borderRadius: radius }, markStyle]} /> : null}
+        {mark && tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[StyleSheet.absoluteFill, styles.tvRowFill, { borderRadius: radius }]} /> : null}
         {typeof children === 'function' ? children(state) : children}
         {kind === 'tile' || kind === 'button' || kind === 'icon' ? (
           <View
@@ -219,27 +219,29 @@ export function Touchable({
             ]}
           />
         ) : null}
-        {showRing ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.ring,
-              {
-                top: -(ringGap + ringWidth),
-                left: -(ringGap + ringWidth),
-                right: -(ringGap + ringWidth),
-                bottom: -(ringGap + ringWidth),
-                borderRadius: radius + ringGap + ringWidth,
-                borderWidth: ringWidth,
-                borderColor: isTV ? mediaColors.white : t.c.focusRing,
-              },
-              isTV && markStyle,
-            ]}
-          />
+        {mark ? (
+          ring && !tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[styles.ring, ringBox(radius, ringGap, ringWidth), { borderColor: mediaColors.white }]} /> : null
+        ) : showRing ? (
+          <View pointerEvents="none" style={[styles.ring, ringBox(radius, ringGap, ringWidth), { borderColor: t.c.focusRing }]} />
         ) : null}
       </Animated.View>
     </Pressable>
   );
+}
+
+/** The ring's box: a gap outside the control, then the ring. */
+function ringBox(radius: number, gap: number, width: number): ViewStyle {
+  const out = -(gap + width);
+  return { top: out, left: out, right: out, bottom: out, borderRadius: radius + gap + width, borderWidth: width };
+}
+
+/**
+ * TV: a focus mark (ring or row fill) that is always mounted and shows by
+ * opacity from the shared value, so a focus move needs no React render.
+ */
+function TvMark({ mark, disabled, style }: { mark: SharedValue<number>; disabled: boolean; style: StyleProp<ViewStyle> }) {
+  const shown = useAnimatedStyle(() => ({ opacity: disabled ? 0 : mark.get() }));
+  return <Animated.View pointerEvents="none" style={[style, shown]} />;
 }
 
 const styles = StyleSheet.create({

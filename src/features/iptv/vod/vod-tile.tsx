@@ -8,6 +8,7 @@ import { memo } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 
 import { Touchable } from '@/components/touchable';
+import { tvFocusRest } from '@/features/tv/focus-settle';
 import { createStyles, type AppTheme, font, mediaColors, radius, scaled, scriptStyle, sizes, type, useStyles } from '@/theme';
 
 import { VodArt } from './vod-art';
@@ -41,7 +42,10 @@ export const VodTile = memo(function VodTile({
   onLongPress?: (data: VodTileData) => void;
   /** TV: take the first focus of the page. */
   firstFocus?: boolean;
-  /** The tile took the focus (TV). Pass a stable function: the tile is a memo. */
+  /**
+   * The tile took the focus (TV). Pass a stable function: the tile is a memo.
+   * Work for `tvFocusRest` must use the data as its key: the tile drops it on blur.
+   */
   onFocus?: (data: VodTileData, index: number) => void;
   /** The tile's place in its row, passed back to `onFocus`. */
   index?: number;
@@ -58,6 +62,8 @@ export const VodTile = memo(function VodTile({
       onLongPress={onLongPress ? () => onLongPress(data) : undefined}
       firstFocus={firstFocus}
       onFocus={onFocus ? () => onFocus(data, index) : undefined}
+      // The focus left before it rested: work keyed by this tile's data must not run.
+      onBlur={onFocus ? () => tvFocusRest.drop(data) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ width }}>
