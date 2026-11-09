@@ -509,6 +509,22 @@ export function webDashboardUrl(serverUrl: string, page = 'dashboard'): string {
   return `${serverUrl.replace(/\/+$/, '')}/web/#/${page}`;
 }
 
+/**
+ * The draft after the loaded policy changes (a refetch, the "Account enabled"
+ * switch, a save). Unsaved edits stay: each field the user changed against the
+ * policy loaded before keeps the user's value; every other field takes the new
+ * loaded value. With no edits, or after the user's own save, the draft starts
+ * again from the new policy. Null when no policy is loaded.
+ */
+export function rebaseDraft(before: UserPolicy | undefined, after: UserPolicy | undefined, draft: PolicyEdits | null, ownSave: boolean): PolicyEdits | null {
+  if (!after) return null;
+  const fresh = draftFrom(after);
+  if (!before || !draft || ownSave) return fresh;
+  const out: Record<string, unknown> = { ...fresh };
+  for (const k of policyDiff(before, draft)) out[k] = draft[k];
+  return out as PolicyEdits;
+}
+
 // ---- Actions in flight --------------------------------------------------------------
 
 /**

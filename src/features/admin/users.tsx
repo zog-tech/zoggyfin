@@ -33,6 +33,7 @@ import {
   parentalRatingOptions,
   type PolicyEdits,
   policyDiff,
+  rebaseDraft,
   SYNCPLAY_OPTIONS,
   syncPlayLabel,
   toggleLibrary,
@@ -144,11 +145,15 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
   const user = users.data?.find((u) => u.Id === userId);
   const saved = user?.Policy;
   const [draft, setDraft] = useState<PolicyEdits | null>(saved ? draftFrom(saved) : null);
-  // A new saved policy (after a save or a refresh) starts a new draft.
-  const [base, setBase] = useState(saved);
-  if (base !== saved) {
-    setBase(saved);
-    setDraft(saved ? draftFrom(saved) : null);
+  // A new loaded policy (a refetch, the enabled switch, a save) keeps the
+  // unsaved edits (rebaseDraft). Another user, or the user's own save, starts
+  // a new draft.
+  const [base, setBase] = useState({ userId, policy: saved });
+  const [ownSave, setOwnSave] = useState(false);
+  if (base.userId !== userId || base.policy !== saved) {
+    setBase({ userId, policy: saved });
+    setDraft((d) => rebaseDraft(base.policy, saved, base.userId === userId ? d : null, ownSave));
+    setOwnSave(false);
   }
   const [picker, setPicker] = useState<Picker>(null);
   const [sheet, setSheet] = useState<'password' | 'delete' | null>(null);
@@ -176,7 +181,9 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
   const save = async () => {
     const next = buildPolicyUpdate(saved, draft);
     if (!next) return;
+    setOwnSave(true);
     await sendPolicy(next, `Saved ${describeChanges(changes)} for ${name}`);
+    setOwnSave(false);
   };
 
   const setDisabled = async (off: boolean) => {
