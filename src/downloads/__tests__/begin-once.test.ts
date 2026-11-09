@@ -50,6 +50,7 @@ jest.mock('@/api/jellyfin', () => ({
       mockItems.push(resolve);
       void id;
     }),
+  getPlaybackInfo: async () => ({ MediaSources: [] }),
 }));
 
 jest.mock('@/api/client', () => ({ getApi: () => ({}) }));

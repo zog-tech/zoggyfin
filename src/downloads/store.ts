@@ -93,6 +93,57 @@ export function dropRecord(itemId: string): void {
   persist(true);
 }
 
+/**
+ * The server answered with another id for an item (for example a catalog
+ * song that the server saved to its library on the first request): the
+ * record moves to the new id, in a new folder `dir`, with no partial bytes
+ * (the caller removes the old folder). Collections that list the old id list
+ * the new one. When a record of the new id is there already, the old record
+ * is dropped and the existing one stays as it is. Pure.
+ */
+export function rekeySnapshot(
+  s: Pick<DownloadsState, 'records' | 'collections'>,
+  oldId: string,
+  newId: string,
+  dir: string,
+): Pick<DownloadsState, 'records' | 'collections'> & { result: 'moved' | 'exists' | 'missing' } {
+  const old = s.records[oldId];
+  if (!old || !newId || oldId === newId) return { records: s.records, collections: s.collections, result: 'missing' };
+  const cur = s.records[newId];
+  const exists = !!cur && cur.state !== 'cancelled';
+  const records = { ...s.records };
+  delete records[oldId];
+  if (!exists) {
+    records[newId] = {
+      ...old,
+      itemId: newId,
+      item: { ...old.item, Id: newId },
+      group: old.group.type === 'Single' && old.group.id === oldId ? { ...old.group, id: newId } : old.group,
+      dir,
+      mediaSourceId: old.mediaSourceId === oldId ? newId : old.mediaSourceId,
+      bytesDone: 0,
+      bytesTotal: null,
+      validator: null,
+      speed: 0,
+      progressAt: null,
+    };
+  }
+  const collections: Record<string, DownloadCollection> = {};
+  for (const c of Object.values(s.collections)) {
+    collections[c.id] = c.itemIds.includes(oldId) ? { ...c, itemIds: [...new Set(c.itemIds.map((id) => (id === oldId ? newId : id)))] } : c;
+  }
+  return { records, collections, result: exists ? 'exists' : 'moved' };
+}
+
+/** `rekeySnapshot` on the store, saved at once. */
+export function rekeyRecord(oldId: string, newId: string, dir: string): 'moved' | 'exists' | 'missing' {
+  const { records, collections, result } = rekeySnapshot(useDownloadsStore.getState(), oldId, newId, dir);
+  if (result === 'missing') return result;
+  useDownloadsStore.setState({ records, collections });
+  persist(true);
+  return result;
+}
+
 export function putCollection(c: DownloadCollection): void {
   useDownloadsStore.setState((s) => ({ collections: { ...s.collections, [c.id]: c } }));
   persist(true);
