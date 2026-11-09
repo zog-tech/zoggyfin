@@ -113,8 +113,13 @@ class DownloadManager {
   private started = false;
   /** Ids with a live native task (started here or re-attached). */
   private native = new Set<string>();
-  /** Ids between "start" and the native task being created. */
+  /**
+   * Ids between "start" and the native task being created. A pause and a
+   * resume in that time put the record back in the queue: it must not begin
+   * again until this preparation ends, or two tasks write one file.
+   */
   private preparing = new Set<string>();
+  /** Ids whose file is in place and whose extras are being saved. */
   private finishing = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -310,24 +315,40 @@ class DownloadManager {
     for (const r of dueForRetry(list, now)) apply(r.itemId, { type: 'autoRetry', now });
     // A queued download of a user who signed out waits; it starts when that user signs in again.
     const owners = signedInOwners();
-    const ready = Object.values(downloadsState().records).filter((r) => r.state !== 'queued' || owners.has(`${r.serverId}.${r.userId}`));
+    // A record still in its last preparation or finishing waits too (see `preparing`).
+    const ready = Object.values(downloadsState().records).filter(
+      (r) => r.state !== 'queued' || (owners.has(`${r.serverId}.${r.userId}`) && !this.busy(r.itemId)),
+    );
     for (const r of pickToStart(ready, MAX_PARALLEL)) void this.begin(r.itemId);
   }
 
+  private busy(itemId: string): boolean {
+    return this.preparing.has(itemId) || this.finishing.has(itemId);
+  }
+
   private async begin(itemId: string): Promise<void> {
+    if (this.busy(itemId)) return;
+    const before = downloadsState().records[itemId];
     const r = apply(itemId, { type: 'start', now: Date.now() });
-    if (!r || r.state !== 'downloading') return;
+    // Only a record that moves from queued to downloading here begins.
+    if (!r || r === before || r.state !== 'downloading') return;
     if (this.native.has(itemId)) {
       if (await engine.resume(itemId)) return;
       // The engine lost the task: start it again below, from the partial file when it can.
       this.native.delete(itemId);
     }
     this.preparing.add(itemId);
+    let stale = false;
     try {
       const ctx = context(r);
       const plan = await this.prepare(r, ctx);
       const cur = downloadsState().records[itemId];
-      if (!cur || cur.state !== 'downloading') return;
+      // Paused, cancelled or deleted meanwhile. A resume in that time waits for this
+      // preparation to end; the tick below then starts it again.
+      if (!cur || cur.state !== 'downloading') {
+        stale = true;
+        return;
+      }
       files.ensureDir(cur.dir);
       const resume = canResume(r, plan);
       // A partial file of an earlier try that cannot continue would block the move into place.
@@ -348,6 +369,7 @@ class DownloadManager {
       this.tick();
     } finally {
       this.preparing.delete(itemId);
+      if (stale) this.tick();
     }
   }
 
