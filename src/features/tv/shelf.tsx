@@ -19,7 +19,7 @@ import { ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { type FocusTarget, TvFocusGuide } from './focus';
 import { tvDrivenScroll } from './scroll';
-import { shelfWindow, type ShelfWindow } from './shelf-window';
+import { rowTraps, shelfWindow, type ShelfWindow } from './shelf-window';
 
 /** Home on TV: the page that scrolls the row with the focus under the billboard. */
 export interface TvRowPage {
@@ -71,12 +71,22 @@ export function TvShelf<T>({
   const [state, setState] = useState<{ win: ShelfWindow; focus: number }>(() => ({ win: shelfWindow(null, 0, count, perScreen), focus: 0 }));
   // A new item count or screen width fits the same window again, around the same focus.
   const shown = shelfWindow(state.win, state.focus, count, perScreen);
-  const live = useRef({ shown, count, perScreen });
+  // Left and Right stay in the row except from its first and last tile (rowTraps). The focus may
+  // outrun the window on fast presses: the next tile is then padding, and the press must not leave
+  // the row (Left would open the side menu). The traps change only at the ends of the row.
+  const [edgeFocus, setEdgeFocus] = useState(-1);
+  const traps = rowTraps(edgeFocus, count);
+  const live = useRef({ shown, count, perScreen, traps });
   useEffect(() => {
-    live.current = { shown, count, perScreen };
+    live.current = { shown, count, perScreen, traps };
   });
   const follow = useCallback((index: number) => {
-    const { shown: cur, count: n, perScreen: per } = live.current;
+    const { shown: cur, count: n, perScreen: per, traps: had } = live.current;
+    const want = rowTraps(index, n);
+    if (want.left !== had.left || want.right !== had.right) {
+      live.current = { ...live.current, traps: want };
+      setEdgeFocus(index);
+    }
     const next = shelfWindow(cur, index, n, per);
     if (next === cur) return;
     live.current = { ...live.current, shown: next };
@@ -97,7 +107,7 @@ export function TvShelf<T>({
   // focused one is cut off by the list edge instead of showing under the rail.
   const inset = Math.min(bleed, gutter);
   return (
-    <TvFocusGuide ref={row} autoFocus>
+    <TvFocusGuide ref={row} autoFocus trapLeft={traps.left} trapRight={traps.right}>
       <ScrollView
         ref={scroll}
         {...tvDrivenScroll}

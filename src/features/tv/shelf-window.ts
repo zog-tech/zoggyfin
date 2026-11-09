@@ -69,3 +69,28 @@ export function rowsToMount({
   if (contentHeight - Math.max(0, rowTop) >= 2 * listHeight) return mounted;
   return Math.min(total, mounted + 2);
 }
+
+/**
+ * Which sides of a row keep the focus in the row, for the focused tile
+ * `focus` of `count` (-1: no tile had the focus yet). Left stays in the row
+ * unless the focus is on the first tile (Left there opens the side menu);
+ * Right stays unless it is on the last tile. A press onto a tile that is not
+ * mounted yet (fast presses outrun the window) then keeps the focus in the
+ * row instead of sending it out of the row.
+ */
+export function rowTraps(focus: number, count: number): { left: boolean; right: boolean } {
+  return { left: focus > 0, right: focus >= 0 && focus < count - 1 };
+}
+
+/**
+ * How many Home sections are mounted: up to the last section whose id is
+ * mounted, and at least `min`. A section added above keeps the ones below it
+ * mounted (counting by place alone would drop the last one).
+ */
+export function mountedCut(ids: readonly string[], mounted: ReadonlySet<string>, min: number): number {
+  let cut = 0;
+  ids.forEach((id, i) => {
+    if (mounted.has(id)) cut = i + 1;
+  });
+  return Math.min(ids.length, Math.max(min, cut));
+}

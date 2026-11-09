@@ -13,7 +13,7 @@ import { Billboard, BillboardRows } from '@/features/tv/billboard';
 import type { FocusTarget } from '@/features/tv/focus';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
-import { rowsToMount } from '@/features/tv/shelf-window';
+import { mountedCut, rowsToMount } from '@/features/tv/shelf-window';
 import { ProfileMenu } from '@/features/profile/profile-menu';
 import { OfflineBanner } from '@/features/offline/offline-banner';
 import { HomeTogetherSheet, homeTogether, NearbyHomeCard, TogetherHeaderButton } from '@/features/together/home-entry';
@@ -25,6 +25,9 @@ import { createStyles, type AppTheme, sizes, spacing, tvPageEndPadding, useLayou
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 registerBuiltinHomeSections();
+
+/** TV: the Home sections mounted before any are measured. */
+const FIRST_ROWS = 2;
 
 export default function HomeScreen() {
   const s = useStyles(makeStyles);
@@ -47,14 +50,19 @@ export default function HomeScreen() {
   const rows = useRef(new Set<RefObject<FocusTarget | null>>());
   const [listH, setListH] = useState(0);
   const [end, setEnd] = useState<{ rowsH: number; lastTop: number } | null>(null);
-  // The sections mount as the focus comes near them (rowsToMount); once mounted they stay.
-  const [mounted, setMounted] = useState(2);
+  // The sections mount as the focus comes near them (rowsToMount); once mounted they stay (kept by id).
+  const [mountedIds, setMountedIds] = useState<ReadonlySet<string>>(() => new Set(sections.slice(0, FIRST_ROWS).map((sec) => sec.id)));
+  const ids = useMemo(() => sections.map((sec) => sec.id), [sections]);
+  const mounted = mountedCut(ids, mountedIds, FIRST_ROWS);
   const tvSizes = useRef({ contentH: 0, listH: 0 });
-  const total = sections.length;
   const grow = useCallback(() => {
     const { contentH, listH: h } = tvSizes.current;
-    setMounted((m) => rowsToMount({ mounted: m, total, contentHeight: contentH, rowTop: lastRowY.current, listHeight: h }));
-  }, [total]);
+    setMountedIds((prev) => {
+      const cut = mountedCut(ids, prev, FIRST_ROWS);
+      const next = rowsToMount({ mounted: cut, total: ids.length, contentHeight: contentH, rowTop: lastRowY.current, listHeight: h });
+      return next === cut ? prev : new Set([...prev, ...ids.slice(0, next)]);
+    });
+  }, [ids]);
   // New sections may add no height (empty rows hide): look again after they had time to lay out.
   useEffect(() => {
     if (!isTV) return;

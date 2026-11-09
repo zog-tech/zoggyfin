@@ -1,4 +1,4 @@
-import { rowsToMount, shelfWindow, type ShelfWindow } from '../shelf-window';
+import { mountedCut, rowsToMount, rowTraps, shelfWindow, type ShelfWindow } from '../shelf-window';
 
 describe('shelfWindow', () => {
   it('mounts a screen behind, the visible screen and a screen ahead of the focus', () => {
@@ -76,5 +76,34 @@ describe('rowsToMount', () => {
     expect(rowsToMount({ ...base, listHeight: 0 })).toBe(2);
     expect(rowsToMount({ ...base, mounted: 12 })).toBe(12);
     expect(rowsToMount({ ...base, mounted: 14 })).toBe(12);
+  });
+});
+
+describe('rowTraps', () => {
+  it('lets Left out only from the first tile and Right only from the last', () => {
+    expect(rowTraps(0, 16)).toEqual({ left: false, right: true });
+    expect(rowTraps(8, 16)).toEqual({ left: true, right: true });
+    expect(rowTraps(15, 16)).toEqual({ left: true, right: false });
+    expect(rowTraps(0, 1)).toEqual({ left: false, right: false });
+  });
+
+  it('traps nothing before a tile had the focus', () => {
+    expect(rowTraps(-1, 16)).toEqual({ left: false, right: false });
+  });
+});
+
+describe('mountedCut', () => {
+  it('mounts up to the last mounted id, at least the minimum', () => {
+    expect(mountedCut(['a', 'b', 'c', 'd'], new Set(), 2)).toBe(2);
+    expect(mountedCut(['a', 'b', 'c', 'd'], new Set(['a', 'b', 'c']), 2)).toBe(3);
+    expect(mountedCut(['a'], new Set(), 2)).toBe(1);
+  });
+
+  it('keeps the last mounted section when one is added above it', () => {
+    expect(mountedCut(['new', 'a', 'b', 'c', 'd'], new Set(['a', 'b', 'c']), 2)).toBe(4);
+  });
+
+  it('falls back to the one before when the last mounted section goes', () => {
+    expect(mountedCut(['a', 'b', 'd'], new Set(['a', 'b', 'c']), 2)).toBe(2);
   });
 });
