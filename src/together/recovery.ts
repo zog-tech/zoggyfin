@@ -8,8 +8,9 @@
  *   key (no new approval), with the delays of `retryDelay`.
  * - When the host drops, the guests try the host for `ELECTION_GRACE`. Then
  *   they elect a new host with `electHost`: only a member that has all the
- *   media (its own downloads) can be host; the earliest joined wins; ties go
- *   to the lower member id. Every member has the same member list (the host
+ *   media (its own downloads) and an open player can be host; the earliest
+ *   joined wins; ties go to the lower member id. A member that closed its
+ *   player (`noMedia`) cannot win: it has no position to continue from. Every member has the same member list (the host
  *   sent it), so every member elects the same device with no extra messages.
  * - The new host continues from its own player (it kept playing), so its
  *   position does not jump; `handoverAnchor` makes the anchor, and
@@ -44,15 +45,18 @@ export interface ElectionMember {
   joinedAt?: number;
   canHost?: boolean;
   away?: boolean;
+  /** The member closed its player or cannot play the item: it has no player to host from. */
+  noMedia?: boolean;
 }
 
 /**
  * The member that becomes the host after `oldHostId` dropped, or null when
  * no member has the media. `members` holds every member that the old host
- * listed, plus this device. Members that are away cannot be elected.
+ * listed, plus this device. Members that are away, or that have no player
+ * (`noMedia`), cannot be elected.
  */
 export function electHost(members: readonly ElectionMember[], oldHostId: string): string | null {
-  const candidates = members.filter((m) => m.id !== oldHostId && m.canHost === true && m.away !== true);
+  const candidates = members.filter((m) => m.id !== oldHostId && m.canHost === true && m.away !== true && m.noMedia !== true);
   if (!candidates.length) return null;
   candidates.sort((a, b) => (a.joinedAt ?? Number.MAX_SAFE_INTEGER) - (b.joinedAt ?? Number.MAX_SAFE_INTEGER) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return candidates[0]?.id ?? null;
