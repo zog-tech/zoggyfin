@@ -1,5 +1,6 @@
 import { shouldDismiss } from '@/components/sheet-dismiss';
-import { closeTogetherSheet, initialTogether, openTogetherSheet, releaseTogetherSheet, togetherState, useTogetherStore } from '../store';
+import { IDLE } from '../machine';
+import { closeTogetherSheet, initialTogether, openTogetherSheet, pastLobby, releaseTogetherSheet, togetherState, useTogetherStore } from '../store';
 
 beforeEach(() => useTogetherStore.setState(initialTogether, true));
 
@@ -31,6 +32,24 @@ describe('the together sheet open state', () => {
     openTogetherSheet('music', null);
     releaseTogetherSheet('player');
     expect(togetherState().sheet).toMatchObject({ open: true, where: 'music' });
+  });
+});
+
+describe('pastLobby', () => {
+  it('is false in the lobby and true from a join request to the end screen', () => {
+    const st = (patch: Partial<ReturnType<typeof togetherState>>) => ({ ...initialTogether, ...patch });
+    expect(pastLobby(initialTogether)).toBe(false);
+    expect(pastLobby(st({ mode: 'nearby', phase: { name: 'browsing' } }))).toBe(false);
+    expect(pastLobby(st({ mode: 'nearby', phase: { name: 'requesting', hostPeerId: 'p', hostName: 'Sam' } }))).toBe(true);
+    expect(pastLobby(st({ mode: 'nearby', phase: { name: 'hosting', sessionId: 's' } }))).toBe(true);
+    expect(pastLobby(st({ mode: 'nearby', phase: { name: 'ended', reason: 'error', message: 'x' } }))).toBe(true);
+    // A phase left over in mode 'none' does not count.
+    expect(pastLobby(st({ mode: 'none', phase: { name: 'hosting', sessionId: 's' } }))).toBe(false);
+  });
+
+  it('is true in a SyncPlay group, whatever the nearby phase', () => {
+    const group = { id: 'g', name: 'Group', state: 'Idle', participants: [] };
+    expect(pastLobby({ ...initialTogether, mode: 'syncplay', phase: IDLE, syncplay: { ...initialTogether.syncplay, group } })).toBe(true);
   });
 });
 
