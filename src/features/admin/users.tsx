@@ -250,7 +250,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
   const account = (
     <Group title="Account" footer={self ? 'You cannot disable or delete the account that you use now.' : undefined}>
       {!self ? (
-        <SwitchRow icon="person" label="Account enabled" value={!saved.IsDisabled} onChange={(v) => void setDisabled(!v)} disabled={busy === 'policy'} />
+        <SwitchRow icon="person" label="Account enabled" value={!saved.IsDisabled} onChange={(v) => void setDisabled(!v)} disabled={busy('policy')} />
       ) : null}
       <SettingsRow icon="key" label="Set a new password" onPress={() => setSheet('password')} last={user.HasPassword === false} />
       {user.HasPassword !== false ? <SettingsRow icon="key" label="Remove password" onPress={() => void removePassword()} trailing={<View />} last /> : null}
@@ -271,7 +271,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
         </Text>
         <View style={s.saveButtons}>
           <Button title="Discard" variant="smallTonal" onPress={() => setDraft(draftFrom(saved))} />
-          <Button title="Save changes" variant="small" loading={busy === 'policy'} onPress={() => void save()} />
+          <Button title="Save changes" variant="small" loading={busy('policy')} onPress={() => void save()} />
         </View>
       </View>
     ) : null;
@@ -315,7 +315,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
         hint={`${name} signs in with this password from now on. Open sessions stay signed in.`}
         action="Set password"
         secure
-        busy={busy === 'password'}
+        busy={busy('password')}
         onSubmit={async (pw) => {
           const ok = await run('password', () => target.api.setPassword(userId, pw), { success: `New password set for ${name}`, icon: 'key', invalidate });
           if (ok) setSheet(null);
@@ -328,7 +328,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
         message={`The account, its settings, its watch history and its favourites are removed from the server. This cannot be undone.`}
         action="Delete user"
         typed={name}
-        busy={busy === 'delete'}
+        busy={busy('delete')}
         onConfirm={async () => {
           const ok = await run('delete', () => target.api.deleteUser(userId), { success: `${name} is deleted`, icon: 'trash', invalidate });
           if (!ok) return;

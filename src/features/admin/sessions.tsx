@@ -90,7 +90,7 @@ export function SessionsSection({ target }: { target: AdminTarget }) {
         hint={messageTo ? `The text shows on ${messageTo.DeviceName || 'the device'} for 15 seconds, if the app there supports messages.` : undefined}
         action="Send"
         multiline
-        busy={busy === `msg-${messageTo?.Id}`}
+        busy={busy(`msg-${messageTo?.Id}`)}
         validate={(v) => (v.length > 500 ? 'Use 500 characters or less.' : null)}
         onSubmit={async (text) => {
           const x = messageTo;
@@ -105,7 +105,7 @@ export function SessionsSection({ target }: { target: AdminTarget }) {
 }
 
 interface SessionActions {
-  busy: string | null;
+  busy: (id: string) => boolean;
   message: (s: SessionInfoDto) => void;
   pause: (s: SessionInfoDto, pause: boolean) => void;
   stop: (s: SessionInfoDto) => void;
@@ -176,15 +176,15 @@ function SessionCard({ session: x, actions }: { session: SessionInfoDto; actions
               title={info.paused ? 'Resume' : 'Pause'}
               icon={info.paused ? 'play.fill' : 'pause.fill'}
               variant="smallTonal"
-              loading={actions.busy === `pause-${x.Id}`}
+              loading={actions.busy(`pause-${x.Id}`)}
               onPress={() => actions.pause(x, !info.paused)}
               accessibilityLabel={`${info.paused ? 'Resume' : 'Pause'} ${x.UserName ?? ''} on ${x.DeviceName ?? ''}`}
             />
-            <Button title="Stop" icon="stop.fill" variant="smallTonal" loading={actions.busy === `stop-${x.Id}`} onPress={() => actions.stop(x)} accessibilityLabel={`Stop playback of ${x.UserName ?? ''}`} />
+            <Button title="Stop" icon="stop.fill" variant="smallTonal" loading={actions.busy(`stop-${x.Id}`)} onPress={() => actions.stop(x)} accessibilityLabel={`Stop playback of ${x.UserName ?? ''}`} />
           </>
         ) : null}
         {info.isTranscode ? (
-          <Button title="Stop transcode" variant="smallTonal" loading={actions.busy === `transcode-${x.Id}`} onPress={() => actions.stopTranscode(x)} />
+          <Button title="Stop transcode" variant="smallTonal" loading={actions.busy(`transcode-${x.Id}`)} onPress={() => actions.stopTranscode(x)} />
         ) : null}
         {x.SupportsRemoteControl !== false ? (
           <Button title="Message" icon="message" variant="smallTonal" onPress={() => actions.message(x)} accessibilityLabel={`Send a message to ${x.UserName ?? ''} on ${x.DeviceName ?? ''}`} />
