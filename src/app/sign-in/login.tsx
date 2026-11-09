@@ -13,6 +13,7 @@ import {
 } from '@/api/jellyfin';
 import { useSessionStore } from '@/auth/session-store';
 import { completeSignIn, type ServerInfo } from '@/auth/sign-in';
+import { createGate } from '@/lib/async-gate';
 import { Button } from '@/components/button';
 import { TextField, type TextFieldRef } from '@/components/text-field';
 import { LanAccessHelp } from '@/features/servers/nearby-servers';
@@ -23,6 +24,19 @@ import { type LanHelp, withLanRetry } from '@/servers/discovery/lan-access';
 import { createStyles, type AppTheme, font, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
 
 const POLL_MS = 2000;
+
+/**
+ * Quick Connect, one phase at a time. `token` comes from the screen's gate:
+ * Cancel and unmount make it stale, so a late answer neither starts polling
+ * nor signs in.
+ */
+type QuickConnect =
+  | { name: 'idle' }
+  | { name: 'starting'; token: number }
+  | { name: 'waiting'; token: number; code: string; secret: string }
+  | { name: 'finishing'; token: number; code: string };
+
+const QC_IDLE: QuickConnect = { name: 'idle' };
 
 export default function LoginScreen() {
   const styles = useStyles(makeStyles);
@@ -52,14 +66,28 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [lanHelp, setLanHelp] = useState<LanHelp | null>(null);
   const [qcEnabled, setQcEnabled] = useState(false);
-  const [qcCode, setQcCode] = useState<string | null>(null);
+  const [qc, setQc] = useState<QuickConnect>(QC_IDLE);
   const passwordRef = useRef<TextFieldRef>(null);
+  /** Set at once on submit: the keyboard's Go key does not wait for the busy state to render. */
+  const signingIn = useRef(false);
+  const [qcGate] = useState(createGate);
+  /** The Quick Connect phase now, for handlers that run before the next render. */
+  const qcRef = useRef<QuickConnect>(QC_IDLE);
+  const setPhase = (next: QuickConnect) => {
+    qcRef.current = next;
+    setQc(next);
+  };
 
   useEffect(() => {
     isQuickConnectEnabled(api).then(setQcEnabled);
   }, [api]);
 
+  // Leaving the page stops Quick Connect: a late answer must not sign in.
+  useEffect(() => () => qcGate.cancel(), [qcGate]);
+
   const signIn = async () => {
+    if (signingIn.current || !username.trim()) return;
+    signingIn.current = true;
     setBusy(true);
     setError(null);
     setLanHelp(null);
@@ -72,49 +100,67 @@ export default function LoginScreen() {
       if (help) setLanHelp(help);
       else setError(d.kind === 'auth' ? 'Wrong username or password.' : `${d.title}. ${d.message}`);
       setBusy(false);
+      signingIn.current = false;
     }
   };
 
   // Quick Connect: show a code, poll until the user approves it on another device.
-  const [qcSecret, setQcSecret] = useState<string | null>(null);
   const startQuickConnect = async () => {
+    if (qcRef.current.name !== 'idle') return;
+    const token = qcGate.begin();
+    setPhase({ name: 'starting', token });
     setError(null);
     try {
       const r = await initiateQuickConnect(api);
+      if (!qcGate.current(token)) return;
       if (!r.Secret || !r.Code) throw new Error('The server did not return a code.');
-      setQcSecret(r.Secret);
-      setQcCode(r.Code);
+      setPhase({ name: 'waiting', token, code: r.Code, secret: r.Secret });
     } catch (e) {
+      if (!qcGate.current(token)) return;
+      setPhase(QC_IDLE);
       setError(describeError(e).title);
     }
   };
 
+  const cancelQuickConnect = () => {
+    qcGate.cancel();
+    setPhase(QC_IDLE);
+  };
+
+  const waiting = qc.name === 'waiting' ? qc : null;
   useEffect(() => {
-    if (!qcSecret) return;
-    let stopped = false;
+    if (!waiting) return;
+    const { token, secret, code } = waiting;
+    let polling = true;
     const timer = setInterval(async () => {
       try {
-        const s = await quickConnectState(api, qcSecret);
-        if (stopped || !s.Authenticated) return;
-        stopped = true;
+        const s = await quickConnectState(api, secret);
+        if (!polling || !qcGate.current(token) || !s.Authenticated) return;
+        polling = false;
         clearInterval(timer);
-        finish(await authenticateWithQuickConnect(api, qcSecret));
+        setPhase({ name: 'finishing', token, code });
+        const result = await authenticateWithQuickConnect(api, secret);
+        // Cancel or leaving the page while the sign-in ran: drop it.
+        if (!qcGate.current(token)) return;
+        finish(result);
       } catch (e) {
-        if (stopped) return;
-        stopped = true;
+        if (!qcGate.current(token)) return;
+        polling = false;
         clearInterval(timer);
-        setQcSecret(null);
-        setQcCode(null);
+        qcGate.cancel();
+        setPhase(QC_IDLE);
         setError(`Quick Connect stopped. ${describeError(e).message}`);
       }
     }, POLL_MS);
     return () => {
-      stopped = true;
+      polling = false;
       clearInterval(timer);
     };
-    // server is derived from stable params.
+    // server is derived from stable params; the poll restarts only for a new code.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qcSecret, api]);
+  }, [waiting?.secret, waiting?.token, api]);
+
+  const qcCode = qc.name === 'waiting' || qc.name === 'finishing' ? qc.code : null;
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -132,15 +178,8 @@ export default function LoginScreen() {
               <Text style={styles.qcCode} selectable accessibilityLabel={`Code ${qcCode.split('').join(' ')}`}>
                 {qcCode}
               </Text>
-              <Text style={styles.qcHint}>Waiting for approval. This page signs in by itself.</Text>
-              <Button
-                title="Cancel"
-                variant="tonal"
-                onPress={() => {
-                  setQcSecret(null);
-                  setQcCode(null);
-                }}
-              />
+              <Text style={styles.qcHint}>{qc.name === 'finishing' ? 'Approved. Signing in…' : 'Waiting for approval. This page signs in by itself.'}</Text>
+              <Button title="Cancel" variant="tonal" onPress={cancelQuickConnect} />
             </View>
           ) : (
             <>
@@ -176,7 +215,7 @@ export default function LoginScreen() {
               {lanHelp ? <LanAccessHelp kind={lanHelp} onOpenSettings={openLanSettings} /> : null}
               <Button title="Sign in" onPress={signIn} loading={busy} disabled={!username.trim()} />
               {qcEnabled ? (
-                <Button title="Use Quick Connect" icon="qrcode" variant="tonal" onPress={startQuickConnect} />
+                <Button title="Use Quick Connect" icon="qrcode" variant="tonal" onPress={startQuickConnect} loading={qc.name === 'starting'} />
               ) : null}
             </>
           )}
