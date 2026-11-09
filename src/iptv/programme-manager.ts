@@ -10,7 +10,8 @@
  *   app and TV run on any network.
  * - One provider at a time, in the providers' order. `needsIndexRefresh`
  *   decides when a provider is due (and waits after a failure, and 20 hours
- *   after a good build).
+ *   after a good build). A request during a run runs once more after it
+ *   (`createSerialRunner`), with the providers of that moment.
  * - A build writes an attempt marker (`failedAt`) before the download, so a
  *   kill during the download or the parse counts as a failure: the panel is
  *   not asked again at every start.
@@ -23,6 +24,7 @@
 import { AppState, Platform } from 'react-native';
 
 import { useSessionStore } from '@/auth/session-store';
+import { createSerialRunner } from '@/lib/async-gate';
 import { isNativeTV } from '@/platform/tv';
 import { networkSource } from '@/servers/network-source';
 import type { NetworkSnapshot } from '@/servers/wifi-rule';
@@ -182,26 +184,33 @@ async function buildOne(id: string, url: string, now: number): Promise<void> {
   }
 }
 
-let running: Promise<void> | null = null;
+/** The clock of the next run (tests pass one); null: `deps.now()`. */
+let nextAt: number | null = null;
 
-/** Builds the index of each provider that is due, one after another. Stops when the device or network does not allow it (checked before each download). */
+/** One run at a time. A request during a run runs once more after it, so a provider added meanwhile is not left out. */
+const runs = createSerialRunner(async () => {
+  const at = nextAt ?? deps.now();
+  nextAt = null;
+  if (!programmeIndexEnabled()) return;
+  bindSession();
+  for (const id of iptvState().providers.order.slice()) {
+    if (!needsIndexRefresh(readLedger(id), at)) continue;
+    const url = guideUrlOf(id);
+    if (!url) continue;
+    if (!(await networkAllows())) return;
+    await buildOne(id, url, at);
+  }
+});
+
+/**
+ * Builds the index of each provider that is due, one after another. Stops
+ * when the device or network does not allow it (checked before each
+ * download). A call during a run gets one more run after it, with the
+ * providers of that moment; the time rules make it skip what is fresh.
+ */
 export function refreshDue(now?: number): Promise<void> {
-  if (running) return running;
-  running = (async () => {
-    if (!programmeIndexEnabled()) return;
-    bindSession();
-    const at = now ?? deps.now();
-    for (const id of iptvState().providers.order.slice()) {
-      if (!needsIndexRefresh(readLedger(id), at)) continue;
-      const url = guideUrlOf(id);
-      if (!url) continue;
-      if (!(await networkAllows())) return;
-      await buildOne(id, url, at);
-    }
-  })().finally(() => {
-    running = null;
-  });
-  return running;
+  if (now !== undefined) nextAt = now;
+  return runs.request();
 }
 
 let slicing: Promise<void> | null = null;
@@ -244,8 +253,9 @@ let startedAt = 0;
 
 /**
  * Runs `refreshDue` soon: never in the first 45 seconds after the start, and
- * at an idle moment. Calls made while a run waits share it. Does nothing
- * before `startProgrammeIndex`.
+ * at an idle moment. Calls made while a run waits share it; a call while a
+ * run works asks for one more run after it. Does nothing before
+ * `startProgrammeIndex`.
  */
 export function refreshSoon(): void {
   if (!started || scheduled || !programmeIndexEnabled()) return;

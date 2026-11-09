@@ -14,6 +14,12 @@ const mockTexts = new Map<string, string>();
 const mockRequested: string[] = [];
 const mockReads: string[] = [];
 const mockHook: { onText: ((url: string) => void) | null } = { onText: null };
+/** While set, downloads wait for it (a slow provider). */
+const mockHold: { promise: Promise<void> | null } = { promise: null };
+async function* mockHeld(hold: Promise<void>, chunks: AsyncGenerator<string>): AsyncGenerator<string> {
+  await hold;
+  yield* chunks;
+}
 
 jest.mock('@/storage/kv', () => ({
   storage: {
@@ -49,7 +55,8 @@ jest.mock('../transport', () => {
         mockHook.onText?.(url);
         const t = mockTexts.get(url);
         if (t === undefined) throw new IptvError('http', 404);
-        return jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
+        const chunks = jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
+        return mockHold.promise ? mockHeld(mockHold.promise, chunks) : chunks;
       },
       async json(url: string) {
         mockRequested.push(url);
@@ -118,6 +125,7 @@ beforeEach(() => {
   mockRequested.length = 0;
   mockReads.length = 0;
   mockHook.onText = null;
+  mockHold.promise = null;
   setIptvState({ scope: null, programmeSlices: {} });
   (iptvFiles as { persistent: boolean }).persistent = true;
   net = { type: 'wifi', ssid: null };
@@ -354,6 +362,26 @@ describe('programme index refresh', () => {
     expect(mockRequested).toEqual([GUIDE]);
     expect(ledgerOf(x)?.builtAt).toBe(T0);
     expect(ledgerOf(m)).toBeNull();
+  });
+
+  it('a provider added during a run is built right after it', async () => {
+    const x = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    let release!: () => void;
+    mockHold.promise = new Promise<void>((r) => (release = r));
+    const first = refreshDue(T0);
+    await flush();
+    expect(mockRequested).toEqual([GUIDE]);
+    // The new provider's downloads are not held.
+    mockHold.promise = null;
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    mockTexts.set(M3U_GUIDE, guide(['news.example'], 60));
+    const m = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    const second = refreshDue(T0);
+    release();
+    await Promise.all([first, second]);
+    expect(ledgerOf(x)?.builtAt).toBe(T0);
+    expect(ledgerOf(m)?.builtAt).toBe(T0);
   });
 
   it('ensureSlices does no file read on a repeat call', async () => {
