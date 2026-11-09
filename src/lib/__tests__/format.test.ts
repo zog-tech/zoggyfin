@@ -83,6 +83,9 @@ describe('search grouping', () => {
     expect(pushRecentSearch(['a', 'B'], 'b')).toEqual(['b', 'a']);
     expect(pushRecentSearch(['a'], '  ')).toEqual(['a']);
     expect(pushRecentSearch(['1', '2', '3'], '4', 3)).toEqual(['4', '1', '2']);
+    // A longer search replaces the shorter searches it extends; others stay.
+    expect(pushRecentSearch(['garee2', 'garee', 'shat', 'gare'], 'Garee2a')).toEqual(['Garee2a', 'shat']);
+    expect(pushRecentSearch(['kifak inta'], 'kifak')).toEqual(['kifak', 'kifak inta']);
   });
 });
 

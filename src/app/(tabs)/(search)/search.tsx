@@ -1,5 +1,5 @@
-import { Stack } from 'expo-router';
-import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { Stack, useFocusEffect } from 'expo-router';
+import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { SearchBarCommands } from 'react-native-screens';
 
@@ -98,13 +98,19 @@ export default function SearchScreen() {
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const player = usePlayer();
 
-  // Remember a search once it returns results.
+  // Remember a search only when it was used: the Search key, a played result, or an opened
+  // result (the screen loses focus). Results alone do not count: with catalog sources, almost
+  // every partial word returns results, and each pause in typing would be saved.
   const hasResults = !localOnly && !!q.data?.length;
+  const latest = useRef({ term, hasResults });
   useEffect(() => {
-    if (term.length >= 2 && hasResults) {
-      writeJson(RECENT_KEY, pushRecentSearch(readJson<string[]>(RECENT_KEY, []), term));
-    }
+    latest.current = { term, hasResults };
   }, [term, hasResults]);
+  const remember = useCallback(() => {
+    const { term: t, hasResults: ok } = latest.current;
+    if (t.length >= 2 && ok) writeJson(RECENT_KEY, pushRecentSearch(readJson<string[]>(RECENT_KEY, []), t));
+  }, []);
+  useFocusEffect(useCallback(() => remember, [remember]));
 
   const active = term.length >= 2 || !!genre;
   const body = searchBody({
@@ -163,11 +169,13 @@ export default function SearchScreen() {
                 textColor: c.text,
                 onChangeText: (e) => setText(e.nativeEvent.text),
                 onCancelButtonPress: () => setText(''),
+                onSearchButtonPress: remember,
               },
         }}
       />
       <TvScrollView
         contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustKeyboardInsets
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         style={s.page}
@@ -189,6 +197,7 @@ export default function SearchScreen() {
                 style={s.input}
                 accessibilityLabel="Search"
                 returnKeyType="search"
+                onSubmitEditing={remember}
               />
               {text ? (
                 <Touchable onPress={() => setText('')} hitSlop={10} radius={10} accessibilityRole="button" accessibilityLabel="Clear search">
@@ -296,7 +305,7 @@ export default function SearchScreen() {
           />
         ) : (
           <View style={q.isFetching && !localOnly ? s.stale : undefined}>
-            {top ? <TopResult item={top} onPlay={() => player.play({ item: top })} /> : null}
+            {top ? <TopResult item={top} onPlay={() => { remember(); player.play({ item: top }); }} /> : null}
             {sections.map((sec) =>
               sec.key === 'songs' ? (
                 <View key={sec.key} style={{ marginTop: l.sectionGap }}>
@@ -309,7 +318,7 @@ export default function SearchScreen() {
                       showArt
                       note={localOnly ? serverOf?.(song) : undefined}
                       last={i === list.length - 1}
-                      onPress={(it) => player.play({ item: it })}
+                      onPress={(it) => { remember(); player.play({ item: it }); }}
                     />
                   ))}
                 </View>
