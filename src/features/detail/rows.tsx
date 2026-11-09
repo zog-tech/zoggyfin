@@ -119,7 +119,18 @@ export const TrackRow = memo(function TrackRow({
 });
 
 /** An artist row for the Music pager: a circle, the name and the counts. */
-export const ArtistRow = memo(function ArtistRow({ item, onPress, last }: { item: BaseItemDto; onPress: (item: BaseItemDto) => void; last?: boolean }) {
+export const ArtistRow = memo(function ArtistRow({
+  item,
+  onPress,
+  onLongPress,
+  last,
+}: {
+  item: BaseItemDto;
+  onPress: (item: BaseItemDto) => void;
+  /** Long press, and right click on the web and the Mac app: the item actions. */
+  onLongPress?: (item: BaseItemDto) => void;
+  last?: boolean;
+}) {
   const s = useStyles(makeStyles);
   const l = useLayout();
   const albums = item.AlbumCount ? `${item.AlbumCount} ${item.AlbumCount === 1 ? 'album' : 'albums'}` : null;
@@ -132,6 +143,9 @@ export const ArtistRow = memo(function ArtistRow({ item, onPress, last }: { item
       radius={inset ? radius.md : 0}
       containerStyle={inset ? { marginLeft: inset.marginLeft, marginRight: inset.marginRight } : undefined}
       onPress={() => onPress(item)}
+      onLongPress={onLongPress ? () => onLongPress(item) : undefined}
+      accessibilityActions={onLongPress ? [{ name: 'longpress', label: 'More actions' }] : undefined}
+      onAccessibilityAction={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
       accessibilityLabel={[item.Name, meta].filter(Boolean).join(', ')}
       style={({ pressed, hovered, focused }) => [s.track, { paddingLeft: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
@@ -149,7 +163,16 @@ export const ArtistRow = memo(function ArtistRow({ item, onPress, last }: { item
 });
 
 /** An episode row: still with progress, "S1 · E5 · 42 min", title and two lines of overview. */
-export const EpisodeRow = memo(function EpisodeRow({ item, onPress }: { item: BaseItemDto; onPress: (item: BaseItemDto) => void }) {
+export const EpisodeRow = memo(function EpisodeRow({
+  item,
+  onPress,
+  onLongPress,
+}: {
+  item: BaseItemDto;
+  onPress: (item: BaseItemDto) => void;
+  /** Long press, and right click on the web and the Mac app: the item actions. */
+  onLongPress?: (item: BaseItemDto) => void;
+}) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();
@@ -162,6 +185,9 @@ export const EpisodeRow = memo(function EpisodeRow({ item, onPress }: { item: Ba
       radius={inset ? radius.md : 0}
       containerStyle={inset ? { marginLeft: inset.marginLeft, marginRight: inset.marginRight } : undefined}
       onPress={() => onPress(item)}
+      onLongPress={onLongPress ? () => onLongPress(item) : undefined}
+      accessibilityActions={onLongPress ? [{ name: 'longpress', label: 'More actions' }] : undefined}
+      onAccessibilityAction={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
       accessibilityLabel={[item.Name, label, item.UserData?.Played ? 'played' : null].filter(Boolean).join(', ')}
       style={({ pressed, hovered, focused }) => [s.episode, { paddingHorizontal: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>

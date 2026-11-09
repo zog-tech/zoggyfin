@@ -38,3 +38,25 @@ export function takesContextMenu(event: MenuEvent, control: { longPress: boolean
   if (event.defaultPrevented) return false;
   return !isTextTarget(event.target);
 }
+
+/**
+ * Mac app: true when a right click that no control took must not show the
+ * browser menu. The browser menu (open, save and copy image, reload,
+ * inspect) does not belong in an app window. Text fields and selected text
+ * keep it, for cut, copy and paste.
+ */
+export function blocksBrowserMenu(event: MenuEvent, selectedText: string): boolean {
+  if (event.defaultPrevented) return false;
+  if (isTextTarget(event.target)) return false;
+  return selectedText.trim().length === 0;
+}
+
+/** Mac app: hides the browser menu where no control took the right click. Returns the remove function. */
+export function installAppContextMenu(doc: Document): () => void {
+  const onMenu = (e: MouseEvent) => {
+    if (blocksBrowserMenu(e, doc.getSelection()?.toString() ?? '')) e.preventDefault();
+  };
+  // Bubble phase on the document: the React handlers of the controls ran first.
+  doc.addEventListener('contextmenu', onMenu);
+  return () => doc.removeEventListener('contextmenu', onMenu);
+}

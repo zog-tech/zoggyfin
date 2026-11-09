@@ -391,6 +391,7 @@ function useOpenDetail(): ((item: BaseItemDto) => void) | null {
 function ChildRow({ record: r, group, index, last }: { record: DownloadRecord; group: DownloadGroupView; index: number; last: boolean }) {
   const s = useStyles(makeStyles);
   const player = usePlayer();
+  const open = useOpenDetail();
   const remove = async () => {
     const ok = await confirmDestructive(`Delete ${r.item.Name ?? 'this download'}?`, `This frees ${formatBytes(r.bytesDone)} on this device. Nothing changes on the server.`, 'Delete');
     if (ok) await downloads.remove(r.itemId);
@@ -405,11 +406,12 @@ function ChildRow({ record: r, group, index, last }: { record: DownloadRecord; g
       <Touchable
         kind="row"
         onPress={play}
+        onLongPress={open ? () => open(r.item) : undefined}
         accessibilityRole="button"
         accessibilityLabel={`${r.item.Name}, ${formatBytes(r.bytesDone)}`}
         accessibilityHint="Plays it"
-        accessibilityActions={[{ name: 'delete', label: 'Delete download' }]}
-        onAccessibilityAction={() => void remove()}
+        accessibilityActions={[{ name: 'delete', label: 'Delete download' }, ...(open ? [{ name: 'open', label: 'Open details' }] : [])]}
+        onAccessibilityAction={(e) => (e.nativeEvent.actionName === 'delete' ? void remove() : open?.(r.item))}
         style={({ pressed, hovered }) => [s.childRow, (pressed || hovered) && s.rowActive]}>
         <Text style={s.childNo}>{r.item.Type === 'Episode' ? `E${r.item.IndexNumber ?? index + 1}` : (r.item.IndexNumber ?? index + 1)}</Text>
         <View style={[s.childBody, !last && s.line]}>

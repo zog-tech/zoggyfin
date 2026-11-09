@@ -14,6 +14,7 @@ import { queryKeys } from '@/api/query-keys';
 import type { BaseItemDto } from '@/api/types';
 import { useApi } from '@/api/use-api';
 import { Icon } from '@/components/icon';
+import { useItemMenu } from '@/components/action-sheet';
 import { RowHeader } from '@/components/item-row';
 import { Tile, tileAspect, type TileShape } from '@/components/tile';
 import { Touchable } from '@/components/touchable';
@@ -81,6 +82,8 @@ function FailedRow({ title, name }: { title: string; name: string }) {
 function FeedRow({ title, rows, shape, extId }: { title: string; rows: Row[]; shape: TileShape; extId: string }) {
   const l = useLayout();
   const open = useOpenItem();
+  // Long press, and right click on the web and the Mac app: the item actions. Not on TV.
+  const menu = useItemMenu();
   const width = l.rowTile[shape === 'thumb' ? 'thumb' : shape];
   return (
     <View style={{ marginTop: l.sectionGap }}>
@@ -88,12 +91,13 @@ function FeedRow({ title, rows, shape, extId }: { title: string; rows: Row[]; sh
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: l.gutter, gap: l.gap, paddingVertical: spacing.xs }}>
         {rows.map((r) =>
           r.item ? (
-            <Tile key={r.entry.key} item={r.item} width={width} shape={shape} onPress={open} subtitle={r.entry.subtitle} />
+            <Tile key={r.entry.key} item={r.item} width={width} shape={shape} onPress={open} onLongPress={l.tv ? undefined : menu.open} subtitle={r.entry.subtitle} />
           ) : (
             <Card key={r.entry.key} entry={r.entry} width={width} shape={shape} onPress={() => openEntry(r.entry, extId)} />
           ),
         )}
       </ScrollView>
+      {menu.sheet}
     </View>
   );
 }

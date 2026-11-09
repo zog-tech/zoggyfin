@@ -239,7 +239,7 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
                 onLongPress={setMenu}
               />
             ) : (
-              <ArtistRow item={item} last={index === items.length - 1} onPress={open} />
+              <ArtistRow item={item} last={index === items.length - 1} onPress={open} onLongPress={l.tv ? undefined : setMenu} />
             )
           }
           ListHeaderComponent={header}
