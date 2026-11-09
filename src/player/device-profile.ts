@@ -45,6 +45,11 @@ export interface MediaCapabilities {
   hevcTenBit?: boolean;
   /** AV1 video ranges the device shows correctly, `|`-separated. Default: SDR, HDR10, HDR10+ and HLG. */
   av1Ranges?: string;
+  /**
+   * The largest frame each decoder takes, when the device says. The server converts a
+   * larger video. Without it a 1080p-only Fire TV got 4K files and stalled.
+   */
+  maxSize?: Partial<Record<VideoCodec, { width: number; height: number }>>;
 }
 
 export interface ProfileOptions {
@@ -135,6 +140,9 @@ export interface DecoderInfo {
   /** Server numbers: H.264 5.1 is 51, HEVC 5.1 is 153. 0 when unknown. */
   maxLevel: number;
   tenBit: boolean;
+  /** The largest frame of the decoders used for the level, in pixels. 0 when unknown. */
+  maxWidth: number;
+  maxHeight: number;
 }
 
 /** The decoders of an Android device and the HDR types of its display. */
@@ -204,7 +212,17 @@ export function exoCapabilities(report: AndroidDecoders | null): MediaCapabiliti
     hevcRanges: ranges.join('|'),
     hevcTenBit: tenBit,
     av1Ranges: exoRanges(av1TenBit).join('|'),
+    maxSize: decoderSizes(report, video),
   };
+}
+
+function decoderSizes(report: AndroidDecoders | null, codecs: readonly VideoCodec[]): MediaCapabilities['maxSize'] {
+  const out: NonNullable<MediaCapabilities['maxSize']> = {};
+  for (const c of codecs) {
+    const d = report?.codecs[c];
+    if (d && d.maxWidth > 0 && d.maxHeight > 0) out[c] = { width: d.maxWidth, height: d.maxHeight };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** A probe answer: true when the browser says it can play the MIME type. */
@@ -276,6 +294,7 @@ function codecProfiles(caps: MediaCapabilities): CodecProfile[] {
         cond('LessThanEqual', 'VideoLevel', String(caps.h264Level ?? (caps.engine === 'apple' ? 52 : 51))),
         cond('LessThanEqual', 'VideoBitDepth', '8'),
         cond('NotEquals', 'IsInterlaced', 'true'),
+        ...sizeConditions(caps, 'h264'),
       ],
     },
     {
@@ -293,6 +312,7 @@ function codecProfiles(caps: MediaCapabilities): CodecProfile[] {
         cond('LessThanEqual', 'VideoLevel', String(caps.hevcLevel ?? 183)),
         ...(caps.hevcTenBit === false ? [cond('LessThanEqual', 'VideoBitDepth', '8')] : []),
         cond('NotEquals', 'IsInterlaced', 'true'),
+        ...sizeConditions(caps, 'hevc'),
         // AVPlayer only opens HEVC in mp4 with the `hvc1` (or Dolby Vision `dvh1`) sample entry, not `hev1`.
         ...(caps.engine === 'apple' ? [cond('EqualsAny', 'VideoCodecTag', 'hvc1|dvh1', true)] : []),
       ],
@@ -306,10 +326,20 @@ function codecProfiles(caps: MediaCapabilities): CodecProfile[] {
         cond('EqualsAny', 'VideoProfile', 'main'),
         cond('EqualsAny', 'VideoRangeType', caps.av1Ranges ?? AV1_RANGES),
         cond('LessThanEqual', 'VideoBitDepth', '10'),
+        ...sizeConditions(caps, 'av1'),
       ],
     });
   }
+  const vp9 = sizeConditions(caps, 'vp9');
+  if (caps.videoCodecs.includes('vp9') && vp9.length) out.push({ Type: 'Video', Codec: 'vp9', Conditions: vp9 });
   return out;
+}
+
+/** Width and height limits of one decoder; none when the device did not say. */
+function sizeConditions(caps: MediaCapabilities, codec: VideoCodec): ProfileCondition[] {
+  const size = caps.maxSize?.[codec];
+  if (!size) return [];
+  return [cond('LessThanEqual', 'Width', String(size.width)), cond('LessThanEqual', 'Height', String(size.height))];
 }
 
 /** Text subtitles come as WebVTT files that the app draws; image subtitles are burned in by the server. */
