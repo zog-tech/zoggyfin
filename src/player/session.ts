@@ -413,6 +413,8 @@ class VideoSession {
     this.endLiveAttempt();
     this.vodAttempt = null;
     await this.finishCurrent();
+    // A newer play (a channel, a film, another item) started during the last progress report.
+    if (id !== this.loadId) return;
     this.lastRequest = request;
     setPlayerState({ ...initialPlayerState, status: 'loading', presentation: 'full' });
     try {
