@@ -29,12 +29,12 @@ import type { NetworkSnapshot } from '@/servers/wifi-rule';
 
 import { IptvError, iptvErrorText } from './errors';
 import { iptvFiles } from './files';
-import { bindSession, channelsWhenLoaded, guideKeepFor, guideWindowOptions, providerById, saveGuideResult, xtreamLogin } from './manager';
+import { bindSession, channelsWhenLoaded, claimGuide, guideKeepFor, guideWindowOptions, providerById, saveGuideResult, xtreamLogin } from './manager';
 import { indexPath, noFile, readLedger, writeLedger } from './programme-files';
 import { INDEX_BACK_MS, INDEX_KEEP_MS, type IndexLedger, migrateProgrammeIndex, needsIndexRefresh, type ProgrammeIndex, ProgrammeIndexBuilder, sliceIndex } from './programme-index';
 import { ON_NOW_AHEAD_MS } from './programme-search';
 import { readSecrets } from './secrets';
-import { iptvState, type LoadStatus, setIptvState, useIptvStore } from './store';
+import { iptvState, setIptvState, useIptvStore } from './store';
 import { transport } from './transport';
 import { MAX_LIST_BYTES } from './transport-types';
 import { xtreamGuideUrl } from './xtream';
@@ -125,23 +125,19 @@ function guideUrlOf(id: string): string | null {
   return secrets.guideUrl ?? secrets.playlistGuideUrl ?? null;
 }
 
-function setGuideStatus(id: string, status: LoadStatus): void {
-  setIptvState({ guideStatus: { ...iptvState().guideStatus, [id]: status } });
-}
-
 const sameLedger = (a: IndexLedger | null, b: IndexLedger | null) =>
   a === b || (!!a && !!b && a.builtAt === b.builtAt && a.to === b.to && a.failedAt === b.failedAt);
 
 async function buildOne(id: string, url: string, now: number): Promise<void> {
   const ledger = readLedger(id);
   const isM3u = providerById(id)?.kind === 'm3u';
-  // M3U: mark the guide as loading first, so `loadGuide` (from `ensureLoaded`) does not download it a second time.
-  const before = iptvState().guideStatus[id];
-  if (isM3u) setGuideStatus(id, 'loading');
+  // M3U: this download owns the guide window, so `loadGuide` (from `ensureLoaded` or a refresh) joins it, not a second download.
+  const guide = isM3u ? claimGuide(id, url) : null;
   // A changed login or guide address during the download: the result is of the old one.
   const current = () => !!providerById(id) && guideUrlOf(id) === url;
   let marker: IndexLedger | null = null;
   let ok = false;
+  let failed = false;
   try {
     // Wait for a channel list another caller is loading. With no channels there is nothing to link a guide to:
     // skip this provider without a failure (the next run tries again), never keep the whole guide.
@@ -167,22 +163,22 @@ async function buildOne(id: string, url: string, now: number): Promise<void> {
     await deps.yieldNow();
     if (!current()) return;
     ok = true;
-    if (isM3u) await saveGuideResult(id, r, matchNames);
+    // A provider saved again since the claim has started its own guide load: the window is its to write.
+    if (guide?.current()) await saveGuideResult(id, r, matchNames);
     await iptvFiles.write(indexPath(id), text);
     writeLedger(id, { builtAt: now, to: index.to, failedAt: null });
     noFile.delete(id);
     setSlice(id, index, now);
   } catch (e) {
     if (!current()) return;
+    failed = true;
     if (marker) writeLedger(id, marker);
     console.warn('[iptv] programme index failed:', iptvErrorText(e));
   } finally {
     // The source changed: our marker goes (a drop since then has removed it already).
     if (!ok && marker && !current() && sameLedger(readLedger(id), marker)) writeLedger(id, ledger);
-    // Not saved: the status we set goes back, unless someone else has changed it since. A skip (no attempt) restores it as it was.
-    if (isM3u && !ok && iptvState().guideStatus[id] === 'loading' && current()) {
-      setGuideStatus(id, before === 'ready' ? 'ready' : marker ? 'error' : (before ?? 'idle'));
-    }
+    // The guide owner puts the status back when nothing was saved (an error after a failed download).
+    guide?.end(failed);
   }
 }
 
