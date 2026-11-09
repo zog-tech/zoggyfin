@@ -131,6 +131,17 @@ export const brand = {
   ink: '#0B0B0E',
 } as const;
 
+/**
+ * TV: the caption strip under a focused tile's art (design system §7.19). TV
+ * is always dark; the focused tile's caption turns light at once, like a lit
+ * card. Unfocused captions keep the scheme's `text` and `text2`.
+ */
+export const tvCaption = {
+  focusFill: '#FFFFFF',
+  focusText: '#343434', // 12.45:1 on focusFill
+  focusText2: '#62626B', // 6.04:1 on focusFill
+} as const;
+
 // ---------------------------------------------------------------------------
 // Spacing, radius, layout
 // ---------------------------------------------------------------------------

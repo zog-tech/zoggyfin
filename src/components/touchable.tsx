@@ -1,4 +1,4 @@
-import { type ComponentRef, type ReactNode, type Ref, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { type ComponentRef, createContext, type ReactNode, type Ref, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   type PressableProps,
@@ -47,6 +47,13 @@ export interface TouchableProps extends Omit<PressableProps, 'style' | 'children
 }
 
 const STANDARD = Easing.bezier(...motion.easing.standard);
+
+/**
+ * TV: the focus mark of the nearest Touchable (1 focused, 0 not), for content
+ * that changes its look on focus on the UI thread with no React render (the
+ * tile caption). Null off TV and outside a Touchable.
+ */
+export const TouchFocusMark = createContext<SharedValue<number> | null>(null);
 
 /** TV: the shared value behind the focus mark. Other platforms make none (they keep the state path). */
 const useFocusMark: () => SharedValue<number> | null = isTV ? () => useSharedValue(0) : () => null;
@@ -208,7 +215,13 @@ export function Touchable({
       <Animated.View style={[inner, animated, lifted && !isTV && t.shadow('raised')]}>
         {/* Under the content, over the row's own background. */}
         {mark && tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[StyleSheet.absoluteFill, styles.tvRowFill, { borderRadius: radius }]} /> : null}
-        {typeof children === 'function' ? children(state) : children}
+        {mark ? (
+          <TouchFocusMark value={mark}>{typeof children === 'function' ? children(state) : children}</TouchFocusMark>
+        ) : typeof children === 'function' ? (
+          children(state)
+        ) : (
+          children
+        )}
         {kind === 'tile' || kind === 'button' || kind === 'icon' ? (
           <View
             pointerEvents="none"

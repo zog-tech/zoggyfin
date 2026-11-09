@@ -27,6 +27,7 @@ import { createStyles,
 } from '@/theme';
 
 import { ItemImage } from './item-image';
+import { TileCaption, TileFocusFill, TV_CAPTION_PAD } from './tile-caption';
 import { SHAPES, shapeFor, type TileShape } from './tile-shape';
 import { Touchable, type TouchState } from './touchable';
 
@@ -64,7 +65,9 @@ function radiusFor(shape: TileShape): number {
 /**
  * The media tile (design system §7.3): one picture, a title and one line of
  * metadata, a white progress bar on the art, at most one badge. Flat at rest;
- * it lifts with the `raised` shadow only on hover and focus.
+ * it lifts with the `raised` shadow only on hover and focus. On TV a focused
+ * tile with a caption lights its caption strip instead of the ring
+ * (`tile-caption.tsx`).
  */
 export const Tile = memo(function Tile({
   item,
@@ -98,13 +101,15 @@ export const Tile = memo(function Tile({
   const lines = fontScale >= 1.5 ? 2 : 1;
   const download = useDownloadStatus(item.Id);
 
+  // TV: a tile with a caption shows the focus as the lit caption strip, not a ring (design system §7.19).
+  const captioned = !titleOnArt && !artOnly;
   const label = [titleText, sub, progress !== null ? left : null, played ? 'played' : null, downloadLabel(download)].filter(Boolean).join(', ');
 
   return (
     <Touchable
       // A round tile (people, artists): press, hover and focus show on the circle only, not around the name.
       kind={circle ? 'plain' : 'tile'}
-      ring={!circle}
+      ring={!circle && !(isTV && captioned)}
       radius={r}
       onPress={() => onPress(item)}
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
@@ -127,6 +132,7 @@ export const Tile = memo(function Tile({
   function body({ pressed, hovered, focused }: TouchState) {
     return (
       <>
+        {!circle && captioned ? <TileFocusFill artHeight={width / shapeInfo.aspect} radius={r} /> : null}
         <View style={circle ? circleArt(focused, hovered) : undefined}>
           <ItemImage
             item={item}
@@ -171,16 +177,17 @@ export const Tile = memo(function Tile({
           ) : null}
           {circle ? <CircleFocus radius={r} pressed={pressed} hovered={hovered} focused={focused} /> : null}
         </View>
-        {!titleOnArt && !artOnly ? (
+        {captioned && !circle ? (
+          <TileCaption title={titleText} sub={sub} lines={lines} />
+        ) : captioned ? (
           <>
             <Text
-              style={[s.title, circle && s.center, circle && isTV && { marginTop: tvFocusBleed(width) },
-                circle && isTV && !focused && s.dim, scriptStyle(titleText, circle ? s.center : s.title)]}
+              style={[s.title, s.center, isTV && { marginTop: tvFocusBleed(width) }, isTV && !focused && s.dim, scriptStyle(titleText, s.center)]}
               numberOfLines={lines}>
               {titleText}
             </Text>
             {sub ? (
-              <Text style={[s.meta, circle && s.center, circle && focused && s.metaFocused, scriptStyle(sub, circle ? s.center : s.meta)]} numberOfLines={1}>
+              <Text style={[s.meta, s.center, focused && s.metaFocused, scriptStyle(sub, s.center)]} numberOfLines={1}>
                 {sub}
               </Text>
             ) : null}
@@ -252,7 +259,7 @@ export function tileAspect(shape: TileShape): number {
 export function tileHeight(shape: TileShape, width: number, withText = true): number {
   const art = width / SHAPES[shape].aspect;
   if (!withText) return art;
-  return art + sizes.tileTitleGap + scaled(type.tileTitle.lineHeight) + sizes.tileMetaGap + scaled(type.caption1.lineHeight);
+  return art + sizes.tileTitleGap + scaled(type.tileTitle.lineHeight) + sizes.tileMetaGap + scaled(type.caption1.lineHeight) + TV_CAPTION_PAD;
 }
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
