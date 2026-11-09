@@ -13,6 +13,12 @@ const mockFiles = new Map<string, string>();
 const mockResponses = new Map<string, unknown>();
 const mockTexts = new Map<string, string>();
 const mockRequested: string[] = [];
+/** While set, playlist downloads wait for it (a slow provider). */
+const mockHold: { promise: Promise<void> | null } = { promise: null };
+async function* mockHeld(hold: Promise<void>, chunks: AsyncGenerator<string>): AsyncGenerator<string> {
+  await hold;
+  yield* chunks;
+}
 
 jest.mock('@/storage/kv', () => ({
   storage: {
@@ -44,7 +50,8 @@ jest.mock('../transport', () => {
         mockRequested.push(url);
         const t = mockTexts.get(url);
         if (t === undefined) throw new IptvError('http', 404);
-        return jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
+        const chunks = jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
+        return mockHold.promise ? mockHeld(mockHold.promise, chunks) : chunks;
       },
       async json(url: string) {
         mockRequested.push(url);
@@ -61,6 +68,7 @@ jest.mock('@/auth/session-store', () => {
 
 // eslint-disable-next-line import/first
 import {
+  applySynced,
   ensureLoaded,
   formValues,
   moveProvider,
@@ -92,6 +100,7 @@ beforeEach(() => {
   mockResponses.clear();
   mockTexts.clear();
   mockRequested.length = 0;
+  mockHold.promise = null;
   setIptvState({ scope: null });
 });
 
@@ -192,6 +201,54 @@ describe('IPTV manager', () => {
     await expect(saveProvider({ kind: 'm3u', name: '', playlistUrl: 'nope', guideUrl: null, userAgent: null })).rejects.toBeTruthy();
     expect(iptvState().providers.order).toEqual([]);
     setSession('u1');
+  });
+});
+
+describe('stale list loads', () => {
+  const PLAYLIST_B = 'https://lists.example.com/b.m3u?token=b';
+  const ONE = '#EXTM3U\n#EXTINF:-1 tvg-id="one.example",Only One\nhttp://streams.example.com/1.ts\n';
+
+  function hold(): () => void {
+    let release!: () => void;
+    mockHold.promise = new Promise<void>((r) => (release = r));
+    return () => {
+      mockHold.promise = null;
+      release();
+    };
+  }
+
+  it('a refresh that began before an edit writes neither the old list nor the old login', async () => {
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    mockTexts.set(PLAYLIST_B, ONE);
+    const id = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    const release = hold();
+    const old = refresh(id);
+    mockHold.promise = null;
+    await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST_B, guideUrl: null, userAgent: null }, id);
+    release();
+    await old;
+    expect(JSON.parse(mockSecure.get(`iptv.${id}`) ?? '{}').playlistUrl).toBe(PLAYLIST_B);
+    expect(iptvState().data[id].channels.map((c) => c.name)).toEqual(['Only One']);
+    expect(iptvState().providers.providers[id].channelCount).toBe(1);
+  });
+
+  it('a sync reload starts a new load with the new login, not the old running one', async () => {
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    mockTexts.set(PLAYLIST_B, ONE);
+    const id = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    const release = hold();
+    const old = refresh(id);
+    mockHold.promise = null;
+    const st = iptvState();
+    await applySynced({ providers: st.providers, secrets: { [id]: { playlistUrl: PLAYLIST_B } }, reload: [id], removed: [], lists: {}, vod: {} });
+    // The new load runs now (its download is not held); the old one still waits.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(mockRequested).toContain(PLAYLIST_B);
+    expect(iptvState().data[id].channels.map((c) => c.name)).toEqual(['Only One']);
+    release();
+    await old;
+    expect(iptvState().data[id].channels.map((c) => c.name)).toEqual(['Only One']);
+    expect(JSON.parse(mockSecure.get(`iptv.${id}`) ?? '{}').playlistUrl).toBe(PLAYLIST_B);
   });
 });
 

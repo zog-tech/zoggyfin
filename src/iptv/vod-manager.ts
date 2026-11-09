@@ -134,15 +134,26 @@ async function m3uVodOf(pid: string) {
   return vodState().m3u[pid] ?? null;
 }
 
-const inFlight = new Map<string, Promise<void>>();
+const inFlight = new Map<string, { job: Promise<void>; force: boolean }>();
 
-/** Runs `job` once per key at a time. */
-function once(key: string, job: () => Promise<void>): Promise<void> {
+/**
+ * Runs `job` once per key at a time. A normal load joins whatever runs. A
+ * forced load joins a forced one, and runs after a normal one: run side by
+ * side, the normal load's saved copy could land after the fresh data and
+ * replace it. So the newest data always lands last.
+ */
+function once(key: string, force: boolean, job: () => Promise<void>): Promise<void> {
   const running = inFlight.get(key);
-  if (running) return running;
-  const p = job().finally(() => inFlight.delete(key));
-  inFlight.set(key, p);
-  return p;
+  if (running && (running.force || !force)) return running.job;
+  const start = running ? running.job.catch(() => undefined).then(job) : job();
+  const entry = {
+    job: start.finally(() => {
+      if (inFlight.get(key) === entry) inFlight.delete(key);
+    }),
+    force,
+  };
+  inFlight.set(key, entry);
+  return entry.job;
 }
 
 /**
@@ -198,7 +209,7 @@ async function loadInto<T>(opts: {
 /** The categories of films or series. */
 export function loadCategories(pid: string, kind: VodKind, force = false): Promise<void> {
   const key = catalogueKey(pid, kind);
-  return once(`cats:${key}:${force}`, async () => {
+  return once(`cats:${key}`, force, async () => {
     const record = providerById(pid);
     if (!record) return;
     if (record.kind === 'm3u') {
@@ -229,7 +240,7 @@ function parseTitles(kind: VodKind, json: unknown): VodItem[] {
 export function loadCategory(pid: string, kind: VodKind, categoryId: string, force = false): Promise<void> {
   if (categoryId === ALL_CATEGORY) return loadAll(pid, kind, force);
   const key = categoryKey(pid, kind, categoryId);
-  return once(`list:${key}:${force}`, async () => {
+  return once(`list:${key}`, force, async () => {
     const record = providerById(pid);
     if (!record) return;
     const all = vodState().all[catalogueKey(pid, kind)];
@@ -256,7 +267,7 @@ export function loadCategory(pid: string, kind: VodKind, categoryId: string, for
 /** Every title of a kind, with a search index (a search, the "All" category). */
 export function loadAll(pid: string, kind: VodKind, force = false): Promise<void> {
   const key = catalogueKey(pid, kind);
-  return once(`all:${key}:${force}`, async () => {
+  return once(`all:${key}`, force, async () => {
     const record = providerById(pid);
     if (!record) return;
     if (record.kind === 'm3u') {
@@ -331,7 +342,7 @@ function isSeriesInfo(v: unknown): v is SeriesInfo {
 /** The details of a film or a series. */
 export function loadInfo(pid: string, kind: VodKind, id: string, force = false): Promise<void> {
   const key = infoKey(pid, kind, id);
-  return once(`info:${key}:${force}`, async () => {
+  return once(`info:${key}`, force, async () => {
     const record = providerById(pid);
     if (!record) return;
     if (record.kind === 'm3u') {

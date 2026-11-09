@@ -7,6 +7,7 @@
 import { Platform } from 'react-native';
 
 import { useSessionStore } from '@/auth/session-store';
+import { createKeyedGate } from '@/lib/async-gate';
 import { randomId } from '@/lib/id';
 import { tsBridge } from '@/native/ts-bridge';
 import { isDesktop } from '@/platform/desktop';
@@ -16,6 +17,7 @@ import { forgetProviderTracks } from '@/player/track-prefs-store';
 
 import { IptvError, iptvErrorText, isHttpUrl } from './errors';
 import { iptvFiles } from './files';
+import { createGuideOwner, type GuideClaim } from './guide-owner';
 import { EMPTY_GUIDE, guideIdFor, isStale, nowNext, withProgrammes } from './guide';
 import { addRecent, EMPTY_LISTS, snapOf, toggleFavourite as toggleIn, withSnaps } from './lists';
 import { ALL_PROVIDERS, moveInOrder, type ProviderChannel, resolveActive, splitProviderChannelKey, uniqueProviderName } from './merged';
@@ -78,6 +80,9 @@ const channelsPath = (id: string) => `iptv/${id}/channels.json`;
 const guidePath = (id: string) => `iptv/${id}/guide.json`;
 const namesPath = (id: string) => `iptv/${id}/names.json`;
 
+/** The owner of each provider's guide window: one current load, stale results dropped (`guide-owner.ts`). */
+const guideOwner = createGuideOwner();
+
 // ---- Session scope ---------------------------------------------------------------
 
 function currentScope(): Scope | null {
@@ -92,6 +97,10 @@ function applyScope(scope: Scope | null): void {
   // The start the person chose (a provider or "All providers"), else the last one used.
   const activeId = resolveActive(providers.startWith, scope ? loadActive(scope) : null, providers.order);
   // Another account: its providers only; the memory of the old ones goes.
+  guideOwner.resetAll();
+  listGate.cancelAll();
+  inFlight.clear();
+  reading.clear();
   setIptvState({ scope: id, providers, activeId, data: {}, lists: {}, guides: {}, guideNames: {}, guideStatus: {}, programmeSlices: {} });
   resetVodState();
 }
@@ -218,11 +227,28 @@ async function writeChannels(id: string, channels: Channel[]): Promise<void> {
 }
 
 const inFlight = new Map<string, Promise<void>>();
+/** Saved channel lists being read (`ensureLoaded`), so a caller can wait for one that another caller started. */
+const reading = new Map<string, Promise<void>>();
+/**
+ * The channel list loads of each provider: a load whose provider was saved,
+ * removed or loaded again by sync since it began is stale, and writes
+ * nothing (no channels, no secrets, no guide).
+ */
+const listGate = createKeyedGate<string>();
 
-/** Loads the channel list from the provider again and saves it. */
+/** Makes the running list loads of a provider stale, so the next caller starts a new one. */
+function resetList(id: string): void {
+  listGate.cancel(id);
+  inFlight.delete(id);
+  reading.delete(id);
+}
+
+/** Loads the channel list from the provider again and saves it. A call while one runs joins it. */
 export function refresh(id: string): Promise<void> {
   const running = inFlight.get(id);
   if (running) return running;
+  const token = listGate.begin(id);
+  const current = () => listGate.current(id, token) && !!providerById(id);
   const job = (async () => {
     const record = providerById(id);
     if (!record) return;
@@ -231,29 +257,31 @@ export function refresh(id: string): Promise<void> {
     try {
       const secrets = readSecrets(id);
       const r = await fetchChannels(record, secrets);
-      if (!providerById(id)) return;
+      if (!current()) return;
       if (r.playlistGuideUrl !== secrets.playlistGuideUrl) {
         writeSecrets(id, { ...secrets, playlistGuideUrl: r.playlistGuideUrl });
         // The playlist names another guide (and the person typed none): the programme index of the old one goes.
         if (record.kind === 'm3u' && !secrets.guideUrl) await dropProgrammeIndex(id);
+        if (!current()) return;
       }
       showChannels(id, r.channels);
       await writeChannels(id, r.channels);
+      if (!current()) return;
       updateRecord(id, { refreshedAt: Date.now(), channelCount: liveCount(id, r.channels.length), hasGuide: record.kind === 'xtream' || !!(secrets.guideUrl || r.playlistGuideUrl) });
       void loadGuide(id, true);
     } catch (e) {
+      if (!current()) return;
       const text = iptvErrorText(e);
       const now = iptvState().data[id] ?? EMPTY_DATA;
       // A refresh that fails keeps the saved list; the error shows above it.
       patchData(id, now.channels.length ? { status: 'ready', refreshing: false, error: text } : { status: 'error', error: text, refreshing: false });
     }
-  })().finally(() => inFlight.delete(id));
+  })().finally(() => {
+    if (inFlight.get(id) === job) inFlight.delete(id);
+  });
   inFlight.set(id, job);
   return job;
 }
-
-/** Saved channel lists being read (`ensureLoaded`), so a caller can wait for one that another caller started. */
-const reading = new Map<string, Promise<void>>();
 
 /** Shows the saved list (or loads it), and refreshes a list that is a day old. */
 export function ensureLoaded(id: string): Promise<void> {
@@ -261,7 +289,9 @@ export function ensureLoaded(id: string): Promise<void> {
   if (!iptvState().lists[id]) setIptvState({ lists: { ...iptvState().lists, [id]: loadLists(id) } });
   if (data && data.status !== 'idle') return Promise.resolve();
   patchData(id, { status: 'loading', error: null });
-  const job = readSaved(id).finally(() => reading.delete(id));
+  const job = readSaved(id).finally(() => {
+    if (reading.get(id) === job) reading.delete(id);
+  });
   reading.set(id, job);
   return job;
 }
@@ -278,7 +308,10 @@ export async function channelsWhenLoaded(id: string): Promise<readonly Channel[]
 }
 
 async function readSaved(id: string): Promise<void> {
+  const token = listGate.begin(id);
   const raw = await iptvFiles.read(channelsPath(id));
+  // A refresh, an edit or a sync reload began during the read: the file may be of the old list.
+  if (!listGate.current(id, token) || !providerById(id)) return;
   let file: ChannelsFile | null = null;
   if (raw) {
     try {
@@ -355,6 +388,8 @@ export async function saveProvider(input: ProviderInput, id?: string): Promise<s
   const { record, secrets } = fromInput(input, { id: pid, createdAt: old?.createdAt ?? Date.now() }, oldSecrets);
   const r = await fetchChannels(record, secrets);
   const full: ProviderSecrets = { ...secrets, playlistGuideUrl: r.playlistGuideUrl };
+  // A refresh that began before this save would write the old list and login back.
+  if (old) resetList(pid);
   writeSecrets(pid, full);
   // A changed login or guide address: the programme index of the old one goes.
   if (old && guideSourceOf(old, oldSecrets) !== guideSourceOf(record, full)) await dropProgrammeIndex(pid);
@@ -372,7 +407,8 @@ export async function saveProvider(input: ProviderInput, id?: string): Promise<s
   if (!iptvState().lists[pid]) setIptvState({ lists: { ...iptvState().lists, [pid]: loadLists(pid) } });
   showChannels(pid, r.channels);
   if (saved.kind === 'm3u') updateRecord(pid, { channelCount: liveCount(pid, saved.channelCount) });
-  // A changed guide or login: the old guide goes.
+  // A changed guide or login: the old guide goes, and a guide load that runs is stale.
+  guideOwner.reset(pid);
   setIptvState({ guides: { ...iptvState().guides, [pid]: EMPTY_GUIDE }, guideStatus: { ...iptvState().guideStatus, [pid]: 'idle' } });
   await writeChannels(pid, r.channels);
   setActiveProvider(pid);
@@ -408,6 +444,8 @@ export async function removeProvider(id: string): Promise<void> {
   removeLists(id);
   removeVodData(id);
   forgetProviderTracks(id);
+  guideOwner.reset(id);
+  resetList(id);
   setIptvState({
     data: without(st.data, id),
     guides: without(st.guides, id),
@@ -442,6 +480,8 @@ export async function applySynced(changes: SyncedChanges): Promise<void> {
   for (const id of changes.removed) await removeProvider(id);
   for (const [id, secrets] of Object.entries(changes.secrets)) writeSecrets(id, secrets);
   for (const id of changes.reload) {
+    guideOwner.reset(id);
+    resetList(id);
     const st = iptvState();
     setIptvState({ data: without(st.data, id), guides: without(st.guides, id), guideNames: without(st.guideNames, id), guideStatus: without(st.guideStatus, id) });
     await dropProgrammeIndex(id);
@@ -477,6 +517,8 @@ export async function applyShared(upsert: { record: ProviderRecord; secrets: Pro
   for (const u of upsert) {
     writeSecrets(u.record.id, u.secrets);
     if (u.reload) {
+      guideOwner.reset(u.record.id);
+      resetList(u.record.id);
       const st = iptvState();
       setIptvState({ data: without(st.data, u.record.id), guides: without(st.guides, u.record.id), guideNames: without(st.guideNames, u.record.id), guideStatus: without(st.guideStatus, u.record.id) });
       await dropProgrammeIndex(u.record.id);
@@ -595,36 +637,83 @@ export async function saveGuideResult(id: string, r: { guide: GuideWindow; names
   await Promise.all([iptvFiles.write(guidePath(id), JSON.stringify(r.guide)), iptvFiles.write(namesPath(id), JSON.stringify(names))]).catch(() => undefined);
 }
 
+/** The guide address of an M3U provider, or null (Xtream asks per channel). */
+function m3uGuideUrl(id: string): string | null {
+  if (providerById(id)?.kind !== 'm3u') return null;
+  const s = readSecrets(id);
+  return s.guideUrl ?? s.playlistGuideUrl ?? null;
+}
+
+/** A guide load that owns the guide window of a provider (see `claimGuide`). */
+export interface GuideTask {
+  /** True while this load may write: its claim is current and the provider still uses its address. */
+  current(): boolean;
+  /** Ends the load. A load that saved nothing puts the status back (`failed`: an error). */
+  end(failed: boolean): void;
+}
+
+function startGuide(id: string, url: string, claim: GuideClaim): GuideTask {
+  const before = iptvState().guideStatus[id];
+  setGuideStatus(id, 'loading');
+  return {
+    current: () => claim.current() && m3uGuideUrl(id) === url,
+    end(failed) {
+      // Only the current claim writes the status. A guide that still shows stays ready.
+      if (claim.current() && iptvState().guideStatus[id] === 'loading') {
+        setGuideStatus(id, before === 'ready' ? 'ready' : failed || before === 'error' ? 'error' : 'idle');
+      }
+      claim.end();
+    },
+  };
+}
+
+/**
+ * The programme index build takes the guide window of an M3U provider for
+ * its own download of `url`: a `loadGuide` for the same address joins it,
+ * and one that runs now becomes stale.
+ */
+export function claimGuide(id: string, url: string): GuideTask {
+  return startGuide(id, url, guideOwner.claim(id, url));
+}
+
 /**
  * M3U: reads the XMLTV guide into a window of a few hours (saved, so a
  * restart shows now and next at once). Xtream: nothing up front; now and
- * next load per channel (`requestNowNext`).
+ * next load per channel (`requestNowNext`). A load of the same address that
+ * runs is joined; a load asked while another address downloads runs after it.
  */
 export async function loadGuide(id: string, force: boolean): Promise<void> {
   const record = providerById(id);
-  if (!record || record.kind !== 'm3u' || iptvState().guideStatus[id] === 'loading') return;
-  const secrets = readSecrets(id);
-  const url = secrets.guideUrl ?? secrets.playlistGuideUrl;
-  if (!url) return;
+  const url = m3uGuideUrl(id);
+  if (!record || !url) return;
   const now = Date.now();
-  if (!force && !iptvState().guides[id]) {
-    const [raw, rawNames] = await Promise.all([iptvFiles.read(guidePath(id)), iptvFiles.read(namesPath(id))]);
-    try {
-      const saved = raw ? migrateGuide(JSON.parse(raw)) : null;
-      if (saved && saved.to > now + HOUR) {
-        setGuide(id, saved);
-        if (rawNames) setIptvState({ guideNames: { ...iptvState().guideNames, [id]: JSON.parse(rawNames) as Record<string, string> } });
-        setGuideStatus(id, 'ready');
-        return;
-      }
-    } catch {
-      // Load it again.
-    }
+  const shown = iptvState().guides[id];
+  if (!force && shown && shown.to > now + HOUR) return;
+  const req = guideOwner.request(id, url);
+  if (req.kind === 'join') return req.done;
+  if (req.kind === 'wait') {
+    await req.done;
+    // The address changed during that load: this one gets the new guide.
+    return loadGuide(id, true);
   }
-  const current = iptvState().guides[id];
-  if (!force && current && current.to > now + HOUR) return;
-  setGuideStatus(id, 'loading');
+  const task = startGuide(id, url, req.claim);
+  let failed = false;
   try {
+    if (!force && !shown) {
+      const [raw, rawNames] = await Promise.all([iptvFiles.read(guidePath(id)), iptvFiles.read(namesPath(id))]);
+      if (!task.current()) return;
+      try {
+        const saved = raw ? migrateGuide(JSON.parse(raw)) : null;
+        if (saved && saved.to > now + HOUR) {
+          setGuide(id, saved);
+          if (rawNames) setIptvState({ guideNames: { ...iptvState().guideNames, [id]: JSON.parse(rawNames) as Record<string, string> } });
+          setGuideStatus(id, 'ready');
+          return;
+        }
+      } catch {
+        // Load it again.
+      }
+    }
     const { keep, matchNames } = guideKeepFor(iptvState().data[id]?.channels ?? []);
     const r = await parseXmltv(transport.text(url, { userAgent: record.userAgent, maxBytes: MAX_LIST_BYTES }), {
       ...guideWindowOptions(now),
@@ -632,10 +721,12 @@ export async function loadGuide(id: string, force: boolean): Promise<void> {
       matchNames,
     });
     if (!r.looksLikeXmltv) throw new IptvError('notXmltv');
-    await saveGuideResult(id, r, matchNames);
+    if (task.current()) await saveGuideResult(id, r, matchNames);
   } catch (e) {
-    setGuideStatus(id, 'error');
+    failed = task.current();
     console.warn('[iptv] guide failed:', iptvErrorText(e));
+  } finally {
+    task.end(failed);
   }
 }
 

@@ -11,6 +11,10 @@
  *   providers page opens.
  * - It pushes a few seconds after a change. With no server, the change
  *   waits (`dirty`) and goes when the server answers.
+ * - One sync runs at a time. A request during one runs once more after it
+ *   (`createSerialRunner`); an account switch drops that queued run.
+ * - A change made while a sync applies the account's setup is still sent:
+ *   only the apply's own writes match the ledger, so only they send nothing.
  * - A user with no providers anywhere gets no blob.
  * - Everything is per account (server Id + user Id): the ledger and the blob.
  * - Nothing here logs the blob, a login or a URL.
@@ -20,6 +24,7 @@ import { AppState } from 'react-native';
 import { getApi } from '@/api/client';
 import { getCustomPrefs, setCustomPrefs } from '@/api/jellyfin';
 import { useSessionStore } from '@/auth/session-store';
+import { createSerialRunner } from '@/lib/async-gate';
 import { isOffline, useOnlineStore } from '@/lib/online';
 import { readJson, writeJson } from '@/storage/json';
 
@@ -92,19 +97,9 @@ function readLocal(): LocalState {
   return { providers: st.providers, secrets, lists, vod };
 }
 
-/** True while this sync writes to the stores (its own writes are not changes to send). */
-let applying = false;
-
 async function apply(local: LocalState, blob: SyncBlob, meta: SyncMeta): Promise<SyncMeta> {
   const plan = planApply(local, blob, meta);
-  if (!planIsEmpty(plan, local)) {
-    applying = true;
-    try {
-      await applySynced(plan);
-    } finally {
-      applying = false;
-    }
-  }
+  if (!planIsEmpty(plan, local)) await applySynced(plan);
   return plan.meta;
 }
 
@@ -153,14 +148,7 @@ async function cycle(kind: Kind): Promise<void> {
     saveMeta(scope, { ...meta, dirty: false });
     lastError = null;
     // Providers an admin shares with this user; and, for an admin, the users it shares with.
-    if (kind === 'pull') {
-      applying = true;
-      try {
-        await pullShared();
-      } finally {
-        applying = false;
-      }
-    }
+    if (kind === 'pull') await pullShared();
     if (same()) {
       const admin = useShareStore.getState().admin[sid];
       if (kind === 'pull' || (pushed && admin)) void runShares(kind !== 'pull');
@@ -172,28 +160,30 @@ async function cycle(kind: Kind): Promise<void> {
   }
 }
 
-let running: Promise<void> | null = null;
-let again: Kind | null = null;
+/** The kind of the next cycle: a pull covers a push. */
+let nextKind: Kind | null = null;
+/** One cycle at a time; a request during a cycle runs one more after it, with the inputs of that moment. */
+const cycles = createSerialRunner(async () => {
+  const kind = nextKind ?? 'push';
+  nextKind = null;
+  await cycle(kind);
+});
 
 function run(kind: Kind): Promise<void> {
-  if (running) {
-    again = again === 'pull' || kind === 'pull' ? 'pull' : 'push';
-    return running;
-  }
-  running = cycle(kind).finally(() => {
-    running = null;
-    const next = again;
-    again = null;
-    if (next) void run(next);
-  });
-  return running;
+  nextKind = nextKind === 'pull' || kind === 'pull' ? 'pull' : 'push';
+  return cycles.request();
 }
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPullAt = 0;
 
+/**
+ * Every change to the stores asks for a push, the writes of an apply too: a
+ * push cycle first compares the device with the ledger (`observe`), and the
+ * apply's own writes match it, so they send nothing. A change the person made
+ * during an apply does not match, and goes.
+ */
 function schedulePush(): void {
-  if (applying) return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     pushTimer = null;
@@ -222,9 +212,11 @@ export function startIptvSync(): void {
   if (programmeIndexEnabled()) startProgrammeIndex();
   useSessionStore.subscribe((s, prev) => {
     if (s.session?.serverId === prev.session?.serverId && s.session?.userId === prev.session?.userId) return;
-    // Another account (or a sign-in): a pull from its own server.
+    // Another account (or a sign-in): a pull from its own server. Nothing queued for the old account runs.
     if (pushTimer) clearTimeout(pushTimer);
     pushTimer = null;
+    cycles.reset();
+    nextKind = null;
     if (s.session) void pull();
   });
   useIptvStore.subscribe((s, prev) => {

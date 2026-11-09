@@ -16,6 +16,8 @@ const mockUsers = [
   { id: 'u2', name: 'Alex' },
 ];
 let mockAdmin = true;
+/** getUsers: fails this many times, and waits for `hold` while it is set. */
+const mockUsersCall: { fail: number; hold: Promise<void> | null } = { fail: 0, hold: null };
 const mockWrites: string[] = [];
 const mockKv = new Map<string, string>();
 
@@ -34,7 +36,14 @@ jest.mock('@/api/jellyfin', () => ({
     mockWrites.push(`${userId}|${id}`);
     mockPrefs.set(`${userId}|${id}`, update({ ...(mockPrefs.get(`${userId}|${id}`) ?? {}) }));
   },
-  getUsers: async () => mockUsers.slice(),
+  getUsers: async () => {
+    if (mockUsersCall.hold) await mockUsersCall.hold;
+    if (mockUsersCall.fail > 0) {
+      mockUsersCall.fail -= 1;
+      throw new Error('network');
+    }
+    return mockUsers.slice();
+  },
   isAdministrator: async () => mockAdmin,
 }));
 const mockApplied: { upsert: unknown[]; remove: string[] }[] = [];
@@ -76,6 +85,8 @@ beforeEach(() => {
   mockApplied.length = 0;
   mockKv.clear();
   mockAdmin = true;
+  mockUsersCall.fail = 0;
+  mockUsersCall.hold = null;
 });
 
 describe('an admin shares a provider', () => {
@@ -119,6 +130,48 @@ describe('an admin shares a provider', () => {
     mockWrites.length = 0;
     await shareSync.runShares(true);
     expect(mockWrites).toEqual([]);
+  });
+});
+
+describe('runs', () => {
+  const sharing = (users: string[]) => ({ sharing: JSON.stringify({ schemaVersion: 1, providers: { p1: { everyone: false, users } } }) });
+
+  it('a failed run does not hold back the next run for 10 minutes', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // Well past any run of the tests before.
+    const now = jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2030, 0, 1));
+    signIn('admin1', 'Sam');
+    mockPrefs.set(`admin1|${SHARED_PREFS_ID}`, sharing(['u1']));
+    mockUsersCall.fail = 1;
+    await expect(shareSync.runShares(true)).resolves.toBeUndefined();
+    expect(sharedOf('u1')).toBeNull();
+    expect(warn).toHaveBeenCalledWith('[iptv] sharing failed', 'Error');
+    now.mockReturnValue(Date.UTC(2030, 0, 1) + 1000);
+    await shareSync.runShares(false);
+    expect(sharedOf('u1')).not.toBeNull();
+    // A good run: the next one without force waits 10 minutes.
+    mockWrites.length = 0;
+    await shareSync.runShares(false);
+    expect(mockWrites).toEqual([]);
+    now.mockRestore();
+    warn.mockRestore();
+  });
+
+  it('a forced run during a run runs again after it with the new choices', async () => {
+    signIn('admin1', 'Sam');
+    mockPrefs.set(`admin1|${SHARED_PREFS_ID}`, sharing(['u1']));
+    let release!: () => void;
+    mockUsersCall.hold = new Promise<void>((r) => (release = r));
+    const first = shareSync.runShares(true);
+    await new Promise((r) => setTimeout(r, 0));
+    // The choices change while the first run waits (it read them already).
+    mockPrefs.set(`admin1|${SHARED_PREFS_ID}`, sharing(['u1', 'u2']));
+    const second = shareSync.runShares(true);
+    mockUsersCall.hold = null;
+    release();
+    await Promise.all([first, second]);
+    expect(sharedOf('u1')).not.toBeNull();
+    expect(sharedOf('u2')).not.toBeNull();
   });
 });
 
