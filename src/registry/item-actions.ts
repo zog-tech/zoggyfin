@@ -42,7 +42,21 @@ export interface ItemActionContext {
    * The sheet loads them only when a registered action asks for them.
    */
   facts?: { libraryName?: string | null; path?: string | null };
+  /**
+   * The Id of the item page on screen, when the sheet opens over one. An
+   * action that would open that same page ("Go to album" on the album) hides.
+   */
+  here?: string | null;
 }
+
+/**
+ * The section of the action sheet an action shows in. The sheet shows the
+ * sections in this order, each as its own group; destructive actions go to
+ * a last group whatever their section.
+ */
+export type ItemActionGroup = 'play' | 'library' | 'goTo' | 'more';
+
+export const ITEM_ACTION_GROUPS: readonly ItemActionGroup[] = ['play', 'library', 'goTo', 'more'];
 
 export interface ItemAction {
   id: string;
@@ -54,6 +68,8 @@ export interface ItemAction {
   /** Lower comes first. Built-ins use steps of 10. */
   order?: number;
   destructive?: boolean;
+  /** The sheet section. Left out (as for extension actions), the action goes to `more`. */
+  group?: ItemActionGroup;
   when?: (ctx: ItemActionContext) => boolean;
   run: (ctx: ItemActionContext) => void | Promise<void>;
 }
@@ -108,4 +124,27 @@ export function actionsFor(ctx: ItemActionContext, registry: Registry<ItemAction
       return false;
     }
   });
+}
+
+export interface ActionSection {
+  key: ItemActionGroup | 'destructive';
+  actions: ItemAction[];
+}
+
+/**
+ * Splits the sheet's actions into its sections: play and queue, library
+ * (favourite, playlist, download, played), go to, more, then the
+ * destructive ones. Empty sections are left out; the registry order holds
+ * inside a section. An unknown group counts as `more`. Pure, so it is
+ * unit-tested.
+ */
+export function actionSections(actions: readonly ItemAction[]): ActionSection[] {
+  const buckets = new Map<ActionSection['key'], ItemAction[]>();
+  for (const a of actions) {
+    const key: ActionSection['key'] = a.destructive ? 'destructive' : a.group && ITEM_ACTION_GROUPS.includes(a.group) ? a.group : 'more';
+    buckets.set(key, [...(buckets.get(key) ?? []), a]);
+  }
+  return [...ITEM_ACTION_GROUPS, 'destructive' as const]
+    .map((key) => ({ key, actions: buckets.get(key) ?? [] }))
+    .filter((sec) => sec.actions.length > 0);
 }

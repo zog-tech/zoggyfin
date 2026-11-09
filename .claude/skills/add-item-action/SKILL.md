@@ -31,6 +31,7 @@ Steps:
      title: 'My action',                // plain English, sentence case
      icon: 'star',
      order: 30,                          // lower comes first; built-ins use steps of 10
+     group: 'library',                   // sheet section: play, library, goTo or more (default)
      destructive: false,                 // true shows it in red, near the end (orders 90+)
      when: ({ item, app }) => !!app.myAction && item.Type === 'Movie',
      run: ({ item, app }) => app.myAction?.(item),

@@ -2,7 +2,9 @@ import { Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { useItemActions } from '@/features/actions/use-item-actions';
+import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
+import { actionSections, type ItemAction } from '@/registry/item-actions';
 import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, useStyles, useTheme } from '@/theme';
 
 import { Icon } from './icon';
@@ -10,7 +12,13 @@ import { makeSheetStyles, Sheet, SheetRow } from './sheet';
 
 /**
  * The item action sheet. Rows come from the item action registry, in its
- * order; destructive actions are last, in red, in their own group.
+ * order, split into short groups by section (`actionSections`): play and
+ * queue, library, go to, more, then the destructive ones in red.
+ *
+ * The groups sit in a scroll view under the sheet header. The panel has a
+ * maximum height, so a list taller than that scrolls inside the sheet and
+ * the header stays. A plain view here let the rows run past the panel's
+ * edge, out of reach.
  */
 export function ItemActionSheet({
   item,
@@ -24,9 +32,8 @@ export function ItemActionSheet({
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const { actions, run, titleOf } = useItemActions(item);
-  const normal = actions.filter((a) => !a.destructive);
-  const destructive = actions.filter((a) => a.destructive);
-  const group = (list: typeof actions, first: boolean) => (
+  const sections = actionSections(actions);
+  const group = (list: ItemAction[], first: boolean) => (
     <View style={s.group}>
       {list.map((a, i) => (
         <SheetRow
@@ -46,21 +53,24 @@ export function ItemActionSheet({
   );
   return (
     <Sheet visible={visible} title={item?.Name} onClose={onClose}>
-      <View style={s.body}>
-        {normal.length ? group(normal, true) : null}
-        {destructive.length ? group(destructive, normal.length === 0) : null}
+      <TvScrollView style={s.list} contentContainerStyle={s.body}>
+        {sections.map((sec, i) => (
+          <View key={sec.key}>{group(sec.actions, i === 0)}</View>
+        ))}
         <View style={s.group}>
-          <SheetRow onPress={onClose} last accessibilityLabel="Cancel">
+          <SheetRow onPress={onClose} last accessibilityLabel="Cancel" preferredFocus={isTV && sections.length === 0}>
             <Text style={s.cancel}>Cancel</Text>
           </SheetRow>
         </View>
-      </View>
+      </TvScrollView>
     </Sheet>
   );
 }
 
 const makeStyles = createStyles((t: AppTheme) => ({
   ...makeSheetStyles(t),
+  // No grow, so a short sheet stays short; the scroll view still shrinks to the panel's maximum height.
+  list: { flexGrow: 0 },
   body: { gap: spacing.md, paddingBottom: spacing.sm },
   cancel: { ...font(type.headline), color: t.c.text, flex: 1, textAlign: 'center' as const },
 }));
