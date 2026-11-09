@@ -13,6 +13,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
+  mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
+  sections mount as you reach them, the side menu slides over the page, screens change at once, and
+  the player controls show with no fade. Focused captioned tiles light a caption strip. Fast D-pad
+  repeat needs a new native build.
 - **Search Live TV programmes.** Search in Live TV now has an "On now" section. It lists programmes
   whose title matches your words and that are on now or start within the hour. Tap one to watch its
   channel. Streams that share one guide show as one row with "+N streams". The app downloads the
