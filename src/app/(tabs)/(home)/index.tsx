@@ -94,21 +94,33 @@ export default function HomeScreen() {
       );
     }
   }, [grow]);
+  // Only the last row that asks in one turn scrolls. Back to Home, Android gives the focus to the
+  // first row and the page gives it back to the row it had in the same moment: scrolling for both
+  // glided to the first row, and the second glide (to where the page already was) did not move it.
+  const pendingRow = useRef<FocusTarget | null>(null);
   const tvPage = useMemo<TvRowPage>(
     () => ({
       scrollTo: (row) => {
-        const content = tvContent.current;
-        if (!row || !content) return;
-        row.measureLayout(
-          content,
-          (_x, y) => {
-            if (Math.abs(y - lastRowY.current) < 1) return;
-            lastRowY.current = y;
-            tvScroll.current?.scrollTo({ y, animated: true });
-            grow();
-          },
-          () => undefined,
-        );
+        if (!row) return;
+        const first = !pendingRow.current;
+        pendingRow.current = row;
+        if (!first) return;
+        setTimeout(() => {
+          const last = pendingRow.current;
+          pendingRow.current = null;
+          const content = tvContent.current;
+          if (!last || !content) return;
+          last.measureLayout(
+            content,
+            (_x, y) => {
+              if (Math.abs(y - lastRowY.current) < 1) return;
+              lastRowY.current = y;
+              tvScroll.current?.scrollTo({ y, animated: true });
+              grow();
+            },
+            () => undefined,
+          );
+        }, 0);
       },
       track: (row) => {
         rows.current.add(row);
