@@ -67,7 +67,7 @@ export function ServerActionsGroup({ target }: { target: AdminTarget }) {
         }
         action={confirm === 'restart' ? 'Restart' : 'Shut down'}
         typed={name}
-        busy={busy === 'restart' || busy === 'shutdown'}
+        busy={busy('restart') || busy('shutdown')}
         onConfirm={() => void go()}
         onClose={() => setConfirm(null)}
       />

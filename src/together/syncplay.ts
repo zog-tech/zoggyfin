@@ -6,6 +6,10 @@
  * AnchorFollower and reports Buffering / Ready.
  *
  * Works on web and native. Messages come through the SDK's WebSocket.
+ *
+ * A group load waits for the player (up to 30 s). Leaving the group makes
+ * every such wait stale (`life` gate), so a late load never binds the player,
+ * the control gate or the queue gate after the user left.
  */
 import type { Api } from '@jellyfin/sdk';
 import { router } from 'expo-router';
@@ -18,6 +22,7 @@ import { describeError } from '@/api/errors';
 import * as jf from '@/api/jellyfin';
 import type { BaseItemDto } from '@/api/types';
 import { useSessionStore } from '@/auth/session-store';
+import { createGate } from '@/lib/async-gate';
 import { toast } from '@/lib/toast';
 import { features } from '@/platform/tv';
 import { isAudioItem, type PlayRequest, stopVideoForAudio } from '@/player';
@@ -84,6 +89,9 @@ class SyncPlayController {
   private target: QueueTarget | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
   private loading: string | null = null;
+  /** One token per group membership: `teardown()` makes every load that waits stale. */
+  private life = createGate();
+  private lifeToken = this.life.begin();
   private groupId: string | null = null;
   /** The newest group request: an older answer does not replace a newer one. */
   private groupSeq = 0;
@@ -141,6 +149,12 @@ class SyncPlayController {
     this.listen(api);
     try {
       await getSyncPlayApi(api).syncPlayCreateGroup({ newGroupRequestDto: { GroupName: `${s.userName}'s group` } });
+    } catch (e) {
+      this.unlistenOutsideGroup();
+      setSyncPlayView({ error: describeError(e).title });
+      return;
+    }
+    try {
       if (item?.Id) await this.playInGroup(item);
     } catch (e) {
       setSyncPlayView({ error: describeError(e).title });
@@ -154,6 +168,7 @@ class SyncPlayController {
     try {
       await getSyncPlayApi(api).syncPlayJoinGroup({ joinGroupRequestDto: { GroupId: groupId } });
     } catch (e) {
+      this.unlistenOutsideGroup();
       setSyncPlayView({ error: describeError(e).title });
     }
   }
@@ -270,6 +285,12 @@ class SyncPlayController {
     this.listen(api);
     try {
       await getSyncPlayApi(api).syncPlayCreateGroup({ newGroupRequestDto: { GroupName: `${s.userName}'s group` } });
+    } catch (e) {
+      this.unlistenOutsideGroup();
+      setSyncPlayView({ error: describeError(e).title });
+      return;
+    }
+    try {
       await this.playAudioInGroup(null);
     } catch (e) {
       setSyncPlayView({ error: describeError(e).title });
@@ -291,6 +312,13 @@ class SyncPlayController {
   private listen(api: Api): void {
     if (this.unsub) return;
     this.unsub = api.subscribe(['SyncPlayCommand', 'SyncPlayGroupUpdate'], (m) => this.onMessage(m as WsMessage));
+  }
+
+  /** A create or join failed: stop listening, unless this device is in a group already. */
+  private unlistenOutsideGroup(): void {
+    if (this.groupId) return;
+    this.unsub?.();
+    this.unsub = null;
   }
 
   private onMessage(m: WsMessage): void {
@@ -432,15 +460,17 @@ class SyncPlayController {
       return;
     }
     if (this.loading === t.playlistItemId) return;
-    this.loading = t.playlistItemId;
     const api = this.api();
     const s = useSessionStore.getState().session;
     if (!api || !s) return;
+    this.loading = t.playlistItemId;
+    const life = this.lifeToken;
     try {
       await this.report('buffering');
       const item = await jf.getItem(api, s.userId, t.itemId);
+      if (!this.life.current(life)) return;
       if (isAudioItem(item)) {
-        await this.loadAudioQueue(api, s.userId, t);
+        await this.loadAudioQueue(api, s.userId, t, life);
         return;
       }
       if (this.audio) this.leaveAudio();
@@ -451,6 +481,7 @@ class SyncPlayController {
       void videoSession().play({ item, startPositionTicks: secondsToTicks(t.startSeconds), autoplay: false });
       router.navigate('/player');
       const ok = await whenPlayerReady(30_000, { after: before });
+      if (!this.life.current(life)) return;
       if (!ok) {
         toast('The group item could not be played here.');
         return;
@@ -458,20 +489,23 @@ class SyncPlayController {
       this.bindPlayer();
       await this.report('ready');
     } catch (e) {
-      toast(describeError(e).title);
+      if (this.life.current(life)) toast(describeError(e).title);
     } finally {
-      this.loading = null;
+      // A newer load of another entry keeps its own mark.
+      if (this.loading === t.playlistItemId) this.loading = null;
     }
   }
 
   /** The group plays an audio queue: the audio player plays it with SyncPlay's entry ids. */
-  private async loadAudioQueue(api: Api, userId: string, t: QueueTarget): Promise<void> {
+  private async loadAudioQueue(api: Api, userId: string, t: QueueTarget, life: number): Promise<void> {
     const items = await itemsByIds(api, userId, t.entries.map((e) => e.itemId));
+    if (!this.life.current(life)) return;
     if (items.length !== t.entries.length) {
       toast('Some items of the group queue are not on this server.');
       return;
     }
     await stopVideoForAudio();
+    if (!this.life.current(life)) return;
     const entries = t.entries.map((e, i) => ({ key: e.playlistItemId, item: slimItem(items[i] as BaseItemDto), user: false }));
     const queue = { entries, index: t.entryIndex, original: entries.map((e) => e.key), shuffle: t.shuffle, repeat: t.repeat, source: null };
     this.audio = true;
@@ -480,8 +514,14 @@ class SyncPlayController {
     queueGate.set('The group plays the queue. Use Next, Previous or the queue rows.');
     // No shared files: each track comes from this device's download or the server.
     await audioSession().loadShared(queue, isLongFormList(items, null), () => null, t.startSeconds, { reports: true });
+    if (!this.life.current(life)) {
+      // The user left while the queue loaded: the player keeps the music, but not the group's rules.
+      audioSession().leaveShared();
+      return;
+    }
     router.navigate('/now-playing');
     const ok = await whenPlayerReady(30_000);
+    if (!this.life.current(life)) return;
     if (!ok) {
       toast('The group queue could not be played here.');
       return;
@@ -500,12 +540,14 @@ class SyncPlayController {
 
   /** The same group queue, another entry: wait for the gapless change, or move now. */
   private async followAudioTrack(t: QueueTarget): Promise<void> {
+    const life = this.lifeToken;
     const current = audioSession().direct.track();
     if (current !== t.playlistItemId) {
       await this.report('buffering');
       await audioSession().moveShared(t.playlistItemId, t.startSeconds);
       await whenPlayerReady(30_000);
     }
+    if (!this.life.current(life)) return;
     if (this.port) this.follower.attach(this.port);
     await this.report('ready');
   }
@@ -545,8 +587,9 @@ class SyncPlayController {
   }
 
   private async reportReadyWhenLoaded(): Promise<void> {
+    const life = this.lifeToken;
     await whenPlayerReady(30_000);
-    await this.report('ready');
+    if (this.life.current(life)) await this.report('ready');
   }
 
   private async report(kind: 'buffering' | 'ready'): Promise<void> {
@@ -617,6 +660,9 @@ class SyncPlayController {
   }
 
   private teardown(): void {
+    // Every load that waits for the player is stale now.
+    this.lifeToken = this.life.begin();
+    this.loading = null;
     syncLog.stop();
     this.stopTimers();
     this.follower.detach();

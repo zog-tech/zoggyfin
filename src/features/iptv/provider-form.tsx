@@ -33,7 +33,10 @@ function SharedProvider({ id }: { id: string }) {
     setBusy(true);
     await iptv.refresh(id);
     setBusy(false);
-    toast('Channel list loaded', { icon: 'checkmark' });
+    // A refresh never rejects: a failure leaves its text on the provider's data.
+    const error = iptv.listError(id);
+    if (error) toast(error, { icon: 'exclamationmark.triangle' });
+    else toast('Channel list loaded', { icon: 'checkmark' });
   };
   return (
     <>
@@ -72,6 +75,8 @@ function EditProvider({ id, kind: kindParam }: { id?: string; kind?: ProviderKin
   const [guideUrl, setGuideUrl] = useState(saved?.kind === 'm3u' ? (saved.guideUrl ?? '') : '');
   const [userAgent, setUserAgent] = useState(saved?.userAgent ?? '');
   const [busy, setBusy] = useState(false);
+  // The busy state reaches the button only after a render: a fast second tap still sees false.
+  const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const userRef = useRef<TextFieldRef>(null);
   const passRef = useRef<TextFieldRef>(null);
@@ -81,7 +86,8 @@ function EditProvider({ id, kind: kindParam }: { id?: string; kind?: ProviderKin
   const ready = kind === 'xtream' ? !!server.trim() && !!username.trim() && (!!password || !!id) : !!playlistUrl.trim();
 
   const save = async () => {
-    if (!ready || busy) return;
+    if (!ready || saving.current) return;
+    saving.current = true;
     setBusy(true);
     setError(null);
     const input: ProviderInput =
@@ -96,6 +102,7 @@ function EditProvider({ id, kind: kindParam }: { id?: string; kind?: ProviderKin
     } catch (e) {
       setError(iptvErrorText(e));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };

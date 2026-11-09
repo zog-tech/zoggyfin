@@ -88,7 +88,7 @@ export function LibrariesSection({ target }: { target: AdminTarget }) {
             variant="small"
             icon="arrow.clockwise"
             disabled={scanning}
-            loading={busy === 'scan-all'}
+            loading={busy('scan-all')}
             onPress={() => void run('scan-all', () => target.api.scanAll(), { success: 'The scan of all libraries started', icon: 'arrow.clockwise', invalidate })}
           />
         </View>
@@ -101,9 +101,9 @@ export function LibrariesSection({ target }: { target: AdminTarget }) {
           <LibraryCard
             key={l.ItemId ?? l.Name}
             library={l}
-            busy={busy === `lib-${l.ItemId}`}
+            busy={busy(`lib-${l.ItemId}`)}
             watch={watching[l.ItemId ?? ''] ?? !!l.LibraryOptions?.EnableRealtimeMonitor}
-            watchBusy={busy === `watch-${l.ItemId}`}
+            watchBusy={busy(`watch-${l.ItemId}`)}
             onWatch={(on) => void setWatch(l, on)}
             onScan={() => refresh(l, 'scan')}
             onRefresh={() => setRefreshing(l)}

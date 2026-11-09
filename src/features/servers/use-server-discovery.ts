@@ -7,9 +7,13 @@
  * shows a short card that tells why; its Continue button shows the system
  * prompt on purpose, so that the prompt does not come later, in the middle of
  * a sign-in. The card shows only once.
+ *
+ * The phase lives in a ref and in state, written together by `go()`, so the
+ * focus handler and Refresh read the same value. Each run has its own abort
+ * controller: a stopped run never writes, and a failed run ends in 'done'.
  */
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { useSessionStore } from '@/auth/session-store';
 import { discoveryBackend } from '@/servers/discovery/backend';
@@ -64,6 +68,12 @@ export function useServerDiscovery(): ServerDiscovery {
   const [lan, setLan] = useState<LanAccess>('unknown');
   const run = useRef<AbortController | null>(null);
   const focused = useRef(false);
+  /** The phase now; handlers read it, not the phase of the last render. */
+  const phaseRef = useRef(phase);
+  const go = useCallback((next: DiscoveryPhase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
 
   const stop = useCallback(() => {
     run.current?.abort();
@@ -75,45 +85,55 @@ export function useServerDiscovery(): ServerDiscovery {
     if (!discoveryBackend.available || !focused.current) return;
     const ctl = new AbortController();
     run.current = ctl;
-    setPhase('searching');
+    go('searching');
     setServers([]);
-    const discovery = runDiscovery(discoveryBackend, { signal: ctl.signal, onServers: setServers });
-    // iOS: a quick check finds out if the user turned access off in Settings.
-    const check = discoveryBackend.asksLanAccess ? discoveryBackend.lanAccess(CHECK_WAIT_MS) : Promise.resolve<LanAccess>('unknown');
-    void Promise.all([discovery, check]).then(([r, checked]) => {
-      if (ctl.signal.aborted) return;
-      run.current = null;
-      // A saved server found at a new address keeps that address (the server Id is the same).
-      useSessionStore.getState().learnAddresses(r.servers.map((x) => ({ serverId: x.id, url: x.address })));
-      setLan(r.lan === 'granted' || checked === 'granted' ? 'granted' : checked === 'denied' || r.lan === 'denied' ? 'denied' : 'unknown');
-      setPhase('done');
+    const discovery = runDiscovery(discoveryBackend, {
+      signal: ctl.signal,
+      onServers: (found) => {
+        if (!ctl.signal.aborted) setServers(found);
+      },
     });
-  }, [stop]);
+    // iOS: a quick check finds out if the user turned access off in Settings.
+    const check = discoveryBackend.asksLanAccess ? discoveryBackend.lanAccess(CHECK_WAIT_MS).catch((): LanAccess => 'unknown') : Promise.resolve<LanAccess>('unknown');
+    Promise.all([discovery, check])
+      .then(([r, checked]) => {
+        if (ctl.signal.aborted) return;
+        run.current = null;
+        // A saved server found at a new address keeps that address (the server Id is the same).
+        useSessionStore.getState().learnAddresses(r.servers.map((x) => ({ serverId: x.id, url: x.address })));
+        setLan(r.lan === 'granted' || checked === 'granted' ? 'granted' : checked === 'denied' || r.lan === 'denied' ? 'denied' : 'unknown');
+        go('done');
+      })
+      .catch(() => {
+        // A failed search shows what it found so far, with Refresh.
+        if (ctl.signal.aborted) return;
+        run.current = null;
+        go('done');
+      });
+  }, [stop, go]);
 
   const allow = useCallback(() => {
     stop();
     storage.set(PRIMER_KEY, 'asked');
-    setPhase('prompt');
+    go('prompt');
     const ctl = new AbortController();
     run.current = ctl;
-    void discoveryBackend.lanAccess(PROMPT_WAIT_MS).then((access) => {
-      if (ctl.signal.aborted) return;
-      run.current = null;
-      setLan(access);
-      if (access === 'denied') setPhase('done');
-      else start();
-    });
-  }, [start, stop]);
+    void discoveryBackend
+      .lanAccess(PROMPT_WAIT_MS)
+      .catch((): LanAccess => 'unknown')
+      .then((access) => {
+        if (ctl.signal.aborted) return;
+        run.current = null;
+        setLan(access);
+        if (access === 'denied') go('done');
+        else start();
+      });
+  }, [start, stop, go]);
 
   const skip = useCallback(() => {
     storage.set(PRIMER_KEY, 'skipped');
-    setPhase('paused');
-  }, []);
-
-  const phaseRef = useRef(phase);
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
+    go('paused');
+  }, [go]);
 
   useFocusEffect(
     useCallback(() => {
@@ -125,9 +145,10 @@ export function useServerDiscovery(): ServerDiscovery {
         focused.current = false;
         stop();
         // A run that stopped half way is not a result.
-        setPhase((x) => (x === 'searching' || x === 'prompt' ? 'done' : x));
+        const x = phaseRef.current;
+        if (x === 'searching' || x === 'prompt') go('done');
       };
-    }, [start, stop]),
+    }, [start, stop, go]),
   );
 
   return {
@@ -136,7 +157,7 @@ export function useServerDiscovery(): ServerDiscovery {
     lan,
     allow,
     skip,
-    refresh: () => (phase === 'paused' || phase === 'primer' ? allow() : start()),
+    refresh: () => (phaseRef.current === 'paused' || phaseRef.current === 'primer' ? allow() : start()),
     openSettings: () => void discoveryBackend.openSettings().catch(() => undefined),
   };
 }

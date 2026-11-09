@@ -1,4 +1,4 @@
-import { canAddToPlaylist, fits, moveEntry, playlistMediaFor, playlistName, removeEntries, sheetOrder, touchRecent } from '../logic';
+import { canAddToPlaylist, fits, moveEntry, playlistMediaFor, playlistName, removeEntries, rollbackTo, sheetOrder, touchRecent } from '../logic';
 
 describe('playlist media', () => {
   it('sends audio to audio playlists and video to video playlists', () => {
@@ -64,5 +64,18 @@ describe('reorder and remove', () => {
   it('cleans the name', () => {
     expect(playlistName('  Road   trip ')).toBe('Road trip');
     expect(playlistName('   ')).toBe('New playlist');
+  });
+});
+
+describe('rollbackTo', () => {
+  const before = [{ Id: 'a' }, { Id: 'b' }, { Id: 'c' }];
+  it('puts the old list back when the cache still holds this change', () => {
+    const applied = moveEntry(before, 0, 2);
+    expect(rollbackTo(applied, applied, before)).toBe(before);
+  });
+  it('keeps a newer change: two fast moves, the first one fails', () => {
+    const first = moveEntry(before, 0, 2);
+    const second = moveEntry(first, 0, 1);
+    expect(rollbackTo(second, first, before)).toBeNull();
   });
 });

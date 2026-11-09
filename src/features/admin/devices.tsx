@@ -33,7 +33,7 @@ export function DevicesSection({ target }: { target: AdminTarget }) {
   return (
     <Group title={`Devices · ${list.length}`} footer="Remove signs a device out. The device on which you use this app now cannot be removed here.">
       {list.map((d, i) => (
-        <DeviceRow key={d.Id} device={d} own={d.Id === target.ownDeviceId} busy={busy === `dev-${d.Id}`} last={i === list.length - 1} onRemove={() => void remove(d)} />
+        <DeviceRow key={d.Id} device={d} own={d.Id === target.ownDeviceId} busy={busy(`dev-${d.Id}`)} last={i === list.length - 1} onRemove={() => void remove(d)} />
       ))}
     </Group>
   );

@@ -57,6 +57,8 @@ export class AudioEngine {
   private statusPlaying = false;
   /** Ignore status from before a load (the native side can deliver late events). */
   private loading = false;
+  /** One per load and unload: the start seek of an older load must not play the new one. */
+  private loadToken = 0;
 
   /** The last web status: its track and time (see `webFix`). */
   private webLast: { index: number; time: number } | null = null;
@@ -94,8 +96,10 @@ export class AudioEngine {
       const index = s.currentIndex ?? 0;
       if (this.pendingStart !== null && s.isLoaded && index === 0) {
         const start = this.pendingStart;
+        const token = this.loadToken;
         this.pendingStart = null;
         void p.seekTo(start).finally(() => {
+          if (token !== this.loadToken) return;
           if (this.pendingPlay) this.playNow(p);
           this.pendingPlay = false;
         });
@@ -186,6 +190,7 @@ export class AudioEngine {
   async load(current: EngineTrack, next: EngineTrack | null, startSeconds: number, autoplay: boolean): Promise<void> {
     await this.audioMode();
     const p = this.ensure();
+    this.loadToken += 1;
     this.loading = true;
     p.pause();
     p.clear();
@@ -297,6 +302,8 @@ export class AudioEngine {
 
   unload(): void {
     const p = this.playlist;
+    this.loadToken += 1;
+    this.loading = false;
     this.pendingStart = null;
     this.pendingPlay = false;
     this.keys = [];

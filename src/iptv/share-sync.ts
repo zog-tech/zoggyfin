@@ -8,7 +8,8 @@
  *   admin's choices and providers. It also visits the users it wrote to the
  *   last time, so an untick or a removed provider leaves those users too.
  *   "Everyone" reaches users added later the next time it runs (on a pull,
- *   at most every 10 minutes, and after each change).
+ *   at most every 10 minutes after a good run, and after each change). One
+ *   run at a time: a request during a run runs once more after it.
  * - Everything is per account (server Id + user Id). Nothing here logs a
  *   login, a URL or a blob.
  */
@@ -17,6 +18,7 @@ import { create } from 'zustand';
 import { getApi } from '@/api/client';
 import { getCustomPrefs, getUsers, isAdministrator, setCustomPrefs } from '@/api/jellyfin';
 import { useSessionStore } from '@/auth/session-store';
+import { createSerialRunner } from '@/lib/async-gate';
 import { readJson, writeJson } from '@/storage/json';
 
 import type { SyncedProvider } from './account-sync';
@@ -121,48 +123,59 @@ async function loadChoices(scope: FullScope): Promise<SharingChoices> {
   return choices;
 }
 
+/** When the last run ended well. A failed run leaves it, so the next pull tries again. */
 let lastRunAt = 0;
-let running: Promise<void> | null = null;
+/** The next run was asked with `force` (a choice changed): it skips the 10-minute gap. */
+let nextForced = false;
 
-/** Writes the shared blobs of the users this admin shares with (or stopped sharing with). */
-export function runShares(force: boolean): Promise<void> {
-  if (running) return running;
-  if (!force && Date.now() - lastRunAt < RUN_GAP_MS) return Promise.resolve();
+/** One run at a time. A request during a run runs once more after it, with the choices of that moment. */
+const runs = createSerialRunner(async () => {
+  const force = nextForced;
+  nextForced = false;
+  if (!force && Date.now() - lastRunAt < RUN_GAP_MS) return;
+  await writeShares();
   lastRunAt = Date.now();
-  running = (async () => {
-    const scope = currentScope();
-    if (!scope || !(await checkAdmin())) return;
-    const sid = scopeId(scope);
-    const choices = await loadChoices(scope);
-    const written = loadWritten(scope);
-    if (!Object.keys(choices.providers).length && !written.length) return;
-    const users = await getUsers(api(scope));
-    const ids = users.map((u) => u.id);
-    const own = ownProviders();
-    const targets = new Set(Object.values(choices.providers).flatMap((c) => targetsOf(c, ids, scope.userId)));
-    const admin = { userId: scope.userId, name: scope.userName };
-    const reached: string[] = [];
-    for (const userId of new Set([...targets, ...written])) {
-      if (!sameScope(sid)) return;
-      if (userId === scope.userId || !ids.includes(userId)) continue;
-      const desired = desiredFor(userId, choices, own, ids, admin);
-      await setCustomPrefs(api(scope), userId, SHARED_PREFS_ID, CLIENT, (current) => {
-        const blob = parseShared(current);
-        const next = withAdminShares(blob, scope.userId, desired);
-        const empty = !Object.keys(next.providers).length;
-        const text = empty ? null : JSON.stringify(next);
-        if (text && text.length > MAX_SHARED_CHARS) throw new Error('too large');
-        return withValue(current, SHARED_KEY, empty ? null : next);
-      });
-      if (Object.keys(desired).length) reached.push(userId);
-    }
-    if (sameScope(sid)) writeJson(writtenKey(scope), reached);
-  })()
-    .catch((e: unknown) => console.warn('[iptv] sharing failed', e instanceof Error ? e.name : 'error'))
-    .finally(() => {
-      running = null;
+});
+
+async function writeShares(): Promise<void> {
+  const scope = currentScope();
+  if (!scope || !(await checkAdmin())) return;
+  const sid = scopeId(scope);
+  const choices = await loadChoices(scope);
+  const written = loadWritten(scope);
+  if (!Object.keys(choices.providers).length && !written.length) return;
+  const users = await getUsers(api(scope));
+  const ids = users.map((u) => u.id);
+  const own = ownProviders();
+  const targets = new Set(Object.values(choices.providers).flatMap((c) => targetsOf(c, ids, scope.userId)));
+  const admin = { userId: scope.userId, name: scope.userName };
+  const reached: string[] = [];
+  for (const userId of new Set([...targets, ...written])) {
+    if (!sameScope(sid)) return;
+    if (userId === scope.userId || !ids.includes(userId)) continue;
+    const desired = desiredFor(userId, choices, own, ids, admin);
+    await setCustomPrefs(api(scope), userId, SHARED_PREFS_ID, CLIENT, (current) => {
+      const blob = parseShared(current);
+      const next = withAdminShares(blob, scope.userId, desired);
+      const empty = !Object.keys(next.providers).length;
+      const text = empty ? null : JSON.stringify(next);
+      if (text && text.length > MAX_SHARED_CHARS) throw new Error('too large');
+      return withValue(current, SHARED_KEY, empty ? null : next);
     });
-  return running;
+    if (Object.keys(desired).length) reached.push(userId);
+  }
+  if (sameScope(sid)) writeJson(writtenKey(scope), reached);
+}
+
+/**
+ * Writes the shared blobs of the users this admin shares with (or stopped
+ * sharing with). Without `force` it runs at most every 10 minutes after a
+ * good run. A call during a run runs once more after it. Never rejects.
+ */
+export function runShares(force: boolean): Promise<void> {
+  if (force) nextForced = true;
+  else if (!runs.running() && Date.now() - lastRunAt < RUN_GAP_MS) return Promise.resolve();
+  return runs.request().catch((e: unknown) => console.warn('[iptv] sharing failed', e instanceof Error ? e.name : 'error'));
 }
 
 /** The choice of one provider, from the last load. */
@@ -190,7 +203,7 @@ export async function setShareChoice(providerId: string, choice: ShareChoice | n
     return withValue(current, SHARING_KEY, Object.keys(saved.providers).length ? saved : null);
   });
   if (saved) useShareStore.setState({ choices: { ...useShareStore.getState().choices, [scopeId(scope)]: saved } });
-  if (running) await running;
+  // A run that is going on read the old choices: this one runs after it.
   await runShares(true);
 }
 
