@@ -13,6 +13,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Item actions on tiles.** A long press on a tile in a Home row or a grid opens the item actions
+  (play, mark as played, favourite, download and more). On the web and in the Mac app a right click
+  does the same, and the browser's own image menu no longer shows. TV is unchanged.
 - **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
   mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
   sections mount as you reach them, the side menu slides over the page, screens change at once, and

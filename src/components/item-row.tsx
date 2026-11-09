@@ -11,6 +11,7 @@ import { TvShelf } from '@/features/tv/shelf';
 import { useOpenItem } from '@/lib/navigation';
 import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
 
+import { useItemMenu } from './action-sheet';
 import { Delayed, SkeletonBlock, SkeletonText } from './skeleton';
 import { ErrorState } from './states';
 import { Tile, tileHeight, type TileShape, tileAspect } from './tile';
@@ -62,6 +63,9 @@ export function ItemRow({
   const l = useLayout();
   const width = l.rowTile[shape === 'thumb' ? 'thumb' : shape];
   const press = onPress ?? open;
+  // Long press (right click on the web and the Mac app) opens the item actions. Not on TV: Select is the press there.
+  const menu = useItemMenu();
+  const longPress = l.tv ? undefined : menu.open;
   // TV Home: art-only tiles; the billboard above shows the focused one.
   const billboard = useContext(BillboardRows) && l.tv;
   const artOnly = billboard && !titleOnArt;
@@ -88,6 +92,7 @@ export function ItemRow({
         width={width}
         shape={shape}
         onPress={press}
+        onLongPress={longPress}
         title={tileTitle?.(item)}
         subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
         titleOnArt={titleOnArt}
@@ -95,7 +100,7 @@ export function ItemRow({
       />
       </View>
     ),
-    [width, shape, press, tileTitle, tileSubtitle, titleOnArt, preferredFocus, l.gap],
+    [width, shape, press, longPress, tileTitle, tileSubtitle, titleOnArt, preferredFocus, l.gap],
   );
 
   if (error && !items?.length) {
@@ -164,6 +169,7 @@ export function ItemRow({
           renderItem={renderItem}
         />
       )}
+      {menu.sheet}
     </View>
   );
 }

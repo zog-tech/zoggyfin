@@ -10,6 +10,7 @@ import { useOpenItem } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { gridLayout, spacing, tvFocusBleed, useLayout, useTheme } from '@/theme';
 
+import { useItemMenu } from './action-sheet';
 import { refreshTint, useRefreshSpinner } from './refresh-spinner';
 import { Tile, tileHeight, type TileShape } from './tile';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
@@ -33,6 +34,8 @@ interface ItemGridProps {
   headerless?: boolean;
   /** Draws its own tile for an item it knows (the Live TV tile in the Library). Null keeps the media tile. */
   renderTile?: (item: BaseItemDto, tile: { width: number; preferredFocus: boolean }) => ReactElement | null;
+  /** Long press (right click on the web and the Mac app) opens the item actions. Not on TV. Default true. */
+  itemMenu?: boolean;
 }
 
 /**
@@ -62,6 +65,7 @@ export function ItemGrid({
   focusFirstTile = true,
   headerless = false,
   renderTile,
+  itemMenu = true,
 }: ItemGridProps) {
   const l = useLayout();
   const tabBottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset });
@@ -70,6 +74,8 @@ export function ItemGrid({
   const pull = usePullRefresh(onRefresh);
   useRefreshSpinner(pull.refreshing, headerless);
   const open = onPress ?? openItem;
+  const menu = useItemMenu();
+  const longPress = itemMenu && !l.tv ? menu.open : undefined;
   const prefetch = usePrefetchItem();
   const [measured, setMeasured] = useState(0);
   const width = measured || l.contentWidth;
@@ -136,6 +142,7 @@ export function ItemGrid({
             width={tileWidth}
             shape={shape}
             onPress={open}
+            onLongPress={longPress}
             preferredFocus={l.tv && focusFirstTile && index === 0}
             index={index}
             onFocusItem={l.tv ? onTileFocus : undefined}
@@ -143,10 +150,11 @@ export function ItemGrid({
         )}
       </View>
     ),
-    [columns, gap, tileWidth, shape, open, l.tv, onTileFocus, focusFirstTile, renderTile],
+    [columns, gap, tileWidth, shape, open, longPress, l.tv, onTileFocus, focusFirstTile, renderTile],
   );
 
   return (
+    <>
       <FlashList
         ref={list}
         onLayout={onLayout}
@@ -169,6 +177,8 @@ export function ItemGrid({
         // outran the scroll and Android found the header before the next row.
         drawDistance={l.tv ? l.height * 3 : undefined}
       />
+      {menu.sheet}
+    </>
   );
 }
 

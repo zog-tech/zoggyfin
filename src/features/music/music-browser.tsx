@@ -268,6 +268,7 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
       // TV: the played rows sit above the grid; the first tile is off screen.
       focusFirstTile={!played}
       onPress={tab === 'genres' ? (g) => router.push(genreHref(group, g, libraryId)) : undefined}
+      itemMenu={tab !== 'genres'}
     />
   );
 }
