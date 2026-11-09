@@ -28,7 +28,7 @@ import { hasTrackChoice } from '@/player/embedded-tracks';
 import { VideoSurface } from '@/player/engine';
 import type { VideoFit } from '@/player/engine-types';
 import type { KeyPress } from '@/native/key-input-types';
-import { nextUpPhase, nextUpStartsAt, skipPromptAt } from '@/player/segments';
+import { nextUpPhase, nextUpStartsAt, skipPromptAt, skipPromptFor } from '@/player/segments';
 import { videoSession } from '@/player/session';
 import { useShowsPause } from '@/player/control-gate';
 import { playingVideo, transcodeReasonText, videoDetail, videoSummary } from '@/player/stream-info';
@@ -76,7 +76,7 @@ import { NextUpCard } from './next-up-card';
 import { embeddedTrackSections } from './embedded-track-sections';
 import { PlayerSheet, type SheetInfo, type SheetSection } from './player-sheet';
 import { RoundButton } from './round-button';
-import { Scrubber } from './scrubber';
+import { PlayerScrubber } from './scrubber';
 import { SkipPill } from './skip-pill';
 import { SubtitleOverlay } from './subtitle-overlay';
 import { c, ease, iconSize, motion, player, radius, spacing, textStyle, type } from './tokens';
@@ -140,9 +140,9 @@ export function PlayerScreen() {
   const error = usePlayerStore((s) => s.error);
   const playing = usePlayerStore((s) => s.playing);
   const showsPause = useShowsPause();
-  const position = usePlayerStore((s) => s.position);
+  // No `position` or `buffered` here: they change twice a second. The parts that show
+  // them (seek bar, times, peek line) read them; the rest reads values derived from it.
   const duration = usePlayerStore((s) => s.duration);
-  const buffered = usePlayerStore((s) => s.buffered);
   const rate = usePlayerStore((s) => s.rate);
   const settings = usePlaybackSettings();
   const signedIn = useSessionStore((x) => !!x.session);
@@ -209,7 +209,7 @@ export function PlayerScreen() {
   // Auto-hide after 3 s while playing; never while paused, scrubbing or with a sheet open.
   useEffect(() => {
     if (!visible || !playing || scrubbing || sheet) return;
-    const t = setTimeout(() => setVisible(false), isTV ? 4000 : player.autoHideMs);
+    const t = setTimeout(() => setVisible(false), player.autoHideMs);
     return () => clearTimeout(t);
   }, [visible, playing, scrubbing, sheet, poke]);
 
@@ -383,9 +383,11 @@ export function PlayerScreen() {
     }, 400);
   };
   const hasNext = !!now?.next;
-  const prompt = now ? skipPromptAt(now.segments, position, duration, hasNext) : null;
+  // Derived from the position in the selectors: they change at segment edges, not on every tick.
+  const promptSegment = usePlayerStore((st) => (st.now ? (skipPromptAt(st.now.segments, st.position, st.duration, !!st.now.next)?.segment ?? null) : null));
+  const prompt = promptSegment ? skipPromptFor(promptSegment, duration) : null;
   const startsAt = now ? nextUpStartsAt(now.segments, duration) : null;
-  const phase = nextUpPhase({ position, startsAt, hasNext, dismissedAt });
+  const phase = usePlayerStore((st) => nextUpPhase({ position: st.position, startsAt, hasNext, dismissedAt }));
 
   const playNext = useCallback(() => void videoSession().playNext(), []);
   const cancelNext = useCallback(() => setDismissal({ itemId, at: playerState().position }), [itemId]);
@@ -721,7 +723,7 @@ export function PlayerScreen() {
   };
 
   const title = now?.item.Name ?? '';
-  const chapter = now ? chapterAt(now.chapters, position)?.name : null;
+  const chapter = usePlayerStore((st) => (st.now ? (chapterAt(st.now.chapters, st.position)?.name ?? null) : null));
   const sub = live
     ? [liveChannel?.number != null ? String(liveChannel.number) : null, liveNow ?? liveChannel?.group ?? null].filter(Boolean).join(' · ') || null
     : now?.item.Type === 'Episode'
@@ -917,18 +919,12 @@ export function PlayerScreen() {
             exiting={FadeOut.duration(motion.duration.slow)}
             pointerEvents="none"
             style={[styles.bottom, { paddingBottom: bottomPad, paddingLeft: sideInset, paddingRight: sideInset }]}>
-            <View style={styles.peekTrack}>
-              <View style={[styles.peekFill, { width: `${duration > 0 ? Math.min(100, (position / duration) * 100) : 0}%` }]} />
-            </View>
-            <View style={styles.peekTimes}>
-              <Text style={[styles.time, styles.peekShadow]}>{formatTime(position)}</Text>
-              <Text style={[styles.time, styles.peekShadow]}>{formatTime(-(Math.max(0, duration - position)))}</Text>
-            </View>
+            <PeekLine />
           </Animated.View>
         ) : null}
 
-        {/* Controls */}
-        <Animated.View style={[StyleSheet.absoluteFill, controlsStyle]} pointerEvents={visible ? 'box-none' : 'none'}>
+        {/* Controls. TV shows and hides them at once (no fade); phones, tablets and the web fade them. */}
+        <Animated.View style={[StyleSheet.absoluteFill, isTV ? null : controlsStyle]} pointerEvents={visible ? 'box-none' : 'none'}>
           {/* TV: hidden controls are not mounted, so Select never presses an unseen button. */}
           {!isTV || visible ? (
           <>
@@ -1038,10 +1034,7 @@ export function PlayerScreen() {
 
           <View style={[styles.bottom, { paddingBottom: bottomPad, paddingLeft: sideInset, paddingRight: sideInset }]} pointerEvents="box-none">
             {now && !live ? (
-              <Scrubber
-                position={position}
-                duration={duration}
-                buffered={buffered}
+              <PlayerScrubber
                 playing={playing}
                 chapters={now.chapters}
                 trickplay={now.trickplay}
@@ -1097,10 +1090,7 @@ export function PlayerScreen() {
                 <LiveChannelCard channel={zapChannel} source={live.source} live style={styles.liveCard} />
               )
             ) : (
-            <View style={styles.times}>
-              <Text style={styles.time}>{formatTime(position)}</Text>
-              <Text style={styles.time}>{formatTime(-(Math.max(0, duration - position)))}</Text>
-            </View>
+            <TimeLabels />
             )}
           </View>
           </>
@@ -1181,6 +1171,35 @@ export function PlayerScreen() {
       {/* Under the top bar and the Together pill, so it does not cover the controls. */}
       <ToastHost overlay offset={player.closeSize + spacing.sm * 2 + 32} />
     </KeyInput>
+  );
+}
+
+/** The elapsed and remaining times under the seek bar. It reads the position itself (see PlayerScreen). */
+function TimeLabels() {
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+  return (
+    <View style={styles.times}>
+      <Text style={styles.time}>{formatTime(position)}</Text>
+      <Text style={styles.time}>{formatTime(-(Math.max(0, duration - position)))}</Text>
+    </View>
+  );
+}
+
+/** TV, controls hidden: the thin progress line with the times after a double press. */
+function PeekLine() {
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+  return (
+    <>
+      <View style={styles.peekTrack}>
+        <View style={[styles.peekFill, { width: `${duration > 0 ? Math.min(100, (position / duration) * 100) : 0}%` }]} />
+      </View>
+      <View style={styles.peekTimes}>
+        <Text style={[styles.time, styles.peekShadow]}>{formatTime(position)}</Text>
+        <Text style={[styles.time, styles.peekShadow]}>{formatTime(-(Math.max(0, duration - position)))}</Text>
+      </View>
+    </>
   );
 }
 

@@ -12,6 +12,7 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
+import { TileCaption, TileFocusFill } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { useMergedLists, useProviders } from '@/iptv';
 import { isTV } from '@/platform/tv';
@@ -48,11 +49,14 @@ function LiveTvTile({ width, subtitle, preferredFocus }: { width: number; subtit
     <Touchable
       kind="tile"
       radius={radius.md}
+      // TV: the lit caption strip is the focus mark (design system §7.19).
+      ring={!isTV}
       firstFocus={preferredFocus}
       onPress={() => router.push(liveTvHref('(library)'))}
       accessibilityRole="button"
       accessibilityLabel={`Live TV, ${subtitle}`}
       containerStyle={{ width }}>
+      <TileFocusFill artHeight={height} radius={radius.md} />
       <View style={[s.art, { width, height }]} accessibilityIgnoresInvertColors>
         <LinearGradient colors={[c.accent, c.accentPressed]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
         {/* In a View: on the web a bare svg would paint under the absolute gradient. */}
@@ -63,12 +67,7 @@ function LiveTvTile({ width, subtitle, preferredFocus }: { width: number; subtit
           <Text style={s.badgeText}>Live</Text>
         </View>
       </View>
-      <Text style={s.title} numberOfLines={1}>
-        Live TV
-      </Text>
-      <Text style={s.meta} numberOfLines={1}>
-        {subtitle}
-      </Text>
+      <TileCaption title="Live TV" sub={subtitle} />
     </Touchable>
   );
 }
@@ -93,6 +92,4 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     backgroundColor: mediaColors.badgeFill,
   },
   badgeText: { ...font(type.caption2), color: mediaColors.white },
-  title: { ...font(type.tileTitle), color: c.text, marginTop: scaled(sizes.tileTitleGap) },
-  meta: { ...font(type.caption1), color: c.text2, marginTop: sizes.tileMetaGap },
 }));

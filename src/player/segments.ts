@@ -55,9 +55,18 @@ export function skipPromptAt(segments: readonly Segment[], position: number, dur
     if (position < s.start || position >= s.end - TAIL_SECONDS) continue;
     const endCredits = s.kind === 'Outro' && duration > 0 && s.end >= duration - END_CREDITS_SLACK;
     if (endCredits && hasNext) return null;
-    return { segment: s, label: LABEL[s.kind], target: Math.min(s.end, duration > 0 ? duration : s.end) };
+    return skipPromptFor(s, duration);
   }
   return null;
+}
+
+/**
+ * The prompt for one segment. The player picks the segment from the position
+ * (a value that changes only at segment edges) and builds the prompt with this,
+ * so a position tick does not re-render the player.
+ */
+export function skipPromptFor(segment: Segment, duration: number): SkipPrompt {
+  return { segment, label: LABEL[segment.kind], target: Math.min(segment.end, duration > 0 ? duration : segment.end) };
 }
 
 /** With no outro segment, the next-episode card shows this long before the end. */

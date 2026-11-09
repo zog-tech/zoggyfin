@@ -1,4 +1,4 @@
-import { countdownClock, countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, setCountdownRunning, skipPromptAt } from '../segments';
+import { countdownClock, countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, setCountdownRunning, skipPromptAt, skipPromptFor } from '../segments';
 
 const T = 10_000_000;
 
@@ -37,6 +37,22 @@ describe('skipPromptAt', () => {
   it('shows Skip Credits for mid-file credits even with a next episode', () => {
     const mid = normalizeSegments([{ Type: 'Outro', StartTicks: 500 * T, EndTicks: 600 * T }]);
     expect(skipPromptAt(mid, 550, 1400, true)).toMatchObject({ label: 'Skip Credits', target: 600 });
+  });
+});
+
+describe('skipPromptFor', () => {
+  const intro = { kind: 'Intro' as const, start: 30, end: 90 };
+  const credits = { kind: 'Outro' as const, start: 1300, end: 1400 };
+
+  it('builds the same prompt as skipPromptAt for the segment it picks', () => {
+    const at = skipPromptAt([intro], 45, 1400, false);
+    expect(at).not.toBeNull();
+    expect(skipPromptFor(intro, 1400)).toEqual(at);
+  });
+
+  it('seeks no further than the end of the video', () => {
+    expect(skipPromptFor(credits, 1350).target).toBe(1350);
+    expect(skipPromptFor(credits, 0).target).toBe(1400);
   });
 });
 

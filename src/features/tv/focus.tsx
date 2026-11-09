@@ -260,6 +260,10 @@ export interface TvFocusGuideProps extends Omit<ViewProps, GuideOwnProps> {
   trapHorizontal?: boolean;
   /** Keep the focus inside this view for Up and Down only. */
   trapVertical?: boolean;
+  /** Keep the focus inside this view for Left. */
+  trapLeft?: boolean;
+  /** Keep the focus inside this view for Right. */
+  trapRight?: boolean;
   onFocusEnter?: () => void;
   onFocusLeave?: () => void;
 }
@@ -270,7 +274,18 @@ export interface TvFocusGuideProps extends Omit<ViewProps, GuideOwnProps> {
  * Android TV `focusable` makes the guide itself a focus target, and taking
  * the prop away again blocks every child. Unmount what must not take focus.
  */
-export function TvFocusGuide({ autoFocus, destinations, trapFocus, trapHorizontal, trapVertical, onFocusEnter, onFocusLeave, ...rest }: TvFocusGuideProps) {
+export function TvFocusGuide({
+  autoFocus,
+  destinations,
+  trapFocus,
+  trapHorizontal,
+  trapVertical,
+  trapLeft,
+  trapRight,
+  onFocusEnter,
+  onFocusLeave,
+  ...rest
+}: TvFocusGuideProps) {
   if (!isNativeTV || !TVFocusGuideView) return <View {...rest} />;
   const dests = destinations?.filter((d): d is FocusTarget => !!d);
   return (
@@ -280,8 +295,8 @@ export function TvFocusGuide({ autoFocus, destinations, trapFocus, trapHorizonta
       destinations={dests && dests.length ? dests : undefined}
       trapFocusUp={trapFocus || trapVertical}
       trapFocusDown={trapFocus || trapVertical}
-      trapFocusLeft={trapFocus || trapHorizontal}
-      trapFocusRight={trapFocus || trapHorizontal}
+      trapFocusLeft={trapFocus || trapHorizontal || trapLeft}
+      trapFocusRight={trapFocus || trapHorizontal || trapRight}
       onFocusEnter={onFocusEnter}
       onFocusLeave={onFocusLeave}
     />
