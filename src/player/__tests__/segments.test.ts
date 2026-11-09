@@ -1,4 +1,4 @@
-import { countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, skipPromptAt, skipPromptFor } from '../segments';
+import { countdownClock, countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, setCountdownRunning, skipPromptAt, skipPromptFor } from '../segments';
 
 const T = 10_000_000;
 
@@ -77,7 +77,26 @@ describe('next-up timing', () => {
     expect(nextUpPhase({ ...base, position: 1305, dismissedAt: 200 })).toBe('counting');
   });
   it('counts down from 10 s', () => {
-    expect(countdownLeft(0, 4000)).toBe(6);
-    expect(countdownLeft(0, 12000)).toBe(0);
+    const clock = countdownClock(0, true);
+    expect(countdownLeft(clock, 4000)).toBe(6);
+    expect(countdownLeft(clock, 12000)).toBe(0);
+  });
+  it('holds the countdown while the video is paused', () => {
+    // Shown while paused: no time passes.
+    let clock = countdownClock(0, false);
+    expect(countdownLeft(clock, 60_000)).toBe(10);
+    // Plays for 4 s, pauses for a minute, plays 2 s more.
+    clock = setCountdownRunning(clock, true, 60_000);
+    clock = setCountdownRunning(clock, false, 64_000);
+    expect(countdownLeft(clock, 124_000)).toBe(6);
+    clock = setCountdownRunning(clock, true, 124_000);
+    expect(countdownLeft(clock, 126_000)).toBe(4);
+    expect(countdownLeft(clock, 200_000)).toBe(0);
+  });
+  it('returns the same clock when the state does not change', () => {
+    const running = countdownClock(0, true);
+    expect(setCountdownRunning(running, true, 500)).toBe(running);
+    const held = countdownClock(0, false);
+    expect(setCountdownRunning(held, false, 500)).toBe(held);
   });
 });

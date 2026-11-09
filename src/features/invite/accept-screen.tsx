@@ -13,9 +13,12 @@
  *
  * The account becomes active only at the end: a new account mounts the app
  * again (each account has its own cache), and that would close this screen.
+ *
+ * A join belongs to one invite. A new link, a paste or leaving the screen
+ * makes it stale (`joinGate`), so the steps of two invites never mix.
  */
 import { router, Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
 import { getApi } from '@/api/client';
@@ -32,6 +35,7 @@ import { canReadClipboard, readClipboard } from '@/invite/clipboard';
 import { offerExtensionsLater } from '@/invite/extensions';
 import { clearPendingInvite, loadPendingInvite, savePendingInvite, takeIncomingInvite, useIncomingInvite } from '@/invite/incoming';
 import { reachInvite } from '@/invite/join';
+import { createGate } from '@/lib/async-gate';
 import { decodeInvite, type Invite, inviteDate, inviteErrorText, inviteExpired, inviteExpiredText, needsTunnel, payloadFromText, savedAddresses } from '@/invite/payload';
 import { pageIsHttps, probeSystemInfo } from '@/servers/connection';
 import { createStyles, type AppTheme, font, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
@@ -76,37 +80,60 @@ export function AcceptInviteScreen() {
   const [view, setView] = useState<ScreenState>(() => viewFor(useIncomingInvite.getState().payload ?? loadPendingInvite()));
   const { invite, payload, step } = view;
   const setStep = (next: Step) => setView((v) => ({ ...v, step: next }));
+  const [joinGate] = useState(createGate);
+  /** True from the tap on Join until the join ends or goes stale. */
+  const joining = useRef(false);
+  /** Another invite (a new link or a paste): a join of the old one must not touch the screen. */
+  const showInvite = (next: ScreenState) => {
+    joinGate.cancel();
+    joining.current = false;
+    setView(next);
+  };
 
   // The link is in the screen now; a new link while the screen is open replaces it.
   useEffect(() => {
     takeIncomingInvite();
-    return useIncomingInvite.subscribe((st) => {
+    const unsubscribe = useIncomingInvite.subscribe((st) => {
       if (!st.payload) return;
+      joinGate.cancel();
+      joining.current = false;
       setView(viewFor(takeIncomingInvite()));
     });
-  }, []);
+    return () => {
+      unsubscribe();
+      joinGate.cancel();
+    };
+  }, [joinGate]);
 
   const join = async () => {
-    if (!invite || !payload) return;
+    if (!invite || !payload || joining.current) return;
     // It can expire while the screen is open.
     if (inviteExpired(invite, Date.now())) return setStep({ name: 'failed', text: inviteExpiredText(invite), title: 'This invite expired' });
+    const token = joinGate.begin();
+    joining.current = true;
+    /** Sets the step only while this join is current. */
+    const toStep = (next: Step) => {
+      if (!joinGate.current(token)) return;
+      joining.current = false;
+      setStep(next);
+    };
     setStep({ name: 'joining' });
     // The invite waits on this device until the join ends, also after a restart.
     savePendingInvite(payload);
     useSessionStore.getState().addServer({ serverId: invite.serverId, serverName: invite.serverName, addresses: savedAddresses(invite) });
     const reach = await reachInvite(invite, probeSystemInfo, { pageIsHttps: pageIsHttps() });
-    if (reach.state === 'unreachable') return setStep({ name: 'unreachable' });
+    if (reach.state === 'unreachable') return toStep({ name: 'unreachable' });
     if (reach.state === 'wrong-server') {
-      return setStep({ name: 'failed', text: `A different server answers at the address of ${invite.serverName}. Zoggyfin did not send the invite there. Ask for a new invite.` });
+      return toStep({ name: 'failed', text: `A different server answers at the address of ${invite.serverName}. Zoggyfin did not send the invite there. Ask for a new invite.` });
     }
     try {
       const info = await findServer(reach.url).catch(() => null);
       const result = await authenticateByName(getApi(reach.url, null), invite.userName, invite.password);
       if (!result.AccessToken || !result.User?.Id) throw new Error('The server did not return a session.');
-      setStep({ name: 'password', joined: { url: reach.url, version: info?.info.Version ?? null, result } });
+      toStep({ name: 'password', joined: { url: reach.url, version: info?.info.Version ?? null, result } });
     } catch (e) {
       const d = describeError(e);
-      setStep({
+      toStep({
         name: 'failed',
         text:
           d.kind === 'auth'
@@ -136,7 +163,7 @@ export function AcceptInviteScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <TvScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.inner}>
-          {step.name === 'paste' ? <PasteStep error={step.error} onOpen={(t) => setView(viewFor(payloadFromText(t), true))} onCancel={notNow} /> : null}
+          {step.name === 'paste' ? <PasteStep error={step.error} onOpen={(t) => showInvite(viewFor(payloadFromText(t), true))} onCancel={notNow} /> : null}
           {invite && (step.name === 'confirm' || step.name === 'joining') ? (
             <ConfirmStep invite={invite} busy={step.name === 'joining'} onJoin={() => void join()} onCancel={notNow} />
           ) : null}

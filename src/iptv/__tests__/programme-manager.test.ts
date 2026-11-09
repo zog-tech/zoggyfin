@@ -14,6 +14,12 @@ const mockTexts = new Map<string, string>();
 const mockRequested: string[] = [];
 const mockReads: string[] = [];
 const mockHook: { onText: ((url: string) => void) | null } = { onText: null };
+/** While set, downloads wait for it (a slow provider). */
+const mockHold: { promise: Promise<void> | null } = { promise: null };
+async function* mockHeld(hold: Promise<void>, chunks: AsyncGenerator<string>): AsyncGenerator<string> {
+  await hold;
+  yield* chunks;
+}
 
 jest.mock('@/storage/kv', () => ({
   storage: {
@@ -49,7 +55,8 @@ jest.mock('../transport', () => {
         mockHook.onText?.(url);
         const t = mockTexts.get(url);
         if (t === undefined) throw new IptvError('http', 404);
-        return jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
+        const chunks = jest.requireActual('../test-utils/fixtures').inChunks(t, 100);
+        return mockHold.promise ? mockHeld(mockHold.promise, chunks) : chunks;
       },
       async json(url: string) {
         mockRequested.push(url);
@@ -69,7 +76,7 @@ import type { NetworkSnapshot } from '@/servers/wifi-rule';
 // eslint-disable-next-line import/first
 import { iptvFiles } from '../files';
 // eslint-disable-next-line import/first
-import { refresh, removeProvider, saveProvider } from '../manager';
+import { loadGuide, refresh, removeProvider, saveProvider } from '../manager';
 // eslint-disable-next-line import/first
 import { migrateProgrammeIndex } from '../programme-index';
 // eslint-disable-next-line import/first
@@ -118,6 +125,7 @@ beforeEach(() => {
   mockRequested.length = 0;
   mockReads.length = 0;
   mockHook.onText = null;
+  mockHold.promise = null;
   setIptvState({ scope: null, programmeSlices: {} });
   (iptvFiles as { persistent: boolean }).persistent = true;
   net = { type: 'wifi', ssid: null };
@@ -356,6 +364,26 @@ describe('programme index refresh', () => {
     expect(ledgerOf(m)).toBeNull();
   });
 
+  it('a provider added during a run is built right after it', async () => {
+    const x = await addXtream();
+    mockTexts.set(GUIDE, guide(['news.example'], 60));
+    let release!: () => void;
+    mockHold.promise = new Promise<void>((r) => (release = r));
+    const first = refreshDue(T0);
+    await flush();
+    expect(mockRequested).toEqual([GUIDE]);
+    // The new provider's downloads are not held.
+    mockHold.promise = null;
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    mockTexts.set(M3U_GUIDE, guide(['news.example'], 60));
+    const m = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    const second = refreshDue(T0);
+    release();
+    await Promise.all([first, second]);
+    expect(ledgerOf(x)?.builtAt).toBe(T0);
+    expect(ledgerOf(m)?.builtAt).toBe(T0);
+  });
+
   it('ensureSlices does no file read on a repeat call', async () => {
     const id = await addXtream();
     mockTexts.set(GUIDE, guide(['news.example'], 60));
@@ -499,3 +527,57 @@ describe('programme index refresh', () => {
   });
 });
 
+
+describe('guide window owner', () => {
+  const NEW_GUIDE = 'https://epg.example.com/other.xml';
+
+  async function addM3u(): Promise<string> {
+    mockTexts.set(PLAYLIST, SAMPLE_M3U);
+    const id = await saveProvider({ kind: 'm3u', name: 'L', playlistUrl: PLAYLIST, guideUrl: null, userAgent: null });
+    await flush();
+    await flush();
+    mockRequested.length = 0;
+    return id;
+  }
+
+  it('a new guide address during the index build loads the new guide after it; the status never stays loading', async () => {
+    const id = await addM3u();
+    mockTexts.set(M3U_GUIDE, guide(['news.example', 'sport.example'], 60));
+    mockTexts.set(NEW_GUIDE, guide(['news.example', 'sport.example'], 60));
+    let refreshing: Promise<void> | null = null;
+    mockHook.onText = (url) => {
+      if (url !== M3U_GUIDE || refreshing) return;
+      // The playlist now names another guide; a refresh runs during the build.
+      mockTexts.set(PLAYLIST, SAMPLE_M3U.replace(/guide\.xml\.gz/g, 'other.xml'));
+      refreshing = refresh(id);
+    };
+    await refreshDue(T0);
+    await refreshing;
+    for (let i = 0; i < 5; i++) await flush();
+    expect(mockRequested.filter((u) => u === NEW_GUIDE)).toHaveLength(1);
+    expect(iptvState().guideStatus[id]).toBe('ready');
+  });
+
+  it('two guide loads at once download once', async () => {
+    const id = await addM3u();
+    mockTexts.set(M3U_GUIDE, guide(['news.example'], 60));
+    await Promise.all([loadGuide(id, true), loadGuide(id, true), loadGuide(id, false)]);
+    expect(mockRequested.filter((u) => u === M3U_GUIDE)).toHaveLength(1);
+    expect(iptvState().guideStatus[id]).toBe('ready');
+  });
+
+  it('a provider removed during a guide load gets no guide written', async () => {
+    const id = await addM3u();
+    mockTexts.set(M3U_GUIDE, guide(['news.example'], 60));
+    let removing: Promise<void> | null = null;
+    mockHook.onText = (url) => {
+      if (url === M3U_GUIDE && !removing) removing = removeProvider(id);
+    };
+    await loadGuide(id, true);
+    await removing;
+    await flush();
+    expect([...mockFiles.keys()].filter((k) => k.startsWith(`iptv/${id}/`))).toEqual([]);
+    expect(iptvState().guides[id]).toBeUndefined();
+    expect(iptvState().guideStatus[id]).toBeUndefined();
+  });
+});

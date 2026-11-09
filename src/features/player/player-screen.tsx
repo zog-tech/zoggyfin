@@ -1107,6 +1107,7 @@ export function PlayerScreen() {
               onPlay={playNext}
               onCancel={cancelNext}
               autoplay={settings.autoplayNext}
+              paused={!playing}
               preferredFocus={isTV && focusOwner === 'prompt'}
               onFocusChange={trackPrompt}
             />

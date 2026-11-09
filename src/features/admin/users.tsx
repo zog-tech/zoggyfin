@@ -33,6 +33,7 @@ import {
   parentalRatingOptions,
   type PolicyEdits,
   policyDiff,
+  rebaseDraft,
   SYNCPLAY_OPTIONS,
   syncPlayLabel,
   toggleLibrary,
@@ -144,11 +145,15 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
   const user = users.data?.find((u) => u.Id === userId);
   const saved = user?.Policy;
   const [draft, setDraft] = useState<PolicyEdits | null>(saved ? draftFrom(saved) : null);
-  // A new saved policy (after a save or a refresh) starts a new draft.
-  const [base, setBase] = useState(saved);
-  if (base !== saved) {
-    setBase(saved);
-    setDraft(saved ? draftFrom(saved) : null);
+  // A new loaded policy (a refetch, the enabled switch, a save) keeps the
+  // unsaved edits (rebaseDraft). Another user, or the user's own save, starts
+  // a new draft.
+  const [base, setBase] = useState({ userId, policy: saved });
+  const [ownSave, setOwnSave] = useState(false);
+  if (base.userId !== userId || base.policy !== saved) {
+    setBase({ userId, policy: saved });
+    setDraft((d) => rebaseDraft(base.policy, saved, base.userId === userId ? d : null, ownSave));
+    setOwnSave(false);
   }
   const [picker, setPicker] = useState<Picker>(null);
   const [sheet, setSheet] = useState<'password' | 'delete' | null>(null);
@@ -176,7 +181,9 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
   const save = async () => {
     const next = buildPolicyUpdate(saved, draft);
     if (!next) return;
+    setOwnSave(true);
     await sendPolicy(next, `Saved ${describeChanges(changes)} for ${name}`);
+    setOwnSave(false);
   };
 
   const setDisabled = async (off: boolean) => {
@@ -250,7 +257,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
   const account = (
     <Group title="Account" footer={self ? 'You cannot disable or delete the account that you use now.' : undefined}>
       {!self ? (
-        <SwitchRow icon="person" label="Account enabled" value={!saved.IsDisabled} onChange={(v) => void setDisabled(!v)} disabled={busy === 'policy'} />
+        <SwitchRow icon="person" label="Account enabled" value={!saved.IsDisabled} onChange={(v) => void setDisabled(!v)} disabled={busy('policy')} />
       ) : null}
       <SettingsRow icon="key" label="Set a new password" onPress={() => setSheet('password')} last={user.HasPassword === false} />
       {user.HasPassword !== false ? <SettingsRow icon="key" label="Remove password" onPress={() => void removePassword()} trailing={<View />} last /> : null}
@@ -271,7 +278,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
         </Text>
         <View style={s.saveButtons}>
           <Button title="Discard" variant="smallTonal" onPress={() => setDraft(draftFrom(saved))} />
-          <Button title="Save changes" variant="small" loading={busy === 'policy'} onPress={() => void save()} />
+          <Button title="Save changes" variant="small" loading={busy('policy')} onPress={() => void save()} />
         </View>
       </View>
     ) : null;
@@ -315,7 +322,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
         hint={`${name} signs in with this password from now on. Open sessions stay signed in.`}
         action="Set password"
         secure
-        busy={busy === 'password'}
+        busy={busy('password')}
         onSubmit={async (pw) => {
           const ok = await run('password', () => target.api.setPassword(userId, pw), { success: `New password set for ${name}`, icon: 'key', invalidate });
           if (ok) setSheet(null);
@@ -328,7 +335,7 @@ export function UserEditor({ target, userId, embedded = false }: { target: Admin
         message={`The account, its settings, its watch history and its favourites are removed from the server. This cannot be undone.`}
         action="Delete user"
         typed={name}
-        busy={busy === 'delete'}
+        busy={busy('delete')}
         onConfirm={async () => {
           const ok = await run('delete', () => target.api.deleteUser(userId), { success: `${name} is deleted`, icon: 'trash', invalidate });
           if (!ok) return;

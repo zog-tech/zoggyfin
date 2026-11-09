@@ -67,7 +67,10 @@ export const prefersHls: boolean = needsHls(streamPlatform);
 export const iptv = {
   save: saveProvider,
   remove: removeProvider,
+  /** Loads the channel list again. Never rejects: `listError` says when it failed. */
   refresh,
+  /** The text of the last channel list error of a provider, or null when the last load worked. */
+  listError: (id: string): string | null => iptvState().data[id]?.error ?? null,
   formValues,
   setActive: setActiveProvider,
   toggleFavourite,

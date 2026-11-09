@@ -33,7 +33,7 @@ export function isOffline(): boolean {
   return useOnlineStore.getState().reachable === false;
 }
 
-/** Checks the server's addresses now. Concurrent calls share one check (see `checkConnection`). */
+/** Checks the server's addresses now. A call during a check waits for one more check (see `checkConnection`). */
 export function checkServer(): Promise<boolean> {
   const s = useSessionStore.getState().session;
   if (!s) return Promise.resolve(true);

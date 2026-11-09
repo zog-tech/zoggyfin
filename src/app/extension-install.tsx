@@ -1,7 +1,8 @@
 /**
  * The install confirm screen. It shows each extension's name, address,
  * permissions and contributions. The user confirms once; the app then fills
- * in the settings by itself.
+ * in the settings by itself. After a failure it offers only the extensions
+ * not added yet, with a message (`install-request.ts`).
  */
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -9,7 +10,7 @@ import { ActivityIndicator, ScrollView, Switch, Text, View } from 'react-native'
 
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
-import { install, type Candidate, useInstallRequest } from '@/extensions/runtime';
+import { cancelInstallRequest, confirmInstallRequest, install, pendingCandidates, type Candidate, useInstallRequest } from '@/extensions/runtime';
 import { describePermission, type Manifest, safeHost } from '@/extensions/schema';
 import { ModalHeader } from '@/extensions/ui/modal-header';
 import { Group, makeSettingsStyles, webSwitchColors } from '@/features/settings/rows';
@@ -20,31 +21,29 @@ export default function ExtensionInstallScreen() {
   const s = useStyles(makeStyles);
   const st = useStyles(makeSettingsStyles);
   const { c } = useTheme();
-  const { entries, loading } = useInstallRequest();
-  const ready = entries.filter((e) => e.candidate).map((e) => e.candidate as Candidate);
+  const { entries: all, loading, installing, notice } = useInstallRequest();
+  // Extensions already added in this request leave the screen.
+  const entries = all.filter((e) => !e.done);
+  const ready = pendingCandidates(all);
   // The token permission: shown with its own switch, on, so the install needs no other step.
   const [tokenChoice, setToken] = useState<Record<string, boolean>>({});
   const token: Record<string, boolean> = Object.fromEntries(ready.map((cand) => [cand.manifest.id, tokenChoice[cand.manifest.id] ?? cand.installed?.grants.jellyfinToken ?? true]));
-  const [busy, setBusy] = useState(false);
 
   const close = () => {
-    useInstallRequest.setState({ entries: [], loading: false });
+    cancelInstallRequest();
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)/(home)');
   };
 
   const confirm = async () => {
-    setBusy(true);
-    try {
-      for (const cand of ready) {
-        await install(cand, { itemPath: cand.manifest.permissions.includes('itemPath'), jellyfinToken: !!token[cand.manifest.id] && cand.manifest.permissions.includes('jellyfinToken') });
-      }
-      toast(ready.length === 1 ? `${ready[0].manifest.name} is on` : `${ready.length} extensions are on`, { icon: 'checkmark' });
+    const r = await confirmInstallRequest((cand) =>
+      install(cand, { itemPath: cand.manifest.permissions.includes('itemPath'), jellyfinToken: !!token[cand.manifest.id] && cand.manifest.permissions.includes('jellyfinToken') }),
+    );
+    if (r.kind === 'done') {
+      toast(r.names.length === 1 ? `${r.names[0]} is on` : `${r.names.length} extensions are on`, { icon: 'checkmark' });
       close();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'The install failed.', { icon: 'exclamationmark.triangle' });
-    } finally {
-      setBusy(false);
+    } else if (r.kind === 'partial') {
+      toast(r.message, { icon: 'exclamationmark.triangle' });
     }
   };
 
@@ -71,9 +70,15 @@ export default function ExtensionInstallScreen() {
               </View>
             ),
           )}
+          {notice ? (
+            <View style={s.errorRow}>
+              <Icon name="exclamationmark.triangle" size={scaled(iconSize.sm)} color={c.danger} />
+              <Text style={s.errorText}>{notice}</Text>
+            </View>
+          ) : null}
           {!loading && ready.length ? (
             <View style={s.buttons}>
-              <Button title={ready.length > 1 ? `Add ${ready.length} extensions` : ready[0].installed ? 'Update' : 'Add'} onPress={confirm} loading={busy} />
+              <Button title={ready.length > 1 ? `Add ${ready.length} extensions` : ready[0].installed ? 'Update' : 'Add'} onPress={() => void confirm()} loading={installing} />
               <Text style={s.footer}>Extensions show buttons, Home rows and pages from their own server. They run no code in Zoggyfin. You can turn one off or remove it in Settings at any time.</Text>
             </View>
           ) : null}

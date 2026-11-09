@@ -12,7 +12,7 @@ import { toast } from '@/lib/toast';
 import type { IconName } from '@/components/icon-names';
 
 import type { AdminTarget } from './access';
-import { nextActivityStart, refreshDelay, SESSION_REFRESH_MS, TASK_REFRESH_MS } from './logic';
+import { endAction, nextActivityStart, refreshDelay, SESSION_REFRESH_MS, startAction, TASK_REFRESH_MS } from './logic';
 
 /** True while the screen is in front and the app is active. Live lists refresh only then. */
 export function useLive(): boolean {
@@ -123,19 +123,28 @@ export function useLogFiles(t: AdminTarget) {
 }
 
 /**
- * Runs an admin action: a busy flag, a toast with the result or the error,
- * then a refresh of the lists it changed. Resolves to true on success.
+ * Runs an admin action: a spinner per action id, a toast with the result or
+ * the error, then a refresh of the lists it changed. Resolves to true on
+ * success. Actions with different ids run side by side; a second run of an id
+ * that still runs is refused (false, no toast). `busy(id)` is true while that
+ * action runs.
  */
 export function useAdminAction() {
   const qc = useQueryClient();
-  const [busy, setBusy] = useState<string | null>(null);
+  // The ref is the truth for the refusal (no stale render closure); the state
+  // makes the screen render the spinners.
+  const inFlight = useRef<ReadonlySet<string>>(new Set());
+  const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set());
   const run = useCallback(
     async <T>(
       id: string,
       action: () => Promise<T>,
       opts: { success: string | ((r: T) => string); icon?: IconName; invalidate?: readonly (readonly unknown[])[] },
     ): Promise<boolean> => {
-      setBusy(id);
+      const started = startAction(inFlight.current, id);
+      if (!started) return false;
+      inFlight.current = started;
+      setRunning(started);
       try {
         const r = await action();
         toast(typeof opts.success === 'function' ? opts.success(r) : opts.success, { icon: opts.icon ?? 'checkmark' });
@@ -146,10 +155,12 @@ export function useAdminAction() {
         toast(d.kind === 'forbidden' ? 'The server did not allow this. The account must be an administrator.' : `${d.title}. ${d.message}`, { icon: 'exclamationmark.triangle' });
         return false;
       } finally {
-        setBusy(null);
+        inFlight.current = endAction(inFlight.current, id);
+        setRunning(inFlight.current);
       }
     },
     [qc],
   );
+  const busy = useCallback((id: string) => running.has(id), [running]);
   return { busy, run };
 }

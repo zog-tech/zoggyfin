@@ -1,6 +1,6 @@
 /**
  * Skip Intro / Skip Credits and the next-episode countdown, from Jellyfin
- * media segments. Pure: positions in seconds.
+ * media segments. Pure: positions in seconds, clock times in ms.
  */
 import type { MediaSegmentDto } from '@/api/types';
 
@@ -104,7 +104,30 @@ export function nextUpPhase(input: {
   return 'counting';
 }
 
-/** Seconds left on the countdown, from when the card first showed. */
-export function countdownLeft(shownAtMs: number, nowMs: number, seconds = NEXT_UP_COUNTDOWN_SECONDS): number {
-  return Math.max(0, seconds - (nowMs - shownAtMs) / 1000);
+/**
+ * The next-up countdown clock. It runs only while the video plays: a video
+ * paused at the credits must not start the next episode by itself.
+ * `spentMs` is the time counted before `since`; `since` is when it last
+ * began to run, or null while it holds.
+ */
+export interface CountdownClock {
+  spentMs: number;
+  since: number | null;
+}
+
+export function countdownClock(nowMs: number, running: boolean): CountdownClock {
+  return { spentMs: 0, since: running ? nowMs : null };
+}
+
+/** Runs or holds the clock. Returns the same clock when nothing changes. */
+export function setCountdownRunning(clock: CountdownClock, running: boolean, nowMs: number): CountdownClock {
+  if (running === (clock.since !== null)) return clock;
+  if (running) return { spentMs: clock.spentMs, since: nowMs };
+  return { spentMs: clock.spentMs + Math.max(0, nowMs - (clock.since ?? nowMs)), since: null };
+}
+
+/** Seconds left on the countdown. Time while the clock holds does not count. */
+export function countdownLeft(clock: CountdownClock, nowMs: number, seconds = NEXT_UP_COUNTDOWN_SECONDS): number {
+  const spent = clock.spentMs + (clock.since !== null ? Math.max(0, nowMs - clock.since) : 0);
+  return Math.max(0, seconds - spent / 1000);
 }

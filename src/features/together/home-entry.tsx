@@ -15,7 +15,7 @@ import { Touchable } from '@/components/touchable';
 import { features } from '@/platform/tv';
 import { createStyles, type AppTheme, font, radius, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
 import { nearby, nearbySupported } from '@/together/nearby';
-import { openTogetherSheet, togetherState, useTogetherStore } from '@/together/store';
+import { openTogetherSheet, pastLobby, togetherState, useTogetherStore } from '@/together/store';
 import { syncPlaySupported } from '@/together/syncplay';
 
 import { TogetherSheetHost } from './together-sheet';
@@ -27,7 +27,7 @@ export const homeTogether = features.watchTogether && (nearbySupported || syncPl
 export function TogetherHeaderButton() {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
-  const live = useTogetherStore((x) => (x.mode !== 'none' && x.phase.name !== 'idle' && x.phase.name !== 'browsing') || !!x.syncplay.group);
+  const live = useTogetherStore(pastLobby);
   return (
     <Touchable
       onPress={() => openTogetherSheet('hub', null)}
@@ -64,7 +64,7 @@ function useHomeVisible(): boolean {
 function useHomeBrowse(visible: boolean): void {
   const sheetOpen = useTogetherStore((x) => x.sheet.open);
   // In a session or a join: Home leaves the nearby link alone.
-  const busy = useTogetherStore((x) => !!x.syncplay.group || (x.mode !== 'none' && x.phase.name !== 'browsing' && x.phase.name !== 'idle'));
+  const busy = useTogetherStore(pastLobby);
   useEffect(() => {
     if (!nearbySupported || !visible || sheetOpen || busy) return;
     const st = togetherState();

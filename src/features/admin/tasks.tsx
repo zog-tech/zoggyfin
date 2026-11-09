@@ -52,7 +52,7 @@ export function TasksSection({ target }: { target: AdminTarget }) {
   );
 }
 
-function TaskCard({ task: t, busy, onStart, onStop }: { task: TaskInfo; busy: string | null; onStart: () => void; onStop: () => void }) {
+function TaskCard({ task: t, busy, onStart, onStop }: { task: TaskInfo; busy: (id: string) => boolean; onStart: () => void; onStop: () => void }) {
   const s = useStyles(makeStyles);
   const now = new Date();
   const st = taskStatus(t);
@@ -86,9 +86,9 @@ function TaskCard({ task: t, busy, onStart, onStop }: { task: TaskInfo; busy: st
       ) : null}
       <View style={s.actions}>
         {running ? (
-          <Button title={t.State === 'Cancelling' ? 'Stopping' : 'Stop'} icon="stop.fill" variant="smallTonal" disabled={t.State === 'Cancelling'} loading={busy === `stop-${t.Id}`} onPress={onStop} accessibilityLabel={`Stop ${t.Name}`} />
+          <Button title={t.State === 'Cancelling' ? 'Stopping' : 'Stop'} icon="stop.fill" variant="smallTonal" disabled={t.State === 'Cancelling'} loading={busy(`stop-${t.Id}`)} onPress={onStop} accessibilityLabel={`Stop ${t.Name}`} />
         ) : (
-          <Button title="Run now" icon="play.fill" variant="smallTonal" loading={busy === `start-${t.Id}`} onPress={onStart} accessibilityLabel={`Run ${t.Name} now`} />
+          <Button title="Run now" icon="play.fill" variant="smallTonal" loading={busy(`start-${t.Id}`)} onPress={onStart} accessibilityLabel={`Run ${t.Name} now`} />
         )}
       </View>
     </Card>

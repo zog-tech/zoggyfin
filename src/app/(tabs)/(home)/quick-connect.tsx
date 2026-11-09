@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
 import { authorizeQuickConnect, isQuickConnectEnabled } from '@/api/jellyfin';
@@ -30,6 +30,9 @@ export default function QuickConnectScreen() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [code, setCode] = useState('');
   const [phase, setPhase] = useState<Phase>({ name: 'idle' });
+  // The guard against a second approve. A ref, because a fast second tap or
+  // Return can run before the render that shows the busy phase.
+  const approving = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -40,7 +43,8 @@ export default function QuickConnectScreen() {
   }, [api]);
 
   const approve = async () => {
-    if (!isCompleteCode(code) || phase.name === 'busy') return;
+    if (!isCompleteCode(code) || approving.current) return;
+    approving.current = true;
     setPhase({ name: 'busy' });
     try {
       const ok = await authorizeQuickConnect(api, code, userId);
@@ -48,6 +52,8 @@ export default function QuickConnectScreen() {
       if (ok) setCode('');
     } catch (e) {
       setPhase({ name: 'error', message: approveErrorText(e) });
+    } finally {
+      approving.current = false;
     }
   };
 
