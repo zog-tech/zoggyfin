@@ -1,6 +1,5 @@
 import {
   createDoublePress,
-  createTapGate,
   DOUBLE_PRESS_MS,
   liveKeyAction,
   NO_PRESS,
@@ -179,61 +178,6 @@ describe('scrubbing with the remote', () => {
     expect(scrubTarget(5, tap(-1), 100)).toBe(0);
     expect(scrubTarget(95, tap(1), 100)).toBe(100);
     expect(scrubTarget(50, tap(1), 100)).toBe(60);
-  });
-});
-
-describe('tap gate (controls hidden)', () => {
-  it('waits on a single press, then shows the controls after the window', () => {
-    const g = createTapGate();
-    expect(g.press('right', 1000, true)).toEqual({ double: false, wait: true });
-    expect(g.due(1000 + DOUBLE_PRESS_MS - 1)).toBe(false);
-    expect(g.due(1000 + DOUBLE_PRESS_MS)).toBe(true);
-    expect(g.due(1000 + DOUBLE_PRESS_MS + 50)).toBe(false);
-  });
-
-  it('a second press in the window seeks and never shows the controls', () => {
-    const g = createTapGate();
-    g.press('left', 1000, true);
-    expect(g.press('left', 1300, true)).toEqual({ double: true, wait: false });
-    expect(g.due(5000)).toBe(false);
-  });
-
-  it('repeated pairs keep seeking with the controls hidden', () => {
-    const g = createTapGate();
-    const t = [0, 200, 500, 700, 1000, 1200];
-    const doubles = t.map((at) => g.press('right', at, true).double);
-    expect(doubles).toEqual([false, true, false, true, false, true]);
-    expect(g.due(9999)).toBe(false);
-  });
-
-  it('a late second press is a new single press', () => {
-    const g = createTapGate();
-    g.press('right', 0, true);
-    expect(g.due(DOUBLE_PRESS_MS)).toBe(true);
-    // The controls are shown now: the late press does not pair and does not wait.
-    expect(g.press('right', DOUBLE_PRESS_MS + 10, false)).toEqual({ double: false, wait: false });
-  });
-
-  it('the other direction does not pair and waits again', () => {
-    const g = createTapGate();
-    g.press('left', 0, true);
-    expect(g.press('right', 100, true)).toEqual({ double: false, wait: true });
-    expect(g.due(100 + DOUBLE_PRESS_MS)).toBe(true);
-  });
-
-  it('with the controls shown, presses pair and never wait', () => {
-    const g = createTapGate();
-    expect(g.press('left', 0, false)).toEqual({ double: false, wait: false });
-    expect(g.press('left', 300, false)).toEqual({ double: true, wait: false });
-    expect(g.due(9999)).toBe(false);
-  });
-
-  it('cancel forgets the waiting press and the pair', () => {
-    const g = createTapGate();
-    g.press('left', 0, true);
-    g.cancel();
-    expect(g.due(9999)).toBe(false);
-    expect(g.press('left', 100, true).double).toBe(false);
   });
 });
 

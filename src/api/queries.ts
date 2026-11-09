@@ -3,7 +3,7 @@
  * `jellyfin.ts`. Screens use these and nothing lower.
  */
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 
 import { downloadedChildren, downloadedItem, serverOrLocal } from '@/downloads';
 
@@ -50,34 +50,24 @@ export function useItem(itemId: string | undefined, seed?: BaseItemDto) {
 const PREFETCH_FRESH_MS = 60_000;
 
 /**
- * TV: loads an item shortly after its tile takes the focus, so Select opens
- * a page whose data is already there. A focus that moves on within `delayMs`
- * loads nothing.
+ * TV: loads an item into the cache now, so Select opens a page whose data is
+ * already there. The caller decides when: the TV tiles call it only once the
+ * focus rests on a tile (features/tv/focus-settle), never per passed tile.
  */
-export function usePrefetchItemOnFocus(delayMs = 300): (item: BaseItemDto) => void {
+export function usePrefetchItem(): (item: BaseItemDto) => void {
   const { api, userId, scope } = useApi();
   const qc = useQueryClient();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
   return useCallback(
     (item: BaseItemDto) => {
       const id = item.Id;
       if (!id) return;
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        void qc.prefetchQuery({
-          queryKey: queryKeys.item(scope, id),
-          queryFn: () => serverOrLocal(() => jf.getItem(api, userId, id), () => downloadedItem(id)),
-          staleTime: PREFETCH_FRESH_MS,
-        });
-      }, delayMs);
+      void qc.prefetchQuery({
+        queryKey: queryKeys.item(scope, id),
+        queryFn: () => serverOrLocal(() => jf.getItem(api, userId, id), () => downloadedItem(id)),
+        staleTime: PREFETCH_FRESH_MS,
+      });
     },
-    [api, userId, scope, qc, delayMs],
+    [api, userId, scope, qc],
   );
 }
 

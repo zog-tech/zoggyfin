@@ -6,7 +6,7 @@ import type { BaseItemDto } from '@/api/types';
 import { ItemImage } from '@/components/item-image';
 import { Touchable } from '@/components/touchable';
 import { episodeLabel } from '@/lib/format';
-import { NEXT_UP_COUNTDOWN_SECONDS } from '@/player/segments';
+import { type CountdownClock, countdownClock, countdownLeft, NEXT_UP_COUNTDOWN_SECONDS, setCountdownRunning } from '@/player/segments';
 
 import { Glass } from './glass';
 import { c, motion, radius, spacing, textStyle, type } from './tokens';
@@ -14,13 +14,19 @@ import { c, motion, radius, spacing, textStyle, type } from './tokens';
 const RING = 36;
 const STROKE = 3;
 
-/** A ring that fills clockwise from the top over `seconds` (two clipped halves, transforms only). */
-function CountdownRing({ seconds, paused }: { seconds: number; paused: boolean }) {
-  const p = useSharedValue(0);
+/** How often the countdown updates (ms). The ring moves linearly between updates. */
+const TICK_MS = 250;
+
+/**
+ * A ring that fills clockwise from the top as `progress` goes from 0 to 1
+ * (two clipped halves, transforms only). It follows the countdown, so it
+ * holds while the countdown holds.
+ */
+function CountdownRing({ progress }: { progress: number }) {
+  const p = useSharedValue(progress);
   useEffect(() => {
-    if (paused) return;
-    p.set(withTiming(1, { duration: seconds * 1000, easing: Easing.linear }));
-  }, [p, seconds, paused]);
+    p.set(withTiming(progress, { duration: TICK_MS, easing: Easing.linear }));
+  }, [p, progress]);
   const right = useAnimatedStyle(() => ({ transform: [{ rotate: `${-135 + Math.min(180, p.get() * 360)}deg` }] }));
   const left = useAnimatedStyle(() => ({ transform: [{ rotate: `${-135 + Math.max(0, Math.min(180, p.get() * 360 - 180))}deg` }] }));
   return (
@@ -39,7 +45,7 @@ function CountdownRing({ seconds, paused }: { seconds: number; paused: boolean }
 /**
  * The next-episode card (design-system §7.8): the next episode's thumb and a
  * 10 s countdown ring, with "Play Now" and "Cancel". When the countdown ends,
- * `onPlay` runs. TV: "Play Now" takes the focus while the controls are
+ * `onPlay` runs. The countdown holds while the video is `paused`. TV: "Play Now" takes the focus while the controls are
  * hidden (`preferredFocus`); Right reaches "Cancel".
  */
 export function NextUpCard({
@@ -47,6 +53,7 @@ export function NextUpCard({
   onPlay,
   onCancel,
   autoplay,
+  paused,
   preferredFocus,
   onFocusChange,
 }: {
@@ -54,25 +61,32 @@ export function NextUpCard({
   onPlay: () => void;
   onCancel: () => void;
   autoplay: boolean;
+  paused: boolean;
   preferredFocus?: boolean;
   onFocusChange?: (focused: boolean) => void;
 }) {
-  const [left, setLeft] = useState(NEXT_UP_COUNTDOWN_SECONDS);
+  const [remaining, setRemaining] = useState(NEXT_UP_COUNTDOWN_SECONDS);
+  const clock = useRef<CountdownClock | null>(null);
   const fired = useRef(false);
   useEffect(() => {
     if (!autoplay) return;
-    const started = Date.now();
+    const now = Date.now();
+    clock.current = setCountdownRunning(clock.current ?? countdownClock(now, false), !paused, now);
+    if (paused) return;
     const id = setInterval(() => {
-      const remaining = Math.max(0, NEXT_UP_COUNTDOWN_SECONDS - (Date.now() - started) / 1000);
-      setLeft(Math.ceil(remaining));
-      if (remaining <= 0 && !fired.current) {
+      const c = clock.current;
+      if (!c) return;
+      const rest = countdownLeft(c, Date.now());
+      setRemaining(rest);
+      if (rest <= 0 && !fired.current) {
         fired.current = true;
         clearInterval(id);
         onPlay();
       }
-    }, 250);
+    }, TICK_MS);
     return () => clearInterval(id);
-  }, [autoplay, onPlay]);
+  }, [autoplay, paused, onPlay]);
+  const left = Math.ceil(remaining);
 
   const label = [episodeLabel(next), next.Name].filter(Boolean).join(' · ');
   return (
@@ -113,7 +127,7 @@ export function NextUpCard({
         </View>
         {autoplay ? (
           <View style={styles.ringWrap} accessible={false}>
-            <CountdownRing seconds={NEXT_UP_COUNTDOWN_SECONDS} paused={false} />
+            <CountdownRing progress={1 - remaining / NEXT_UP_COUNTDOWN_SECONDS} />
             <Text style={styles.ringText}>{left}</Text>
           </View>
         ) : null}

@@ -575,7 +575,8 @@ things in focus). `Touchable` applies the mark from its `kind`, so screens do no
 
 | Control | `kind` | TV focus mark |
 |---|---|---|
-| Tile (poster, thumb, square) | `tile` | White 3-pt ring with a 3-pt gap, and the focus scale (1.1). No shadow |
+| Tile with no caption (art only, title on the art) | `tile` | White 3-pt ring with a 3-pt gap, and the focus scale (1.1). No shadow |
+| Tile with a caption under the art (grids, detail rows, Live TV and film tiles) | `tile`, no ring | The caption strip turns light at once (`tvCaption.focusFill`, text `focusText` and `focusText2`), joined to the art, and the focus scale (1.1). No ring, no fade. Unfocused captions keep `text` and `text2` |
 | Round tile (person, artist) | `plain`, ring on the circle | The same ring and scale, on the circle only |
 | Button, chip, icon button, round detail button | `button`, `icon` | White ring and the focus scale |
 | Row and list item (Settings, sheets, Live TV groups and channels, search results, admin) | `row` | `tvRowFocus` fill (white 22 %) under the content. No ring, no scale. The text keeps its colours |

@@ -1,10 +1,10 @@
 /**
  * TV remote keys in the video player. Pure: no React, so it is unit-tested.
  *
- * A single Left or Right press keeps its normal job (it shows the controls,
- * and the focus engine moves the focus). A second press of the same key
- * within DOUBLE_PRESS_MS also seeks 10 s. Every further pair seeks again, and
- * the on-screen feedback adds up while it shows.
+ * With the controls shown, a single Left or Right press keeps its normal job
+ * (the focus engine moves the focus), and a second press of the same key
+ * within DOUBLE_PRESS_MS also seeks 10 s. With the controls hidden, Left,
+ * Right, rewind and fast forward go through tap seek (tap-seek.ts) instead.
  */
 
 /** Two presses of the same key closer than this are a double press (ms). */
@@ -153,41 +153,6 @@ export type PlayerKeyAction =
  * What a remote key does in the player. Select is left to the focused
  * control (a button, or the full-screen layer while the controls are hidden).
  */
-/**
- * Left and Right with the TV controls hidden. A first press does not show the
- * controls at once: it waits out the double-press window. A second press of
- * the same key in the window is a double press (seek 10 s, the controls stay
- * hidden), and nothing is shown. With no second press, `due` turns true once
- * the window is over, and the caller shows the controls. With the controls
- * shown, presses pair as usual and never wait. Pure (the caller owns the timer).
- */
-export function createTapGate(windowMs: number = DOUBLE_PRESS_MS) {
-  const pairs = createDoublePress(windowMs);
-  let pendingAt: number | null = null;
-  return {
-    press(key: string, now: number, hidden: boolean): { double: boolean; wait: boolean } {
-      const double = pairs.press(key, now);
-      if (double || !hidden) {
-        pendingAt = null;
-        return { double, wait: false };
-      }
-      pendingAt = now;
-      return { double: false, wait: true };
-    },
-    /** True once (then cleared) when a waiting single press must show the controls. */
-    due(now: number): boolean {
-      if (pendingAt === null || now - pendingAt < windowMs) return false;
-      pendingAt = null;
-      return true;
-    },
-    /** Another key came: forget the waiting press and the pair. */
-    cancel(): void {
-      pendingAt = null;
-      pairs.reset();
-    },
-  };
-}
-
 export function playerKeyAction(key: TvKey, double: boolean): PlayerKeyAction {
   switch (key) {
     case 'left':

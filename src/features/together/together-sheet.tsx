@@ -25,7 +25,7 @@ import { wifiQr } from '@/together/join-code';
 import { canHostNearby, nearby, nearbySupported } from '@/together/nearby';
 import { guestHelp, HELP_DELAY_MS, helpCopy, type HelpItem, type HelpPlatform, type NetworkInfo } from '@/together/nearby-help';
 import { linkNative } from '@/together/nearby-native';
-import { closeTogetherSheet, openTogetherSheet, releaseTogetherSheet, setTogether, type SheetPlace, type TogetherState, useTogetherStore } from '@/together/store';
+import { closeTogetherSheet, openTogetherSheet, pastLobby, releaseTogetherSheet, setTogether, type SheetPlace, type TogetherState, useTogetherStore } from '@/together/store';
 import { canSyncPlay, syncPlay, syncPlaySupported } from '@/together/syncplay';
 import { groupStateLabel } from '@/together/syncplay-logic';
 import { joinTransport, mergeSessions, playForEveryone, SERVER_CONTROLS_TEXT, type SessionRow, sessionHeadline, shortName } from '@/together/hub';
@@ -134,7 +134,7 @@ function useSheetEnv(browsingSince: number | null): SheetEnv {
 /** "Listen together" for audio, else "Watch together". */
 export function sheetTitle(st: TogetherState, item: BaseItemDto | null): string {
   const inSession = st.mode !== 'none' && st.phase.name !== 'idle' && st.phase.name !== 'browsing';
-  if (st.sheet.where === 'hub' && !inSession && !st.syncplay.group) return 'Together';
+  if (st.sheet.where === 'hub' && !pastLobby(st)) return 'Together';
   const audio = st.sheet.where === 'music' || (!!item && isAudioItem(item)) || (inSession && st.kind === 'audio');
   return audio ? 'Listen together' : 'Watch together';
 }

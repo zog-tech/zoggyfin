@@ -118,7 +118,8 @@ function Root({ session }: { session: boolean }) {
   }, [session]);
   return (
           <View style={[styles.flex, { backgroundColor: c.bg }]}>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
+            {/* TV changes screens at once (no push animation), like the streaming apps. */}
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, ...(isTV ? { animation: 'none' as const } : null) }}>
               <Stack.Protected guard={session}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
@@ -136,7 +137,7 @@ function Root({ session }: { session: boolean }) {
                   name="player"
                   options={{
                     presentation: PLAYER_PRESENTATION,
-                    animation: 'fade',
+                    animation: isTV ? 'none' : 'fade',
                     animationDuration: 240,
                     contentStyle: { backgroundColor: mediaColors.black },
                     autoHideHomeIndicator: true,
@@ -150,7 +151,7 @@ function Root({ session }: { session: boolean }) {
                   name="now-playing"
                   options={{
                     presentation: PLAYER_PRESENTATION,
-                    animation: 'slide_from_bottom',
+                    animation: isTV ? 'none' : 'slide_from_bottom',
                     animationDuration: 300,
                     contentStyle: { backgroundColor: mediaColors.black },
                     gestureEnabled: false,

@@ -20,7 +20,8 @@ export function stackOptionsFor({ c }: AppTheme): NativeStackNavigationOptions {
     contentStyle: { backgroundColor: c.bg },
     // TV: the rail is the navigation; no header bar. Web keeps a slim header.
     headerShown: !isTV,
-    ...(Platform.OS === 'web' ? { animation: 'none' as const } : null),
+    // Web and TV change pages at once: a push animation on a TV stick costs frames and feels slow.
+    ...(Platform.OS === 'web' || isTV ? { animation: 'none' as const } : null),
   };
 }
 

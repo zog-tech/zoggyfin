@@ -131,12 +131,18 @@ export default function SearchScreen() {
     if (name && !GENRE_SEARCH_FILTERS.some((f) => f.value === filter)) setFilter('all');
   };
 
+  // One speech screen at a time: a second press while it opens does nothing.
+  const listening = useRef(false);
   const speak = async () => {
+    if (listening.current) return;
+    listening.current = true;
     try {
       const said = (await voiceInput?.listen('Search Zoggyfin'))?.trim();
       if (said) applyRecent(said);
     } catch {
       toast('Voice search is not available on this device.', { icon: 'mic.fill' });
+    } finally {
+      listening.current = false;
     }
   };
 

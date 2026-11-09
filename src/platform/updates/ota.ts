@@ -19,7 +19,7 @@ import { create } from 'zustand';
 
 import { otaLabel, runningOta } from '@/lib/ota';
 
-import { initialUpdateState, type UpdateEvent, type UpdateOffer, updateReducer, type UpdateState } from './machine';
+import { initialUpdateState, retryAction, type UpdateEvent, type UpdateOffer, updateReducer, type UpdateState } from './machine';
 import { OTA_FIRST_CHECK_MS, type OtaCheckReason, otaManifestInfo, otaMessage, shouldCheckOta } from './ota-rules';
 
 /** The parts of expo-updates that the controller uses (a fake in tests and on the web preview). */
@@ -127,13 +127,13 @@ export async function restartOta(): Promise<void> {
 
 /** "Try again" on an error: restart again, or check again. */
 export function retryOta(): void {
-  const { phase, offer } = useOtaStore.getState().state;
-  if (phase.kind !== 'error') return;
-  if (phase.step === 'install' && offer) {
+  // The rule is the machine's (`retryAction`); this only runs the step.
+  const action = retryAction(useOtaStore.getState().state);
+  if (action === 'restart') {
     // Back to `ready` first, then the restart.
     send({ type: 'close' });
     void restartOta();
-  } else {
+  } else if (action === 'check') {
     void checkForOta(true);
   }
 }

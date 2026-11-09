@@ -5,10 +5,13 @@
  * data, not a Jellyfin item.
  */
 import { memo } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 
+import { TileCaption, TileFocusFill } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
-import { createStyles, type AppTheme, font, mediaColors, radius, scaled, scriptStyle, sizes, type, useStyles } from '@/theme';
+import { tvFocusRest } from '@/features/tv/focus-settle';
+import { isTV } from '@/platform/tv';
+import { createStyles, type AppTheme, mediaColors, radius, scaled, sizes, useStyles } from '@/theme';
 
 import { VodArt } from './vod-art';
 
@@ -31,6 +34,7 @@ export const VodTile = memo(function VodTile({
   onLongPress,
   firstFocus,
   onFocus,
+  index = 0,
 }: {
   data: VodTileData;
   width: number;
@@ -40,7 +44,13 @@ export const VodTile = memo(function VodTile({
   onLongPress?: (data: VodTileData) => void;
   /** TV: take the first focus of the page. */
   firstFocus?: boolean;
-  onFocus?: () => void;
+  /**
+   * The tile took the focus (TV). Pass a stable function: the tile is a memo.
+   * Work for `tvFocusRest` must use the data as its key: the tile drops it on blur.
+   */
+  onFocus?: (data: VodTileData, index: number) => void;
+  /** The tile's place in its row, passed back to `onFocus`. */
+  index?: number;
 }) {
   const s = useStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
@@ -50,13 +60,18 @@ export const VodTile = memo(function VodTile({
     <Touchable
       kind="tile"
       radius={radius.md}
+      // TV: the lit caption strip is the focus mark (design system §7.19).
+      ring={!isTV}
       onPress={() => onPress(data)}
       onLongPress={onLongPress ? () => onLongPress(data) : undefined}
       firstFocus={firstFocus}
-      onFocus={onFocus}
+      onFocus={onFocus ? () => onFocus(data, index) : undefined}
+      // The focus left before it rested: work keyed by this tile's data must not run.
+      onBlur={onFocus ? () => tvFocusRest.drop(data) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ width }}>
+      <TileFocusFill artHeight={width / aspectRatio} radius={radius.md} />
       <View>
         <VodArt uri={data.poster} name={data.title} id={data.id} kind={data.kind} width={width} aspectRatio={aspectRatio} showTitle={progress === null} />
         {progress !== null ? (
@@ -65,21 +80,12 @@ export const VodTile = memo(function VodTile({
           </View>
         ) : null}
       </View>
-      <Text style={[s.title, scriptStyle(data.title, s.title)]} numberOfLines={fontScale >= 1.5 ? 2 : 1}>
-        {data.title}
-      </Text>
-      {data.subtitle ? (
-        <Text style={s.meta} numberOfLines={1}>
-          {data.subtitle}
-        </Text>
-      ) : null}
+      <TileCaption title={data.title} sub={data.subtitle} lines={fontScale >= 1.5 ? 2 : 1} />
     </Touchable>
   );
 });
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
-  title: { ...font(type.tileTitle), color: c.text, marginTop: scaled(sizes.tileTitleGap) },
-  meta: { ...font(type.caption1), color: c.text2, marginTop: sizes.tileMetaGap },
   progress: {
     position: 'absolute' as const,
     left: scaled(sizes.progressInset),

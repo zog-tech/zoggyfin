@@ -13,6 +13,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
+  mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
+  sections mount as you reach them, the side menu slides over the page, screens change at once, and
+  the player controls show with no fade. Focused captioned tiles light a caption strip. Fast D-pad
+  repeat needs a new native build.
 - **Search Live TV programmes.** Search in Live TV now has an "On now" section. It lists programmes
   whose title matches your words and that are on now or start within the hour. Tap one to watch its
   channel. Streams that share one guide show as one row with "+N streams". The app downloads the
@@ -157,6 +162,29 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **Seeking with the remote or a double tap no longer opens the full controls.** On Android TV
+  and Fire TV with the controls hidden, a double Left or Right starts a seek run: each further press
+  seeks 10 s at once, and rewind and fast forward do the same. On phones, tablets and touch screens,
+  a double tap on a side does the same with taps. Only a bubble with the total (for example +30 s)
+  and a thin progress line show, until the run ends.
+- Late results no longer overwrite newer state. A slow step that ends after you moved on is now dropped:
+  - A quick switch to a channel or film no longer stops it with an error.
+  - A finished queue no longer stops the song you just started.
+  - A late add to a playlist, or a late "Play on", no longer closes the sheet you opened next.
+- Downloads: a pause and resume while a download prepares no longer starts it twice.
+- Player: the "Next up" countdown waits while the video is paused.
+- Live TV:
+  - The guide no longer stays at "loading" after a refresh finds a new guide address.
+  - A change made while your account syncs is now sent to your other devices.
+  - A shared provider that fails to load says so.
+- Watch together: when the host drops, a guest that closed its player no longer becomes the new host, so the
+  other guests no longer wait for a host that never comes. SyncPlay stops loading when you leave the group.
+- Servers: a new address is checked at once, and a failed server search on the first screen ends.
+- Sign in: Cancel stops Quick Connect, also while the code loads.
+- Admin: a refresh keeps your unsaved changes to a user. One action that ends no longer hides the spinners of the others.
+- Extensions: Cancel stops a late install list. After a partial install, the screen shows what is left.
+- One tap does one thing: a fast double tap no longer adds a provider twice or joins an invite twice.
 
 - Live TV on TV: moving through the channel list no longer lags on slow TV sticks. A focus move re-renders only the
   details panel (after the focus rests), each row re-renders only when its own programme changes, and fewer rows stay mounted.

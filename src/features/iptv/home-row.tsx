@@ -10,10 +10,11 @@ import { Platform, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { RowHeader } from '@/components/item-row';
+import { TileCaption, TileFocusFill } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { type ProviderChannel, useMergedLists, usePlayMerged, useProviders } from '@/iptv';
 import { isTV } from '@/platform/tv';
-import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
 
 import { ChannelLogo } from './channel-logo';
 import { liveTvHref, liveTvTab, useLiveGroup } from './nav';
@@ -68,20 +69,18 @@ function ChannelTile({ channel, width, subtitle, onPress }: { channel: ProviderC
     <Touchable
       kind="tile"
       radius={radius.md}
+      // TV: the lit caption strip is the focus mark (design system §7.19).
+      ring={!isTV}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={[name, subtitle].filter(Boolean).join(', ')}
       accessibilityHint="Plays the channel"
       containerStyle={{ width }}>
+      <TileFocusFill artHeight={height} radius={radius.md} />
       <View style={[s.art, { width, height }]}>
         <ChannelLogo uri={channel.channel.logo} name={name} size={Math.round(height * 0.55)} />
       </View>
-      <Text style={s.title} numberOfLines={1}>
-        {name}
-      </Text>
-      <Text style={s.meta} numberOfLines={1}>
-        {subtitle ?? ' '}
-      </Text>
+      <TileCaption title={name} sub={subtitle} keepSubLine />
     </Touchable>
   );
 }
@@ -113,6 +112,4 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   },
   all: { gap: spacing.sm, backgroundColor: c.accentSoft },
   allText: { ...font(type.headline), color: c.accent },
-  title: { ...font(type.tileTitle), color: c.text, marginTop: scaled(sizes.tileTitleGap) },
-  meta: { ...font(type.caption1), color: c.text2, marginTop: sizes.tileMetaGap },
 }));

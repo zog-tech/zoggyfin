@@ -1,4 +1,4 @@
-import { countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, skipPromptAt } from '../segments';
+import { countdownClock, countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, setCountdownRunning, skipPromptAt, skipPromptFor } from '../segments';
 
 const T = 10_000_000;
 
@@ -40,6 +40,22 @@ describe('skipPromptAt', () => {
   });
 });
 
+describe('skipPromptFor', () => {
+  const intro = { kind: 'Intro' as const, start: 30, end: 90 };
+  const credits = { kind: 'Outro' as const, start: 1300, end: 1400 };
+
+  it('builds the same prompt as skipPromptAt for the segment it picks', () => {
+    const at = skipPromptAt([intro], 45, 1400, false);
+    expect(at).not.toBeNull();
+    expect(skipPromptFor(intro, 1400)).toEqual(at);
+  });
+
+  it('seeks no further than the end of the video', () => {
+    expect(skipPromptFor(credits, 1350).target).toBe(1350);
+    expect(skipPromptFor(credits, 0).target).toBe(1400);
+  });
+});
+
 describe('next-up timing', () => {
   it('starts at the end credits', () => {
     expect(nextUpStartsAt(normalizeSegments(raw), 1400)).toBe(1300);
@@ -61,7 +77,26 @@ describe('next-up timing', () => {
     expect(nextUpPhase({ ...base, position: 1305, dismissedAt: 200 })).toBe('counting');
   });
   it('counts down from 10 s', () => {
-    expect(countdownLeft(0, 4000)).toBe(6);
-    expect(countdownLeft(0, 12000)).toBe(0);
+    const clock = countdownClock(0, true);
+    expect(countdownLeft(clock, 4000)).toBe(6);
+    expect(countdownLeft(clock, 12000)).toBe(0);
+  });
+  it('holds the countdown while the video is paused', () => {
+    // Shown while paused: no time passes.
+    let clock = countdownClock(0, false);
+    expect(countdownLeft(clock, 60_000)).toBe(10);
+    // Plays for 4 s, pauses for a minute, plays 2 s more.
+    clock = setCountdownRunning(clock, true, 60_000);
+    clock = setCountdownRunning(clock, false, 64_000);
+    expect(countdownLeft(clock, 124_000)).toBe(6);
+    clock = setCountdownRunning(clock, true, 124_000);
+    expect(countdownLeft(clock, 126_000)).toBe(4);
+    expect(countdownLeft(clock, 200_000)).toBe(0);
+  });
+  it('returns the same clock when the state does not change', () => {
+    const running = countdownClock(0, true);
+    expect(setCountdownRunning(running, true, 500)).toBe(running);
+    const held = countdownClock(0, false);
+    expect(setCountdownRunning(held, false, 500)).toBe(held);
   });
 });

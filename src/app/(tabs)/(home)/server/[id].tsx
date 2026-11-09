@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, Switch, Text, View } from 'react-native';
 
 import { findServer as probeServer } from '@/api/jellyfin';
@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/states';
 import { TextField } from '@/components/text-field';
 import { Touchable } from '@/components/touchable';
 import { TvScrollView } from '@/features/tv/page-scroll';
+import { createGate } from '@/lib/async-gate';
 import { isTV } from '@/platform/tv';
 import { InviteSection } from '@/features/invite/invite-section';
 import { openAddUser, removeServerFlow, signOutUser, switchAccount } from '@/features/servers/actions';
@@ -123,24 +124,42 @@ function AddressesSection({ server }: { server: SavedServer }) {
     state: 'idle',
   });
   const info = useConnection(server.id);
+  /** One search at a time; leaving the page or another server makes a search stale. */
+  const [findGate] = useState(createGate);
+  const finding = useRef(false);
+  useEffect(
+    () => () => {
+      findGate.cancel();
+      finding.current = false;
+    },
+    [findGate, server.id],
+  );
 
   /** "Find addresses": the server reports its LAN address in /System/Info/Public (LocalAddress). */
   const find = async () => {
-    setFound({ state: 'busy' });
+    if (finding.current) return;
     const from = info.url ?? startUrl(server);
     if (!from) return setFound({ state: 'error', text: 'The server has no address to ask.' });
+    const token = findGate.begin();
+    finding.current = true;
+    setFound({ state: 'busy' });
+    const show = (next: typeof found) => {
+      if (!findGate.current(token)) return;
+      finding.current = false;
+      setFound(next);
+    };
     try {
       const res = await fetchLocalAddress(from);
-      if (!sameServerId(res.id, server.id)) return setFound({ state: 'error', text: 'A different server answered. Nothing was added.' });
+      if (!sameServerId(res.id, server.id)) return show({ state: 'error', text: 'A different server answered. Nothing was added.' });
       const local = res.local ? normalizeServerUrl(res.local) : null;
-      if (!local) return setFound({ state: 'none', text: 'The server does not report a home network address.' });
-      if (server.addresses.some((a) => a.url === local)) return setFound({ state: 'known', url: local, text: `The server reports ${local}. It is in the list.` });
+      if (!local) return show({ state: 'none', text: 'The server does not report a home network address.' });
+      if (server.addresses.some((a) => a.url === local)) return show({ state: 'known', url: local, text: `The server reports ${local}. It is in the list.` });
       // A server in a container often reports an address that only the container sees.
       const check = await probeOne(local, server.id, probeSystemInfo, PROBE_TIMEOUT_MS);
-      setFound({ state: 'offer', url: local, answers: check.ok });
+      show({ state: 'offer', url: local, answers: check.ok });
     } catch (e) {
       if (__DEV__) console.warn('[servers] find addresses failed', e);
-      setFound({ state: 'error', text: 'No address of the server answers now. Try again on a network where it answers.' });
+      show({ state: 'error', text: 'No address of the server answers now. Try again on a network where it answers.' });
     }
   };
 

@@ -312,9 +312,12 @@ class AudioSession {
   }
 
   private async onQueueEnd() {
+    const id = this.loadId;
     const q = audioState().queue;
     const entry = currentEntry(q);
     await this.finishReporter(playerState().duration);
+    // A track started (or the player stopped) during the last report: that one owns the engine now.
+    if (id !== this.loadId) return;
     if (entry && audioState().longForm) void this.finishedLongItem(entry.item);
     this.engine.unload();
     if (audioState().sleep.kind === 'end') this.setSleep(sleepOff);
@@ -435,7 +438,13 @@ class AudioSession {
       resumed = start > 0;
     }
     const current = this.trackFor(entry);
-    if (!current) return;
+    if (!current) {
+      // The queue has moved to this entry: the old track must not play on under it.
+      this.engine.unload();
+      this.publish(entry, start, 'loading');
+      setPlayerState({ status: 'error', error: 'This track is not on this device. Sign in to its server to play it.', playing: false });
+      return;
+    }
     const nextEntry = upcomingEntry(q);
     const next = nextEntry ? this.trackFor(nextEntry) : null;
     this.publish(entry, start, 'loading');

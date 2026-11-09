@@ -15,6 +15,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { type FocusTarget, TvFocusGuide } from '@/features/tv/focus';
 import { isTV } from '@/platform/tv';
+import { usePlayerStore } from '@/player/store';
 import { type Chapter, chapterAt, chapterMarks, formatTime, spokenTime, type Trickplay, trickplaySheetUrl, trickplayTile } from '@/player/timeline';
 
 import { c, motion, player, spacing, textStyle, type } from './tokens';
@@ -43,6 +44,18 @@ interface Props {
   tvRef?: (view: FocusTarget | null) => void;
   /** TV: take the focus when the bar mounts (Down showed the controls). */
   tvPreferredFocus?: boolean;
+}
+
+/**
+ * The video player's scrubber: reads the position, duration and buffered time
+ * from the player store itself, so a position tick re-renders only the bar,
+ * not the whole player screen.
+ */
+export function PlayerScrubber(props: Omit<Props, 'position' | 'duration' | 'buffered'>) {
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+  const buffered = usePlayerStore((s) => s.buffered);
+  return <Scrubber {...props} position={position} duration={duration} buffered={buffered} />;
 }
 
 function clamp01(v: number) {

@@ -1471,12 +1471,16 @@ class NearbyController {
     const decision = afterHostLoss({
       selfId,
       oldHostId,
-      members: [...f.allMembers.filter((m) => m.id !== selfId), { id: selfId, joinedAt: f.allMembers.find((m) => m.id === selfId)?.joinedAt, canHost: this.canHostNow(), away: false }],
+      members: [
+        ...f.allMembers.filter((m) => m.id !== selfId),
+        // Without a player port this device cannot continue the group, so it must not win.
+        { id: selfId, joinedAt: f.allMembers.find((m) => m.id === selfId)?.joinedAt, canHost: this.canHostNow(), away: false, noMedia: !this.port },
+      ],
       elapsed: Date.now() - r.since,
     });
     this.dispatch({ type: 'WAITING_FOR_HOST', waiting: decision.kind === 'wait-for-host' });
     this.ev('retry', { attempt: r.attempt, decision: decision.kind, members: f.allMembers.length });
-    if (decision.kind === 'become-host') {
+    if (decision.kind === 'become-host' && this.port) {
       void this.promote();
       return;
     }
@@ -1548,6 +1552,8 @@ class NearbyController {
     const media = f.media;
     f.release();
     this.follower = null;
+    // A join to the old host may still be open (a retry): close it, so the old host cannot take this device back as a guest.
+    if (this.hostPeer) this.link?.drop(this.hostPeer);
     this.hostPeer = null;
     this.unwatchGuest?.();
     this.unwatchGuest = null;
