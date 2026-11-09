@@ -62,6 +62,7 @@ import {
   upcomingEntry,
   upcomingIndex,
 } from './queue';
+import { isCatalogSong } from './catalog';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
 import { audioState, initialAudioState, setAudioState } from './store';
 import { formatLine, predictPlayMethod, universalAudioUrl } from './stream-url';
@@ -319,6 +320,15 @@ class AudioSession {
     // A track started (or the player stopped) during the last report: that one owns the engine now.
     if (id !== this.loadId) return;
     if (entry && audioState().longForm) void this.finishedLongItem(entry.item);
+    // A catalog song was not preloaded (nextTrackFor): the queue goes on with it here.
+    // The sleep timer "end of track" stops here as before.
+    const nq = audioState().sleep.kind === 'end' ? null : advance(audioState().queue);
+    const target = nq ? currentEntry(nq) : null;
+    if (nq && target && isCatalogSong(target.item)) {
+      setAudioState({ queue: nq, resumedAt: null });
+      void this.startCurrent({ autoplay: true, startSeconds: 0 });
+      return;
+    }
     this.engine.unload();
     if (audioState().sleep.kind === 'end') this.setSleep(sleepOff);
     setPlayerState({ status: 'ended', playing: false, position: 0 });
@@ -372,6 +382,17 @@ class AudioSession {
     const playMethod = choice.kind === 'local' ? 'DirectPlay' : predictPlayMethod(entry.item, profile, profile.MaxStreamingBitrate ?? this.bitrate);
     this.tracks.set(entry.key, { playSessionId, playMethod, url: choice.uri });
     return { key: entry.key, uri: choice.uri };
+  }
+
+  /**
+   * The track to preload after the current one. A catalog song that would
+   * stream from the server is not preloaded: the preload would make the
+   * server fetch it now (`catalog.ts`). `onQueueEnd` starts it instead.
+   */
+  private nextTrackFor(entry: QueueEntry<AudioItem> | null): EngineTrack | null {
+    const track = this.trackFor(entry);
+    if (track && entry && isCatalogSong(entry.item) && /^https?:/i.test(track.uri)) return null;
+    return track;
   }
 
   private nowPlaying(entry: QueueEntry<AudioItem>, q: QueueState<AudioItem>): NowPlaying {
@@ -446,7 +467,7 @@ class AudioSession {
       return;
     }
     const nextEntry = upcomingEntry(q);
-    const next = nextEntry ? this.trackFor(nextEntry) : null;
+    const next = nextEntry ? this.nextTrackFor(nextEntry) : null;
     this.publish(entry, start, 'loading');
     setAudioState({ resumedAt: resumed ? Date.now() : null });
     // In a session the group rate applies (the session sets it).
@@ -588,7 +609,7 @@ class AudioSession {
     if (next && this.engine.nextKey === next.key && this.tracks.has(next.key)) {
       this.engine.setNext({ key: next.key, uri: this.tracks.get(next.key)?.url ?? '' });
     } else {
-      this.engine.setNext(this.trackFor(next));
+      this.engine.setNext(this.nextTrackFor(next));
     }
     const entry = currentEntry(q);
     if (entry) {
@@ -743,8 +764,8 @@ class AudioSession {
       setAudioState({ queue: how === 'next' ? playNext(q, items) : addToQueue(q, items) });
       this.syncNext();
       this.persistQueue();
-      const what = items.length === 1 ? (items[0]?.Name ?? 'Item') : `${items.length} items`;
-      toast(how === 'next' ? `${what} plays next` : `${what} added to the queue`, { icon: 'checkmark' });
+      const many = items.length > 1 ? `${items.length} items ` : '';
+      toast(how === 'next' ? (many ? `${many}play next` : 'Playing next') : many ? `${many}added to queue` : 'Added to queue', { icon: 'checkmark' });
     } catch (e) {
       toast(describeError(e).title, { icon: 'exclamationmark.triangle' });
     }

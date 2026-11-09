@@ -4,6 +4,7 @@
  * (TV: a Move menu on each entry).
  * Audio and video playlists. Reorder and remove are optimistic (ops.ts).
  */
+import { Stack } from 'expo-router';
 import { type ReactNode, useState } from 'react';
 import { Text, View } from 'react-native';
 
@@ -17,9 +18,11 @@ import { ReorderList } from '@/components/reorder-list';
 import { ErrorState, LoadingState } from '@/components/states';
 import { SwipeRow } from '@/components/swipe-row';
 import { Touchable } from '@/components/touchable';
+import { canQueue, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { openRenamePlaylist } from '@/features/playlists/add-to-playlist';
 import { moveItem, removeItems } from '@/features/playlists/ops';
 import { episodeLabel, formatClock, formatDuration } from '@/lib/format';
+import { rowSwipeScreenOptions } from '@/lib/stack-options';
 import { features, isTV } from '@/platform/tv';
 import { isAudioItem, usePlayer } from '@/player';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, scriptStyle, sizes, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
@@ -63,60 +66,70 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
   };
 
   const remove = (entry: BaseItemDto) => void removeItems(playlistId, [entry]);
+  const queueSwipe = useQueueSwipe();
 
+  // Swipe left removes the entry; a song also gets "Add to queue" on a swipe right.
   const row = (t: BaseItemDto, i: number) => (
-    <SwipeRow key={t.PlaylistItemId ?? `${t.Id}-${i}`} onSwipe={() => remove(t)} label="Remove" enabled={features.touchGestures}>
-      <TrackRow item={t} index={i} showArt last={i === list.length - 1} onPress={() => playFrom(i)} onLongPress={setMenu} />
+    <SwipeRow
+      key={t.PlaylistItemId ?? `${t.Id}-${i}`}
+      onSwipe={() => remove(t)}
+      label="Remove"
+      leading={canQueue(t) ? queueSwipe.addToQueue(t) : undefined}
+      enabled={features.touchGestures}>
+      <TrackRow item={t} index={i} showArt last={i === list.length - 1} onPress={() => playFrom(i)} onLongPress={setMenu} queue="add" />
     </SwipeRow>
   );
 
   return (
-    <DetailScaffold
-      item={item}
-      meta={[
-        audio ? 'Playlist' : 'Video playlist',
-        list.length ? `${list.length} ${list.length === 1 ? 'item' : 'items'}` : null,
-        formatDuration(totalTicks),
-      ]}
-      playable
-      onPlay={() => playFrom(0)}
-      onShuffle={() => playFrom(0, shuffled(list))}
-      extraActions={[
-        { icon: editing ? 'checkmark' : 'line.3.horizontal', label: editing ? 'Done' : 'Reorder', onPress: () => setEditing((e) => !e) },
-        { icon: 'pencil', label: 'Rename', onPress: () => openRenamePlaylist(item) },
-      ]}
-      onRefresh={() => Promise.all([onRefresh(), entries.refetch()])}
-      footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
-      beforeRows={
-        <View style={{ marginTop: spacing.xl }}>
-          {entries.isPending ? <LoadingState rows={6} /> : null}
-          {entries.error && !entries.data ? <ErrorState error={entries.error} onRetry={entries.refetch} compact /> : null}
-          {entries.data && list.length === 0 ? (
-            <Text style={[s.message, { paddingHorizontal: l.gutter }]}>This playlist is empty. Use “Add to playlist” on any song or video.</Text>
-          ) : null}
-          {editing && list.length ? (
-            <>
-              <Text style={[s.hint, { paddingHorizontal: l.gutter }]}>
-                {isTV
-                  ? 'Select the arrows on an entry to move it. Select the bin to remove it.'
-                  : 'Drag the handles to change the order. Tap the bin to remove an entry.'}
-              </Text>
-              <ReorderList
-                rows={list}
-                rowKey={(t, i) => t.PlaylistItemId ?? `${t.Id}-${i}`}
-                rowHeight={EDIT_ROW}
-                label={(t) => t.Name ?? 'item'}
-                onMove={(from, to) => void moveItem(playlistId, from, to)}
-                renderRow={(t, _i, handle) => <EditRow item={t} handle={handle} onRemove={() => remove(t)} />}
-              />
-            </>
-          ) : null}
-        </View>
-      }
-      rows={editing ? [] : list}
-      rowKey={(t, i) => t.PlaylistItemId ?? t.Id ?? String(i)}
-      renderRow={row}
-    />
+    <>
+      <Stack.Screen options={rowSwipeScreenOptions} />
+      <DetailScaffold
+        item={item}
+        meta={[
+          audio ? 'Playlist' : 'Video playlist',
+          list.length ? `${list.length} ${list.length === 1 ? 'item' : 'items'}` : null,
+          formatDuration(totalTicks),
+        ]}
+        playable
+        onPlay={() => playFrom(0)}
+        onShuffle={() => playFrom(0, shuffled(list))}
+        extraActions={[
+          { icon: editing ? 'checkmark' : 'line.3.horizontal', label: editing ? 'Done' : 'Reorder', onPress: () => setEditing((e) => !e) },
+          { icon: 'pencil', label: 'Rename', onPress: () => openRenamePlaylist(item) },
+        ]}
+        onRefresh={() => Promise.all([onRefresh(), entries.refetch()])}
+        footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
+        beforeRows={
+          <View style={{ marginTop: spacing.xl }}>
+            {entries.isPending ? <LoadingState rows={6} /> : null}
+            {entries.error && !entries.data ? <ErrorState error={entries.error} onRetry={entries.refetch} compact /> : null}
+            {entries.data && list.length === 0 ? (
+              <Text style={[s.message, { paddingHorizontal: l.gutter }]}>This playlist is empty. Use “Add to playlist” on any song or video.</Text>
+            ) : null}
+            {editing && list.length ? (
+              <>
+                <Text style={[s.hint, { paddingHorizontal: l.gutter }]}>
+                  {isTV
+                    ? 'Select the arrows on an entry to move it. Select the bin to remove it.'
+                    : 'Drag the handles to change the order. Tap the bin to remove an entry.'}
+                </Text>
+                <ReorderList
+                  rows={list}
+                  rowKey={(t, i) => t.PlaylistItemId ?? `${t.Id}-${i}`}
+                  rowHeight={EDIT_ROW}
+                  label={(t) => t.Name ?? 'item'}
+                  onMove={(from, to) => void moveItem(playlistId, from, to)}
+                  renderRow={(t, _i, handle) => <EditRow item={t} handle={handle} onRemove={() => remove(t)} />}
+                />
+              </>
+            ) : null}
+          </View>
+        }
+        rows={editing ? [] : list}
+        rowKey={(t, i) => t.PlaylistItemId ?? t.Id ?? String(i)}
+        renderRow={row}
+      />
+    </>
   );
 }
 

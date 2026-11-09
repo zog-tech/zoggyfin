@@ -8,7 +8,7 @@
  * other pages in the window off screen, and Down from the tab strip went to
  * them (or past the page). TV shows only the selected page, in a plain view.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import PagerView, { type PagerViewOnPageScrollEventData, type PagerViewProps } from 'react-native-pager-view';
 import Animated, { useEvent, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -16,6 +16,7 @@ import Animated, { useEvent, useSharedValue, withTiming } from 'react-native-rea
 import { isTV } from '@/platform/tv';
 import { motion } from '@/theme';
 
+import { createPagerLock, PagerLockContext } from './pager-lock';
 import { TabStrip } from './tab-strip';
 import type { TabPagerProps } from './tab-pager-types';
 
@@ -55,6 +56,9 @@ function NativeTabPager({ tabs, renderPage, initialIndex = 0, onIndexChange }: T
   const [index, setIndex] = useState(initialIndex);
   const [visited, setVisited] = useState(() => new Set([initialIndex]));
   const position = useSharedValue(initialIndex);
+  // A finger on a swipeable row stops the paging, so the row's swipe never turns the page (pager-lock.ts).
+  const [lock] = useState(createPagerLock);
+  useEffect(() => lock.attach((on) => pagerRef.current?.setScrollEnabled(on)), [lock]);
 
   const onPageScroll = useEvent<PagerViewOnPageScrollEventData>(
     (e) => {
@@ -82,7 +86,7 @@ function NativeTabPager({ tabs, renderPage, initialIndex = 0, onIndexChange }: T
         onPageSelected={(e: { nativeEvent: { position: number } }) => select(e.nativeEvent.position)}>
         {tabs.map((t, i) => (
           <View key={t.key} style={styles.flex} collapsable={false}>
-            {visited.has(i) ? renderPage(t, i) : null}
+            {visited.has(i) ? <PagerLockContext.Provider value={lock}>{renderPage(t, i)}</PagerLockContext.Provider> : null}
           </View>
         ))}
       </AnimatedPagerView>

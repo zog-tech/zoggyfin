@@ -5,6 +5,7 @@ import type { SearchBarCommands } from 'react-native-screens';
 
 import { useSearch, useVideoGenres } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
+import { ItemActionSheet } from '@/components/action-sheet';
 import { Button } from '@/components/button';
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon } from '@/components/icon';
@@ -97,6 +98,7 @@ export default function SearchScreen() {
   const searchRef = useRef<SearchBarCommands>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const player = usePlayer();
+  const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
 
   // Remember a search only when it was used: the Search key, a played result, or an opened
   // result (the screen loses focus). Results alone do not count: with catalog sources, almost
@@ -319,6 +321,8 @@ export default function SearchScreen() {
                       note={localOnly ? serverOf?.(song) : undefined}
                       last={i === list.length - 1}
                       onPress={(it) => { remember(); player.play({ item: it }); }}
+                      onLongPress={(it) => { remember(); setMenu(it); }}
+                      queue="both"
                     />
                   ))}
                 </View>
@@ -336,6 +340,7 @@ export default function SearchScreen() {
           </View>
         )}
       </TvScrollView>
+      <ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />
     </>
   );
 }

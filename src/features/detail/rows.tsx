@@ -4,8 +4,10 @@ import { Text, View } from 'react-native';
 import type { BaseItemDto, BaseItemPerson } from '@/api/types';
 import { DownloadGlyph } from '@/components/download-indicator';
 import { Icon } from '@/components/icon';
+import { SwipeRow } from '@/components/swipe-row';
 import { ItemImage } from '@/components/item-image';
 import { Touchable } from '@/components/touchable';
+import { canQueue, queueAccessibilityActions, type QueueSwipe, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { episodeLabel, formatClock, formatDuration, playedFraction } from '@/lib/format';
 import { isTV } from '@/platform/tv';
 import { usePlayerStore } from '@/player/store';
@@ -31,6 +33,10 @@ import { createStyles,
  * length. The playing song is in `accent` with a glyph. Select plays; the
  * action sheet opens with a long press. TV has no long press: a More button
  * sits at the end of the row (Right from the row).
+ *
+ * `queue`: "both" gives the row its own swipe (right: Play next, left: Add to
+ * queue); "add" is for a row whose parent swipe deletes on the left and
+ * queues on the right. Either way the actions are accessibility actions too.
  */
 export const TrackRow = memo(function TrackRow({
   item,
@@ -41,6 +47,7 @@ export const TrackRow = memo(function TrackRow({
   last,
   trailing,
   note,
+  queue,
 }: {
   item: BaseItemDto;
   index: number;
@@ -53,6 +60,8 @@ export const TrackRow = memo(function TrackRow({
   last?: boolean;
   /** A trailing control (a drag handle in an editable playlist). */
   trailing?: ReactNode;
+  /** Queue actions of the row (see above). Off on TV. */
+  queue?: QueueSwipe;
 }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
@@ -63,6 +72,9 @@ export const TrackRow = memo(function TrackRow({
   // TV: the More button is a sibling of the row, so the focus can move to it.
   const tvMore = isTV && !!onLongPress;
   const inset = isTV ? tvRowInset(l.gutter) : null;
+  const queueSwipe = useQueueSwipe();
+  const queueMode = queue && !isTV && canQueue(item) ? queue : null;
+  const a11yActions = [...(onLongPress ? [{ name: 'longpress', label: 'More actions' }] : []), ...(queueMode ? queueAccessibilityActions(queueMode) : [])];
   const row = (
     <Touchable
       kind="row"
@@ -72,8 +84,11 @@ export const TrackRow = memo(function TrackRow({
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
       accessibilityLabel={[item.Name, artist, time, playing ? 'playing' : null].filter(Boolean).join(', ')}
-      accessibilityActions={onLongPress ? [{ name: 'longpress', label: 'More actions' }] : undefined}
-      onAccessibilityAction={onLongPress ? () => onLongPress(item) : undefined}
+      accessibilityActions={a11yActions.length ? a11yActions : undefined}
+      onAccessibilityAction={(e) => {
+        if (queueSwipe.runAccessibility(e.nativeEvent.actionName, item)) return;
+        if (e.nativeEvent.actionName === 'longpress') onLongPress?.(item);
+      }}
       style={({ pressed, hovered, focused }) => [s.track, { paddingLeft: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
       {showArt ? (
         <ItemImage item={item} variant="square" width={scaled(sizes.trackArt)} aspectRatio={1} rounded={6} hideArtTitle />
@@ -101,6 +116,13 @@ export const TrackRow = memo(function TrackRow({
       </View>
     </Touchable>
   );
+  if (queueMode === 'both') {
+    return (
+      <SwipeRow leading={queueSwipe.playNext(item)} trailing={queueSwipe.addToQueue(item)}>
+        {row}
+      </SwipeRow>
+    );
+  }
   if (!tvMore) return row;
   return (
     <View style={[s.tvTrack, { paddingRight: l.gutter }]}>

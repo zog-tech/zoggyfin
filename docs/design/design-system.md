@@ -438,6 +438,7 @@ The generated tile is a real tile (same press, hover and badge rules). It is not
   - This runs on the UI thread with no React render. On release, the pager settles; the indicator follows the same value, so it settles with it (no separate spring).
 - Tap a label: animate the pager to that page (the indicator follows). `selection` haptic when the page index changes.
 - The pager must not take vertical scroll, and the leftmost page lets the iOS back-swipe edge gesture win (`failOffsetX` on the first page at the screen edge).
+- A row with swipe actions inside the pager (a song row) stops the paging while a finger is on it (`components/pager-lock.ts`), so a horizontal swipe on the row runs the row's action and never turns the page. Swipe on the strip or between rows to change the page.
 - Accessibility: the strip is a `tablist`; each label is a `tab` with selected state. VoiceOver users change pages by the labels, not by swipe.
 - Keyboard (iPad/Mac/web): ⌘[ / ⌘] or ←/→ when the strip has focus.
 
@@ -473,6 +474,15 @@ The generated tile is a real tile (same press, hover and badge rules). It is not
 - Rows: 44-pt art, title, artist, a drag handle (`line.3.horizontal`) at the trailing end. Long press or handle drag to reorder (`medium` haptic on pick-up, rows move with `smooth` spring). Swipe left to remove.
 - Header controls: Shuffle and Repeat toggles (selected = `accent` fill with `onAccent` glyph, not only a colour change) and Clear.
 - Keyboard: select a row with ↑/↓, ⌥↑/⌥↓ to move, ⌫ to remove.
+
+### 7.10a Song row swipe
+
+- Swipe a song row right: "Play next" (`accent` fill, `onAccent` label). Swipe left: "Add to queue" (`surface3` fill, `text` label). The action label sits at the edge the row leaves.
+- A partial swipe shows the action and springs back (`snappy` spring). A release past 110 pt, or a fast fling in the direction of travel, runs the action with a `light` haptic and the toast "Playing next" / "Added to queue"; the row springs back. Past 110 pt the row resists and the label grows a little, so the release point is easy to feel.
+- The pan starts only on a mostly horizontal move (12 pt across before 10 pt down), so the list scrolls first. Touches in the first 24 pt from the left edge go to the back swipe. On iOS 26 the album, artist, playlist and music library pages keep only the edge back swipe (no swipe back from the content), so a swipe right on a row is never a back swipe.
+- Rows that delete on a swipe left (playlist entries, Downloads) keep it, and give "Add to queue" on the swipe right only.
+- The queue panel has no queue swipe (it has its own reorder and remove). TV has no swipe: the long press and the More button stay.
+- Screen readers: the row has "Play next" and "Add to queue" as accessibility actions, next to "More actions".
 
 ### 7.11 Download row with progress
 

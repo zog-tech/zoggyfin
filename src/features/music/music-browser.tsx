@@ -237,6 +237,7 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
                 last={index === items.length - 1}
                 onPress={() => player.play({ item, list: items, index })}
                 onLongPress={setMenu}
+                queue="both"
               />
             ) : (
               <ArtistRow item={item} last={index === items.length - 1} onPress={open} />
