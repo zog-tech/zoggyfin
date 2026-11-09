@@ -37,6 +37,16 @@ import { ZAP_IDLE, zapDeadline, type ZapEvent, zapReducer, type ZapState, zapTak
 import { channelSearchPending, requestChannelSearch } from '@/features/iptv/search-request';
 import { liveTvHref, liveTvTab } from '@/features/iptv/nav';
 import { chapterAt, formatTime } from '@/player/timeline';
+import {
+  REMOTE_TIMING,
+  TAP_IDLE,
+  TOUCH_TIMING,
+  tapSeekDeadline,
+  type TapSeekEvent,
+  type TapSeekState,
+  tapSeekTransition,
+  tapZone,
+} from '@/player/tap-seek';
 import { MAX_BITRATE, QUALITY_OPTIONS, qualityLabel, usePlaybackSettings } from '@/settings/playback';
 import { breakpointFor, layout } from '@/theme/theme';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
@@ -47,8 +57,7 @@ import { useTvBack } from '@/features/tv/use-tv-back';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
 import { features, isNativeTV, isTV } from '@/platform/tv';
 import {
-  createTapGate,
-  DOUBLE_PRESS_MS,
+  createDoublePress,
   DOUBLE_PRESS_SEEK,
   NO_RUN,
   nextRun,
@@ -162,15 +171,6 @@ export function PlayerScreen() {
   const [poke, setPoke] = useState(0);
   const [dismissal, setDismissal] = useState<{ itemId: string; at: number } | null>(null);
   const [ripple, setRipple] = useState<SeekFeedback | null>(null);
-  // TV: a double press with the controls hidden shows only the bubble and a thin progress line.
-  const [peek, setPeek] = useState(false);
-  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (peekTimer.current) clearTimeout(peekTimer.current);
-    },
-    [],
-  );
 
   // With no account, a player with nothing to play (a link, a fallback route) goes to the sign-in screen.
   // A short wait: a play request sets the item just after the route opens.
@@ -193,13 +193,14 @@ export function PlayerScreen() {
 
   const wake = useCallback(() => {
     setVisible(true);
-    setPeek(false);
     setPoke((p) => p + 1);
   }, []);
 
   // Pointer movement (web, iPad trackpad) shows the controls, at most a few times a second.
   const lastMove = useRef(0);
-  const onPointerMove = useCallback(() => {
+  const onPointerMove = useCallback((e: { nativeEvent: { pointerType?: string } }) => {
+    // Touch on the web: a tap can send a move too. Taps go through the tap gesture (tap seek).
+    if (e.nativeEvent.pointerType === 'touch') return;
     const now = Date.now();
     if (now - lastMove.current < 400) return;
     lastMove.current = now;
@@ -242,32 +243,59 @@ export function PlayerScreen() {
     else wake();
   }, [visible, wake]);
 
-  const onDoubleTap = useCallback(
-    (x: number) => {
-      const third = width / 3;
-      if (playerState().now?.live || (x > third && x < third * 2)) {
-        toggleControls();
+  // Tap seek (player/tap-seek.ts), for touch and for Left and Right on the TV remote with the
+  // controls hidden. A double tap on a side seeks and starts seek mode, where each further tap
+  // seeks at once. A seek hides the controls and shows only the bubble and the thin progress
+  // line, so a run of taps never brings up the full controls.
+  const [tapSeek, setTapSeek] = useState<TapSeekState>(TAP_IDLE);
+  const tapRef = useRef<TapSeekState>(TAP_IDLE);
+  const dispatchTap = useCallback(
+    (e: TapSeekEvent) => {
+      const r = tapSeekTransition(tapRef.current, e);
+      if (r.state !== tapRef.current) {
+        tapRef.current = r.state;
+        setTapSeek(r.state);
+      }
+      if (!r.effect) return;
+      if (r.effect.type === 'toggle') {
+        // TV: a single Left or Right only shows the controls (the focus then moves as usual).
+        if (isTV) wake();
+        else toggleControls();
         return;
       }
-      const side: 'left' | 'right' = x <= third ? 'left' : 'right';
-      const step = side === 'left' ? -settings.skipBackSeconds : settings.skipForwardSeconds;
-      videoSession().skip(step);
-      setRipple((r) => stackFeedback(r, side, step));
+      // Through the session, so a together session gets the seek (control gate).
+      videoSession().skip(r.effect.seconds);
+      setVisible(false);
     },
-    [width, settings.skipBackSeconds, settings.skipForwardSeconds, toggleControls],
+    [toggleControls, wake],
   );
+  useEffect(() => {
+    const due = tapSeekDeadline(tapSeek);
+    if (due === null) return;
+    const t = setTimeout(() => dispatchTap({ type: 'tick', now: Date.now() }), Math.max(0, due - Date.now()));
+    return () => clearTimeout(t);
+  }, [tapSeek, dispatchTap]);
+  const tapSteps = useMemo(
+    () => ({ left: settings.skipBackSeconds, right: settings.skipForwardSeconds }),
+    [settings.skipBackSeconds, settings.skipForwardSeconds],
+  );
+  const onTap = useCallback(
+    (x: number) =>
+      dispatchTap({ type: 'tap', zone: tapZone(x, width), live: !!playerState().now?.live, now: Date.now(), step: tapSteps, timing: TOUCH_TIMING }),
+    [dispatchTap, width, tapSteps],
+  );
+  // The bubble shows the seconds of the whole run on one side.
+  const tapBubble = tapSeek.phase === 'seeking' ? { side: tapSeek.side, seconds: tapSeek.seconds } : null;
 
   const gestures = useMemo(() => {
-    const single = Gesture.Tap()
+    // One tap gesture: tap-seek.ts tells a single tap from a double tap and a seek run.
+    const tap = Gesture.Tap()
       .maxDuration(300)
-      .onEnd((_e, ok) => {
-        if (ok) scheduleOnRN(toggleControls);
-      });
-    const double = Gesture.Tap()
-      .numberOfTaps(2)
-      .maxDelay(260)
+      // onTap reads the machine's ref only when a tap ends, never during render. The ref
+      // (not state) keeps two quick taps from both seeing the old phase.
+      // eslint-disable-next-line react-hooks/refs
       .onEnd((e, ok) => {
-        if (ok) scheduleOnRN(onDoubleTap, e.x);
+        if (ok) scheduleOnRN(onTap, e.x);
       });
     const pan = Gesture.Pan()
       .activeOffsetY(24)
@@ -288,8 +316,8 @@ export function PlayerScreen() {
       if (e.scale > 1.08) scheduleOnRN(setFit, 'cover');
       else if (e.scale < 0.92) scheduleOnRN(setFit, 'contain');
     });
-    return Gesture.Simultaneous(pinch, Gesture.Race(pan, Gesture.Exclusive(double, single)));
-  }, [toggleControls, onDoubleTap, dragY, height, signedIn]);
+    return Gesture.Simultaneous(pinch, Gesture.Race(pan, tap));
+  }, [onTap, dragY, height, signedIn]);
 
   const s = videoSession();
   // Live TV (IPTV): no seeking, channel up and down, and a channel list.
@@ -392,17 +420,9 @@ export function PlayerScreen() {
   const playNext = useCallback(() => void videoSession().playNext(), []);
   const cancelNext = useCallback(() => setDismissal({ itemId, at: playerState().position }), [itemId]);
 
-  // TV remote: a single Left or Right shows the controls (and the focus
-  // moves as usual); a double press also seeks 10 s (player/tv-keys.ts).
-  const tapGate = useRef(createTapGate()).current;
-  // Controls hidden: a single Left or Right shows them only after the double-press window.
-  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (revealTimer.current) clearTimeout(revealTimer.current);
-    },
-    [],
-  );
+  // TV remote with the controls shown: a double Left or Right seeks 10 s (player/tv-keys.ts).
+  // With them hidden, Left and Right go through tap seek (dispatchTap) instead.
+  const pairs = useRef(createDoublePress()).current;
 
   // TV scrubbing on the focused seek bar: Left and Right move a target
   // (a tap 10 s, a hold faster) with the time and a thumbnail; it seeks
@@ -550,61 +570,52 @@ export function PlayerScreen() {
       const focus: LiveFocus = !visible ? 'hidden' : card ? 'card' : cardFocus.current.on || controlFocus.current > 0 ? 'buttons' : 'video';
       // Down from the centre row goes to the card (the native next-focus does not reach into its guide).
       if (key === 'down' && focus === 'buttons' && !cardFocus.current.on && focusRow.current.now === 'center') {
-        tapGate.cancel();
+        pairs.reset();
         focusView(cardView);
         wake();
         return;
       }
       const a = liveKeyAction(key, focus);
       if (a?.type === 'zap') {
-        tapGate.cancel();
+        pairs.reset();
         zapKey(a.delta);
         return;
       }
       if (a?.type === 'toButtons') {
-        tapGate.cancel();
+        pairs.reset();
         setLeftCard(true);
         focusView(playView);
         wake();
         return;
       }
       if (a?.type === 'wake') {
-        tapGate.cancel();
+        pairs.reset();
         wake();
         return;
       }
     }
     const side = key === 'left' || key === 'right';
-    // Every Left and Right counts toward a double press. With the controls hidden,
-    // a single press waits out the window before it shows them, so a double press
-    // seeks with the controls still hidden.
     const hidden = isTV && !visible;
-    const gate = side ? tapGate.press(key, Date.now(), hidden) : { double: false, wait: false };
-    if (!side) tapGate.cancel();
-    const double = gate.double;
-    if (gate.wait) {
-      console.log(`[tvkeys] key=${key} wait (controls hidden)`);
-      if (revealTimer.current) clearTimeout(revealTimer.current);
-      revealTimer.current = setTimeout(() => {
-        revealTimer.current = null;
-        if (tapGate.due(Date.now())) {
-          console.log('[tvkeys] single press: show controls');
-          wake();
-        }
-      }, DOUBLE_PRESS_MS);
+    // Controls hidden: Left and Right are the two sides of tap seek. A single press shows the
+    // controls after the double-press window; a double press seeks and starts seek mode, where
+    // each further press seeks at once with only the bubble and the thin line.
+    if (hidden && side) {
+      pairs.reset();
+      console.log(`[tvkeys] key=${key} tap seek (controls hidden)`);
+      dispatchTap({ type: 'tap', zone: key, live: !!live, now: Date.now(), step: DPAD_STEPS, timing: REMOTE_TIMING });
       return;
     }
-    if (double && hidden) {
-      // Seek with only the feedback bubble; the controls stay hidden.
-      const seconds = key === 'left' ? -DOUBLE_PRESS_SEEK : DOUBLE_PRESS_SEEK;
-      console.log(`[tvkeys] key=${key} double seek=${seconds} (controls hidden)`);
-      s.skip(seconds);
-      setRipple((r) => stackFeedback(r, seconds < 0 ? 'left' : 'right', seconds));
-      setPeek(true);
-      if (peekTimer.current) clearTimeout(peekTimer.current);
-      peekTimer.current = setTimeout(() => setPeek(false), PEEK_MS);
+    // Controls hidden: rewind and fast forward seek at once, also as part of seek mode.
+    if (hidden && !live && (key === 'rewind' || key === 'fastForward')) {
+      pairs.reset();
+      console.log(`[tvkeys] key=${key} media seek (controls hidden)`);
+      dispatchTap({ type: 'seek', side: key === 'rewind' ? 'left' : 'right', now: Date.now(), step: tapSteps, timing: REMOTE_TIMING });
       return;
     }
+    // Any other key ends seek mode, then does what it always does.
+    dispatchTap({ type: 'end' });
+    const double = side ? pairs.press(key, Date.now()) : false;
+    if (!side) pairs.reset();
     console.log(
       `[tvkeys] key=${key} double=${double} visible=${visible} bar=${barFocused} controls=${controlFocus.current} row=${focusRow.current.now} target=${scrubToRef.current}`,
     );
@@ -901,8 +912,22 @@ export function PlayerScreen() {
             </Glass>
           </Animated.View>
         ) : null}
+        {/* Seek mode (touch and TV): one bubble per side for the whole run, so it does not flicker as the seconds add up. */}
+        {tapBubble ? (
+          <Animated.View
+            key={`tap-${tapBubble.side}`}
+            entering={reduced ? undefined : FadeIn.duration(motion.duration.press)}
+            exiting={reduced ? undefined : FadeOut.duration(motion.duration.fast)}
+            pointerEvents="none"
+            style={[styles.ripple, tapBubble.side === 'left' ? { left: sideInset + spacing.xl } : { right: sideInset + spacing.xl }]}>
+            <Glass style={[styles.rippleInner, styles.rippleRow]}>
+              {tapBubble.side === 'left' ? <Icon name="backward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+              <Text style={styles.rippleText}>{`${tapBubble.side === 'left' ? '−' : '+'}${tapBubble.seconds} s`}</Text>
+              {tapBubble.side === 'right' ? <Icon name="forward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+            </Glass>
+          </Animated.View>
+        ) : null}
 
-        {/* TV, controls hidden: after a double press, a thin progress line with the times only. */}
         {/* TV, controls hidden: the zap banner. It shows the guide only and never opens a second stream. */}
         {isTV && !visible && live && zapChannel && zapState.phase !== 'idle' ? (
           <Animated.View
@@ -913,10 +938,11 @@ export function PlayerScreen() {
             <LiveChannelCard channel={zapChannel} source={live.source} live={zapChannel.id === liveChannel?.id} tag={zapTag} />
           </Animated.View>
         ) : null}
-        {isTV && !visible && peek && !live ? (
+        {/* Seek mode: only a thin progress line with the times; it fades out slowly after the run, a short tail. */}
+        {!visible && tapSeek.phase === 'seeking' && !live ? (
           <Animated.View
-            entering={FadeIn.duration(motion.duration.fast)}
-            exiting={FadeOut.duration(motion.duration.slow)}
+            entering={reduced ? undefined : FadeIn.duration(motion.duration.fast)}
+            exiting={reduced ? undefined : FadeOut.duration(motion.duration.slow)}
             pointerEvents="none"
             style={[styles.bottom, { paddingBottom: bottomPad, paddingLeft: sideInset, paddingRight: sideInset }]}>
             <PeekLine />
@@ -1186,7 +1212,7 @@ function TimeLabels() {
   );
 }
 
-/** TV, controls hidden: the thin progress line with the times after a double press. */
+/** Controls hidden, seek mode: the thin progress line with the times. */
 function PeekLine() {
   const position = usePlayerStore((s) => s.position);
   const duration = usePlayerStore((s) => s.duration);
@@ -1241,8 +1267,11 @@ function PillButton({
   );
 }
 
-/** TV: how long the progress line stays after the last double press (ms). */
+/** TV: how long the bubble of a seek with the controls shown stays (ms). */
 const PEEK_MS = 1500;
+
+/** TV: a double Left or Right seeks this far each way (seconds). */
+const DPAD_STEPS = { left: DOUBLE_PRESS_SEEK, right: DOUBLE_PRESS_SEEK };
 
 /** The channel list in the player: Search, then the channels around the one that plays, in the list it was played from. */
 function channelSections(live: LiveNow, play: (index: number) => void, search: () => void): SheetSection[] {
@@ -1300,6 +1329,7 @@ const styles = StyleSheet.create({
   prompts: { position: 'absolute', alignItems: 'flex-end', left: spacing.lg },
   ripple: { position: 'absolute', top: '45%' },
   rippleInner: { borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, overflow: 'hidden' },
+  rippleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   rippleText: { ...textStyle(type.headline), color: c.textOnMedia, fontVariant: ['tabular-nums'] },
   errorWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
   errorCard: { backgroundColor: c.surface2, borderRadius: radius.lg, padding: spacing.xl, maxWidth: 360, gap: spacing.sm },
