@@ -8,6 +8,10 @@
  * The open panel slides and fades in over the content (transform and opacity on
  * the UI thread). Nothing animates a size, so the content never lays out again
  * while the menu moves, and the content is not dimmed (like the streaming apps).
+ * The items are clipped at the panel's moving edge (a clip that slides with the
+ * panel, and the items slid back the same distance), so the focus fill and the
+ * labels never show outside the panel. On close they keep the open layout
+ * until the panel is gone.
  */
 import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, TabSlot, TabTrigger, useTabTrigger } from 'expo-router/ui';
@@ -15,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { type ComponentRef, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon, type IconName } from '@/components/icon';
 import { tvKeyFromEvent } from '@/player/tv-keys';
@@ -171,15 +176,27 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
     };
   }, [close]);
 
-  // 0 closed, 1 open. The panel and the labels follow it on the UI thread.
+  // The items keep the open layout (labels, full width) from the open until the close animation ends.
+  const [wide, setWide] = useState(false);
+  if (open && !wide) setWide(true);
+  // 0 closed, 1 open. The panel, the items' clip and the labels follow it on the UI thread.
   const progress = useSharedValue(0);
   useEffect(() => {
-    progress.set(withTiming(open ? 1 : 0, { duration: reduced ? 0 : motion.duration.fast, easing: STANDARD }));
+    progress.set(
+      withTiming(open ? 1 : 0, { duration: reduced ? 0 : motion.duration.fast, easing: STANDARD }, (done) => {
+        // A close that ran to its end (an open in the middle cancels it).
+        if (done && !open) scheduleOnRN(setWide, false);
+      }),
+    );
   }, [open, reduced, progress]);
+  const slide = menuW - railW;
   const panel = useAnimatedStyle(() => ({
     opacity: progress.get(),
-    transform: [{ translateX: (progress.get() - 1) * (menuW - railW) }],
+    transform: [{ translateX: (progress.get() - 1) * slide }],
   }));
+  // The clip's trailing edge is the panel's; the items inside stay still.
+  const clip = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.get() - 1) * slide }] }));
+  const unclip = useAnimatedStyle(() => ({ transform: [{ translateX: (1 - progress.get()) * slide }] }));
 
   return (
     <TvFocusGuide
@@ -198,28 +215,33 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
       />
       {/* Open, the panel is solid: the labels never sit on the content's text. It slides in from under the rail. */}
       <Animated.View pointerEvents="none" style={[s.panel, s.panelBg, { width: menuW }, panel]} />
-      {/* The items change width once when the menu opens or closes; the panel above does the motion. */}
-      <View style={[s.panel, { width: open ? menuW : railW }]}>
-        <View style={[s.menuGlyph, { paddingLeft: SAFE.x + iconInset(railW) }]} accessible={false}>
-          <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
-        </View>
-        <View style={s.items}>
-          {DESTINATIONS.map((d) => (
-            <MenuItem
-              key={d.label}
-              destination={d}
-              open={open}
-              settings={settings}
-              railWidth={railW}
-              progress={progress}
-              onSelected={setActive}
-              onFocus={onItemFocus}
-              onBlur={onItemBlur}
-              onDone={close}
-            />
-          ))}
-        </View>
-      </View>
+      {/*
+        The items change width once when the menu opens (and once the close ends); the clip around
+        them slides with the panel, so they show only where the panel is.
+      */}
+      <Animated.View style={[s.panel, { width: menuW }, clip]}>
+        <Animated.View style={[s.panel, { width: wide ? menuW : railW }, unclip]}>
+          <View style={[s.menuGlyph, { paddingLeft: SAFE.x + iconInset(railW) }]} accessible={false}>
+            <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
+          </View>
+          <View style={s.items}>
+            {DESTINATIONS.map((d) => (
+              <MenuItem
+                key={d.label}
+                destination={d}
+                open={wide}
+                settings={settings}
+                railWidth={railW}
+                progress={progress}
+                onSelected={setActive}
+                onFocus={onItemFocus}
+                onBlur={onItemBlur}
+                onDone={close}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      </Animated.View>
     </TvFocusGuide>
   );
 }
