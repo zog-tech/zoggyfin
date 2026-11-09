@@ -31,6 +31,7 @@ export const VodTile = memo(function VodTile({
   onLongPress,
   firstFocus,
   onFocus,
+  index = 0,
 }: {
   data: VodTileData;
   width: number;
@@ -40,7 +41,10 @@ export const VodTile = memo(function VodTile({
   onLongPress?: (data: VodTileData) => void;
   /** TV: take the first focus of the page. */
   firstFocus?: boolean;
-  onFocus?: () => void;
+  /** The tile took the focus (TV). Pass a stable function: the tile is a memo. */
+  onFocus?: (data: VodTileData, index: number) => void;
+  /** The tile's place in its row, passed back to `onFocus`. */
+  index?: number;
 }) {
   const s = useStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
@@ -53,7 +57,7 @@ export const VodTile = memo(function VodTile({
       onPress={() => onPress(data)}
       onLongPress={onLongPress ? () => onLongPress(data) : undefined}
       firstFocus={firstFocus}
-      onFocus={onFocus}
+      onFocus={onFocus ? () => onFocus(data, index) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ width }}>

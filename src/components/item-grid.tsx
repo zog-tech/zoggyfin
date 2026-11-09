@@ -2,8 +2,9 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { type ReactElement, useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, type LayoutChangeEvent, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { usePrefetchItemOnFocus } from '@/api/queries';
+import { usePrefetchItem } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
+import { tvFocusRest } from '@/features/tv/focus-settle';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { useOpenItem } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
@@ -69,7 +70,7 @@ export function ItemGrid({
   const pull = usePullRefresh(onRefresh);
   useRefreshSpinner(pull.refreshing, headerless);
   const open = onPress ?? openItem;
-  const prefetch = usePrefetchItemOnFocus();
+  const prefetch = usePrefetchItem();
   const [measured, setMeasured] = useState(0);
   const width = measured || l.contentWidth;
   const g = gridLayout(shape, width, l.tv, l.width);
@@ -96,6 +97,16 @@ export function ItemGrid({
       grid.scrollToOffset({ offset, animated: true });
     },
     [columns],
+  );
+
+  // TV: one stable function for every tile (the tile is a memo). The row centres at once;
+  // the prefetch waits until the focus rests (features/tv/focus-settle).
+  const onTileFocus = useCallback(
+    (it: BaseItemDto, index: number) => {
+      centerRow(index);
+      tvFocusRest.push(() => prefetch(it));
+    },
+    [centerRow, prefetch],
   );
 
   // TV: the focus can reach the header (the filter chips) past rows not drawn yet; the grid then scrolls to the top.
@@ -126,19 +137,13 @@ export function ItemGrid({
             shape={shape}
             onPress={open}
             preferredFocus={l.tv && focusFirstTile && index === 0}
-            onFocusItem={
-              l.tv
-                ? (it) => {
-                    prefetch(it);
-                    centerRow(index);
-                  }
-                : undefined
-            }
+            index={index}
+            onFocusItem={l.tv ? onTileFocus : undefined}
           />
         )}
       </View>
     ),
-    [columns, gap, tileWidth, shape, open, l.tv, prefetch, centerRow, focusFirstTile, renderTile],
+    [columns, gap, tileWidth, shape, open, l.tv, onTileFocus, focusFirstTile, renderTile],
   );
 
   return (

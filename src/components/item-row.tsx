@@ -2,10 +2,11 @@ import { FlashList } from '@shopify/flash-list';
 import { type ComponentRef, useCallback, useContext, useRef } from 'react';
 import { Text, View } from 'react-native';
 
-import { usePrefetchItemOnFocus } from '@/api/queries';
+import { usePrefetchItem } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
 import { BillboardRows, showOnBillboard } from '@/features/tv/billboard';
+import { tvFocusRest } from '@/features/tv/focus-settle';
 import { TvShelf } from '@/features/tv/shelf';
 import { useOpenItem } from '@/lib/navigation';
 import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
@@ -66,7 +67,18 @@ export function ItemRow({
   const artOnly = billboard && !titleOnArt;
   const section = useRef<ComponentRef<typeof View> | null>(null);
   // TV: Select on a tile that kept the focus a moment opens a page whose data is loaded.
-  const prefetch = usePrefetchItemOnFocus();
+  const prefetch = usePrefetchItem();
+  // TV: one stable function for every tile (the tile is a memo). The billboard and the
+  // prefetch wait until the focus rests; a tile that the focus only passes does nothing.
+  const onTileFocus = useCallback(
+    (it: BaseItemDto) => {
+      tvFocusRest.push(() => {
+        if (billboard) showOnBillboard(it);
+        prefetch(it);
+      });
+    },
+    [billboard, prefetch],
+  );
 
   const renderItem = useCallback(
     ({ item, index }: { item: BaseItemDto; index: number }) => (
@@ -124,6 +136,7 @@ export function ItemRow({
           bleed={tvFocusBleed(width)}
           padV={padV}
           anchor={section}
+          onFocusItem={onTileFocus}
           renderTile={(item, index, onFocus) => (
             <Tile
               item={item}
@@ -135,11 +148,8 @@ export function ItemRow({
               titleOnArt={titleOnArt}
               preferredFocus={preferredFocus && index === 0}
               artOnly={artOnly}
-              onFocusItem={(it) => {
-                if (billboard) showOnBillboard(it);
-                prefetch(it);
-                onFocus(index);
-              }}
+              index={index}
+              onFocusItem={onFocus}
             />
           )}
         />

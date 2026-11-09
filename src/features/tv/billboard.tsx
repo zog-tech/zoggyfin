@@ -1,8 +1,9 @@
 /**
  * TV Home billboard: the focused item, large, at the top of the screen (like
- * the streaming apps on TV). Tiles in the Home rows report their focus here;
- * the billboard follows after a short pause, so a fast move along a row does
- * not load every backdrop. The art keeps its 16:9 shape from the top: its
+ * the streaming apps on TV). Tiles in the Home rows report their focus here
+ * only once the focus has rested on them (`FOCUS_REST_MS`, focus-settle), so
+ * a fast move along a row writes nothing, re-renders nothing and loads no
+ * item or backdrop. The art keeps its 16:9 shape from the top: its
  * lower part runs on under the first row and fades into the page, so the
  * billboard's short box never crops the top of a backdrop.
  */
@@ -20,7 +21,6 @@ import { ItemImage } from '@/components/item-image';
 import { buildImageUrl, imageSource } from '@/images/image-url';
 import { resolveImage } from '@/images/resolve-image';
 import { episodeLabel, formatDuration } from '@/lib/format';
-import { useDebounced } from '@/lib/use-debounced';
 import {
   type AppTheme,
   createStyles,
@@ -44,13 +44,13 @@ interface BillboardState {
 
 const useBillboardStore = create<BillboardState>(() => ({ item: null }));
 
-/** A Home tile took the focus: show its item on the billboard. */
+/**
+ * The focus rests on a Home tile: show its item on the billboard. Call it
+ * from the focus settle (features/tv/focus-settle), never on each focus.
+ */
 export function showOnBillboard(item: BaseItemDto): void {
   if (useBillboardStore.getState().item?.Id !== item.Id) useBillboardStore.setState({ item });
 }
-
-/** The pause before the billboard follows the focus (ms). */
-const FOLLOW_MS = 350;
 
 /** The billboard height for a window height. */
 export function billboardHeight(windowHeight: number): number {
@@ -77,7 +77,8 @@ export function Billboard() {
   const focused = useBillboardStore((st) => st.item);
   // Before any tile has the focus: the first item to continue.
   const first = useResume('Video').data?.[0] ?? null;
-  const shown = useDebounced(focused ?? first, FOLLOW_MS);
+  // The store changes only after the focus rests (the tiles settle), so no pause here.
+  const shown = focused ?? first;
   // The tiles carry no overview: the full item fills it in.
   const full = useItem(shown?.Id ?? undefined);
   const item = full.data?.Id === shown?.Id ? (full.data ?? shown) : shown;

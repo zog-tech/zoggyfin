@@ -27,7 +27,7 @@ import { createStyles,
 
 import { ItemImage } from './item-image';
 import { SHAPES, shapeFor, type TileShape } from './tile-shape';
-import { Touchable } from './touchable';
+import { Touchable, type TouchState } from './touchable';
 
 export { shapeFor, shapeForList, type TileShape } from './tile-shape';
 
@@ -47,8 +47,10 @@ export interface TileProps {
   preferredFocus?: boolean;
   /** Only the artwork, no title under it (TV Home: the billboard shows the focused title). */
   artOnly?: boolean;
-  /** The tile took the focus (TV). */
-  onFocusItem?: (item: BaseItemDto) => void;
+  /** The tile took the focus (TV). Pass a stable function: the tile is a memo. */
+  onFocusItem?: (item: BaseItemDto, index: number) => void;
+  /** The tile's place in its row or grid, passed back to `onFocusItem`. */
+  index?: number;
 }
 
 function radiusFor(shape: TileShape): number {
@@ -73,6 +75,7 @@ export const Tile = memo(function Tile({
   preferredFocus,
   artOnly = false,
   onFocusItem,
+  index = 0,
 }: TileProps) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
@@ -102,76 +105,88 @@ export const Tile = memo(function Tile({
       onPress={() => onPress(item)}
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       firstFocus={preferredFocus}
-      onFocus={onFocusItem ? () => onFocusItem(item) : undefined}
+      onFocus={onFocusItem ? () => onFocusItem(item, index) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ width }}>
-      {({ pressed, hovered, focused }) => (
-        <>
-          <View style={circle ? circleArt(focused, hovered) : undefined}>
-            <ItemImage
-              item={item}
-              variant={shapeInfo.variant}
-              width={width}
-              aspectRatio={shapeInfo.aspect}
-              rounded={r}
-              circle={circle}
-              hideArtTitle={titleOnArt || progress !== null}
-            />
-            {titleOnArt ? (
-              <View style={[StyleSheet.absoluteFill, s.artText, { borderRadius: r }]} pointerEvents="none">
-                <LinearGradient
-                  colors={[c.artScrimTop, c.artScrimBottom]}
-                  locations={[0.4, 1]}
-                  style={StyleSheet.absoluteFill}
-                />
-                <Text style={[s.onArtTitle, scriptStyle(titleText, s.onArtTitle)]} numberOfLines={1}>
-                  {titleText}
-                </Text>
-                {sub || left ? (
-                  <Text style={s.onArtMeta} numberOfLines={1}>
-                    {[sub, left].filter(Boolean).join(' · ')}
-                  </Text>
-                ) : null}
-                {progress !== null ? <Progress fraction={progress} inline /> : null}
-              </View>
-            ) : progress !== null ? (
-              <Progress fraction={progress} />
-            ) : null}
-            {download.state !== 'none' ? (
-              // One badge per tile: the download state comes first.
-              <DownloadBadge status={download} id={item.Id} />
-            ) : played ? (
-              <View style={s.badge}>
-                <Icon name="checkmark" size={iconSize.xs} color={mediaColors.white} weight="bold" />
-              </View>
-            ) : unplayed > 0 ? (
-              <View style={[s.badge, s.countBadge]}>
-                <Text style={s.count}>{unplayed}</Text>
-              </View>
-            ) : null}
-            {circle ? <CircleFocus radius={r} pressed={pressed} hovered={hovered} focused={focused} /> : null}
-          </View>
-          {!titleOnArt && !artOnly ? (
-            <>
-              <Text
-                style={[s.title, circle && s.center, circle && isTV && { marginTop: tvFocusBleed(width) },
-                  circle && isTV && !focused && s.dim, scriptStyle(titleText, circle ? s.center : s.title)]}
-                numberOfLines={lines}>
-                {titleText}
-              </Text>
-              {sub ? (
-                <Text style={[s.meta, circle && s.center, circle && focused && s.metaFocused, scriptStyle(sub, circle ? s.center : s.meta)]} numberOfLines={1}>
-                  {sub}
-                </Text>
-              ) : null}
-            </>
-          ) : null}
-        </>
-      )}
+      {/*
+        Only a round tile reads the press, hover and focus state (its art, ring
+        and name change). A plain node lets Touchable skip the re-render on
+        focus: its ring and scale run on the UI thread.
+      */}
+      {circle ? (st: TouchState) => body(st) : body(REST)}
     </Touchable>
   );
+
+  function body({ pressed, hovered, focused }: TouchState) {
+    return (
+      <>
+        <View style={circle ? circleArt(focused, hovered) : undefined}>
+          <ItemImage
+            item={item}
+            variant={shapeInfo.variant}
+            width={width}
+            aspectRatio={shapeInfo.aspect}
+            rounded={r}
+            circle={circle}
+            hideArtTitle={titleOnArt || progress !== null}
+          />
+          {titleOnArt ? (
+            <View style={[StyleSheet.absoluteFill, s.artText, { borderRadius: r }]} pointerEvents="none">
+              <LinearGradient
+                colors={[c.artScrimTop, c.artScrimBottom]}
+                locations={[0.4, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+              <Text style={[s.onArtTitle, scriptStyle(titleText, s.onArtTitle)]} numberOfLines={1}>
+                {titleText}
+              </Text>
+              {sub || left ? (
+                <Text style={s.onArtMeta} numberOfLines={1}>
+                  {[sub, left].filter(Boolean).join(' · ')}
+                </Text>
+              ) : null}
+              {progress !== null ? <Progress fraction={progress} inline /> : null}
+            </View>
+          ) : progress !== null ? (
+            <Progress fraction={progress} />
+          ) : null}
+          {download.state !== 'none' ? (
+            // One badge per tile: the download state comes first.
+            <DownloadBadge status={download} id={item.Id} />
+          ) : played ? (
+            <View style={s.badge}>
+              <Icon name="checkmark" size={iconSize.xs} color={mediaColors.white} weight="bold" />
+            </View>
+          ) : unplayed > 0 ? (
+            <View style={[s.badge, s.countBadge]}>
+              <Text style={s.count}>{unplayed}</Text>
+            </View>
+          ) : null}
+          {circle ? <CircleFocus radius={r} pressed={pressed} hovered={hovered} focused={focused} /> : null}
+        </View>
+        {!titleOnArt && !artOnly ? (
+          <>
+            <Text
+              style={[s.title, circle && s.center, circle && isTV && { marginTop: tvFocusBleed(width) },
+                circle && isTV && !focused && s.dim, scriptStyle(titleText, circle ? s.center : s.title)]}
+              numberOfLines={lines}>
+              {titleText}
+            </Text>
+            {sub ? (
+              <Text style={[s.meta, circle && s.center, circle && focused && s.metaFocused, scriptStyle(sub, circle ? s.center : s.meta)]} numberOfLines={1}>
+                {sub}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+      </>
+    );
+  }
 });
+
+/** The state a tile that does not read it renders with. */
+const REST: TouchState = { pressed: false, hovered: false, focused: false };
 
 /** A round tile's art: TV grows it on focus; elsewhere it lifts a little on hover and focus. */
 function circleArt(focused: boolean, hovered: boolean) {

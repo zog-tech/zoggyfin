@@ -4,8 +4,10 @@
  * presses. The focused tile keeps a fixed place at the leading edge of the
  * row (the row scrolls, not the focus), and Up or Down into a row lands on
  * the tile that had the focus there last (an autoFocus focus guide).
+ * The focus callback that a tile gets is stable (it takes the item and its
+ * index), so a memo tile does not re-render when the row renders again.
  */
-import { type ComponentRef, createContext, type ReactNode, type RefObject, useContext, useEffect, useRef } from 'react';
+import { type ComponentRef, createContext, type ReactNode, type RefObject, useCallback, useContext, useEffect, useRef } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { type FocusTarget, TvFocusGuide } from './focus';
@@ -29,6 +31,7 @@ export function TvShelf<T>({
   bleed,
   padV,
   anchor,
+  onFocusItem,
   renderTile,
 }: {
   items: readonly T[];
@@ -42,8 +45,10 @@ export function TvShelf<T>({
   padV: number;
   /** The view the page scrolls to (the row with its header). Default: the tiles. */
   anchor?: RefObject<FocusTarget | null>;
-  /** `onFocus(index)` must run when the tile takes the focus. */
-  renderTile: (item: T, index: number, onFocus: (index: number) => void) => ReactNode;
+  /** A tile took the focus, after the row scrolled to it. Keep it stable (useCallback). */
+  onFocusItem?: (item: T, index: number) => void;
+  /** `onFocus(item, index)` must run when the tile takes the focus. It is stable: pass it as it is. */
+  renderTile: (item: T, index: number, onFocus: (item: T, index: number) => void) => ReactNode;
 }) {
   const page = useContext(TvRowScroll);
   const step = tileWidth + gap;
@@ -51,10 +56,14 @@ export function TvShelf<T>({
   const row = useRef<FocusTarget | null>(null);
   const target = anchor ?? row;
   useEffect(() => page?.track(target), [page, target]);
-  const onFocusAt = (index: number) => {
-    scroll.current?.scrollTo({ x: index * step, animated: true });
-    page?.scrollTo(target.current);
-  };
+  const onFocusAt = useCallback(
+    (item: T, index: number) => {
+      scroll.current?.scrollTo({ x: index * step, animated: true });
+      page?.scrollTo(target.current);
+      onFocusItem?.(item, index);
+    },
+    [step, page, target, onFocusItem],
+  );
 
   // The list starts `bleed` before the first tile, so the tile left of the
   // focused one is cut off by the list edge instead of showing under the rail.

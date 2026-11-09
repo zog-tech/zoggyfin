@@ -50,7 +50,7 @@ export function VodShelf({
           gutter={g.gutter}
           bleed={bleed}
           padV={bleed}
-          renderTile={(d, i, onFocus) => <VodTile data={d} width={tileWidth} onPress={onPress} firstFocus={firstFocus && i === 0} onFocus={() => onFocus(i)} />}
+          renderTile={(d, i, onFocus) => <VodTile data={d} width={tileWidth} onPress={onPress} firstFocus={firstFocus && i === 0} index={i} onFocus={onFocus} />}
         />
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: g.gutter, gap: g.gap, paddingVertical: spacing.xs }}>
