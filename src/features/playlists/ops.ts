@@ -2,8 +2,8 @@
  * Playlist changes. Each one writes the server through `@jellyfin/sdk`
  * (PlaylistsApi) and keeps the TanStack Query cache right: reorder and
  * remove change the cached list at once (optimistic) and roll back on an
- * error; every change then invalidates the playlist, its entries and the
- * playlist lists.
+ * error, unless a newer change replaced theirs; every change then
+ * invalidates the playlist, its entries and the playlist lists.
  */
 import { router } from 'expo-router';
 
@@ -17,7 +17,7 @@ import { useSessionStore } from '@/auth/session-store';
 import { toast } from '@/lib/toast';
 import { readJson, writeJson } from '@/storage/json';
 
-import { moveEntry, playlistMediaFor, playlistName, removeEntries, touchRecent } from './logic';
+import { moveEntry, playlistMediaFor, playlistName, removeEntries, rollbackTo, touchRecent } from './logic';
 
 const RECENT_KEY = 'playlists.recent';
 
@@ -95,39 +95,48 @@ export async function createWith(nameInput: string, items: BaseItemDto[]): Promi
   }
 }
 
-/** Moves one entry to `to` (its final index). Optimistic. */
+/**
+ * Moves one entry to `to` (its final index). Optimistic. The list is read
+ * after the cancel of running fetches, so it is the newest list. A failure
+ * rolls back only when no newer change replaced this one (`rollbackTo`).
+ */
 export async function moveItem(playlistId: string, from: number, to: number): Promise<void> {
   const { api, scope } = ctx();
   const key = entriesKey(scope, playlistId);
+  if (from === to) return;
+  await queryClient.cancelQueries({ queryKey: key });
   const before = queryClient.getQueryData<BaseItemDto[]>(key);
   const entry = before?.[from];
-  if (!before || !entry?.PlaylistItemId || from === to) return;
-  await queryClient.cancelQueries({ queryKey: key });
-  queryClient.setQueryData(key, moveEntry(before, from, to));
+  if (!before || !entry?.PlaylistItemId) return;
+  const applied = moveEntry(before, from, to);
+  queryClient.setQueryData(key, applied);
   try {
     await jf.movePlaylistItem(api, playlistId, entry.PlaylistItemId, to);
   } catch (e) {
-    queryClient.setQueryData(key, before);
+    const back = rollbackTo(queryClient.getQueryData<BaseItemDto[]>(key), applied, before);
+    if (back) queryClient.setQueryData(key, back);
     fail(e);
   } finally {
     void queryClient.invalidateQueries({ queryKey: key });
   }
 }
 
-/** Removes entries (by PlaylistItemId). Optimistic. */
+/** Removes entries (by PlaylistItemId). Optimistic, with the same rules as `moveItem`. */
 export async function removeItems(playlistId: string, entries: BaseItemDto[]): Promise<void> {
   const { api, scope } = ctx();
   const key = entriesKey(scope, playlistId);
-  const before = queryClient.getQueryData<BaseItemDto[]>(key);
   const ids = entries.map((e) => e.PlaylistItemId).filter((x): x is string => !!x);
   if (!ids.length) return;
   await queryClient.cancelQueries({ queryKey: key });
-  if (before) queryClient.setQueryData(key, removeEntries(before, ids));
+  const before = queryClient.getQueryData<BaseItemDto[]>(key);
+  const applied = before ? removeEntries(before, ids) : undefined;
+  if (applied) queryClient.setQueryData(key, applied);
   try {
     await jf.removeFromPlaylist(api, playlistId, ids);
     toast(ids.length === 1 ? `Removed ${entries[0]?.Name ?? 'the item'}` : `Removed ${ids.length} items`, { icon: 'checkmark' });
   } catch (e) {
-    if (before) queryClient.setQueryData(key, before);
+    const back = before && applied ? rollbackTo(queryClient.getQueryData<BaseItemDto[]>(key), applied, before) : null;
+    if (back) queryClient.setQueryData(key, back);
     fail(e);
   } finally {
     refresh(scope, playlistId);
