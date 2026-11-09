@@ -7,7 +7,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, type SharedValue, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { forgetContentFocus, noteControlFocus, noteControlMounted, notePreferredControl, rememberContentFocus, TvPageContext, tvPageFocus } from '@/features/tv/focus';
 import { focusFromKeyboard } from '@/lib/input-modality';
@@ -56,6 +56,9 @@ const STANDARD = Easing.bezier(...motion.easing.standard);
 export const TouchFocusMark = createContext<SharedValue<number> | null>(null);
 
 /** TV: the shared value behind the focus mark. Other platforms make none (they keep the state path). */
+const useContentMark: (mark: SharedValue<number> | null, disabled: boolean) => SharedValue<number> | null = isTV
+  ? (mark, disabled) => useDerivedValue(() => (disabled || !mark ? 0 : mark.get()))
+  : () => null;
 const useFocusMark: () => SharedValue<number> | null = isTV ? () => useSharedValue(0) : () => null;
 
 function pressScale(kind: TouchKind): number {
@@ -111,6 +114,8 @@ export function Touchable({
   const focusedNow = useRef(false);
   // TV: 1 while the control shows its focus mark (ring or row fill).
   const mark = useFocusMark();
+  // TV: what the content (caption strip, dark text) reads. A disabled control stays at rest.
+  const contentMark = useContentMark(mark, !!disabled);
   const page = useContext(TvPageContext);
   // A function child or style reads the state, so it needs the re-render on focus.
   const readsState = typeof children === 'function' || typeof style === 'function';
@@ -216,7 +221,7 @@ export function Touchable({
         {/* Under the content, over the row's own background. */}
         {mark && tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[StyleSheet.absoluteFill, styles.tvRowFill, { borderRadius: radius }]} /> : null}
         {mark ? (
-          <TouchFocusMark value={mark}>{typeof children === 'function' ? children(state) : children}</TouchFocusMark>
+          <TouchFocusMark value={contentMark}>{typeof children === 'function' ? children(state) : children}</TouchFocusMark>
         ) : typeof children === 'function' ? (
           children(state)
         ) : (
