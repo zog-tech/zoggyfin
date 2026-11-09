@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
-import { type ComponentRef, type RefObject, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { queryKeys } from '@/api/query-keys';
@@ -13,6 +13,7 @@ import { Billboard, BillboardRows } from '@/features/tv/billboard';
 import type { FocusTarget } from '@/features/tv/focus';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
+import { rowsToMount } from '@/features/tv/shelf-window';
 import { ProfileMenu } from '@/features/profile/profile-menu';
 import { OfflineBanner } from '@/features/offline/offline-banner';
 import { HomeTogetherSheet, homeTogether, NearbyHomeCard, TogetherHeaderButton } from '@/features/together/home-entry';
@@ -46,8 +47,24 @@ export default function HomeScreen() {
   const rows = useRef(new Set<RefObject<FocusTarget | null>>());
   const [listH, setListH] = useState(0);
   const [end, setEnd] = useState<{ rowsH: number; lastTop: number } | null>(null);
+  // The sections mount as the focus comes near them (rowsToMount); once mounted they stay.
+  const [mounted, setMounted] = useState(2);
+  const tvSizes = useRef({ contentH: 0, listH: 0 });
+  const total = sections.length;
+  const grow = useCallback(() => {
+    const { contentH, listH: h } = tvSizes.current;
+    setMounted((m) => rowsToMount({ mounted: m, total, contentHeight: contentH, rowTop: lastRowY.current, listHeight: h }));
+  }, [total]);
+  // New sections may add no height (empty rows hide): look again after they had time to lay out.
+  useEffect(() => {
+    if (!isTV) return;
+    const t = setTimeout(grow, 120);
+    return () => clearTimeout(t);
+  }, [mounted, grow]);
   // The rows' height and the top of the last row size the space after it (tvPageEndPadding).
   const measureEnd = useCallback((rowsH: number) => {
+    tvSizes.current.contentH = rowsH;
+    grow();
     const content = tvContent.current;
     if (!content) return;
     const found = [...rows.current].map((r) => r.current).filter((v): v is FocusTarget => !!v);
@@ -68,7 +85,7 @@ export default function HomeScreen() {
         done,
       );
     }
-  }, []);
+  }, [grow]);
   const tvPage = useMemo<TvRowPage>(
     () => ({
       scrollTo: (row) => {
@@ -80,6 +97,7 @@ export default function HomeScreen() {
             if (Math.abs(y - lastRowY.current) < 1) return;
             lastRowY.current = y;
             tvScroll.current?.scrollTo({ y, animated: true });
+            grow();
           },
           () => undefined,
         );
@@ -91,7 +109,7 @@ export default function HomeScreen() {
         };
       },
     }),
-    [],
+    [grow],
   );
 
   if (isTV) {
@@ -108,10 +126,15 @@ export default function HomeScreen() {
               {...tvDrivenScroll}
               style={s.tvRows}
               contentContainerStyle={{ paddingBottom: Math.max(bottomPad, endPad) }}
-              onLayout={(e) => setListH(e.nativeEvent.layout.height)}>
+              onLayout={(e) => {
+                const h = e.nativeEvent.layout.height;
+                tvSizes.current.listH = h;
+                setListH(h);
+                grow();
+              }}>
               <View ref={tvContent} onLayout={(e) => measureEnd(e.nativeEvent.layout.height)}>
                 <OfflineBanner entries />
-                {sections.map((sec) => (
+                {sections.slice(0, mounted).map((sec) => (
                   <View key={sec.id}>
                     <sec.component />
                   </View>
