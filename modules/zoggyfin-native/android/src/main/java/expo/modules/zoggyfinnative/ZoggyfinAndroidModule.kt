@@ -89,13 +89,18 @@ class ZoggyfinAndroidModule : Module() {
     }
     val out = mutableMapOf<String, Any?>()
     for ((key, mime) in MIMES) {
-      var hardware = false
-      var software = false
+      val decoders = infos.filter { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
+      val hardware = decoders.any { isHardware(it) }
+      val software = decoders.any { !isHardware(it) }
+      // Levels, 10-bit and sizes come from the hardware decoders when there are any. The software
+      // decoders often claim levels they cannot play in real time; on a Fire TV Stick (3rd gen) the
+      // Google HEVC decoder made a 4K file look playable on a 1080p-only device.
+      val used = if (hardware) decoders.filter { isHardware(it) } else decoders
       var maxLevel = 0
       var tenBit = false
-      for (info in infos) {
-        if (info.supportedTypes.none { it.equals(mime, ignoreCase = true) }) continue
-        if (isHardware(info)) hardware = true else software = true
+      var maxWidth = 0
+      var maxHeight = 0
+      for (info in used) {
         val caps = try {
           info.getCapabilitiesForType(mime)
         } catch (e: RuntimeException) {
@@ -108,8 +113,18 @@ class ZoggyfinAndroidModule : Module() {
           }
           if (key == "av1" && pl.profile in AV1_TEN_BIT) tenBit = true
         }
+        val video = caps.videoCapabilities ?: continue
+        maxWidth = maxOf(maxWidth, video.supportedWidths.upper)
+        maxHeight = maxOf(maxHeight, video.supportedHeights.upper)
       }
-      out[key] = mapOf("hardware" to hardware, "software" to software, "maxLevel" to maxLevel, "tenBit" to tenBit)
+      out[key] = mapOf(
+        "hardware" to hardware,
+        "software" to software,
+        "maxLevel" to maxLevel,
+        "tenBit" to tenBit,
+        "maxWidth" to maxWidth,
+        "maxHeight" to maxHeight,
+      )
     }
     out["hdr"] = hdrTypes()
     out["sdk"] = Build.VERSION.SDK_INT

@@ -131,7 +131,14 @@ describe('mpv device profile (desktop app)', () => {
 });
 
 describe('ExoPlayer device profile (Android)', () => {
-  const d = (hardware: boolean, maxLevel = 0, tenBit = false) => ({ hardware, software: !hardware, maxLevel, tenBit });
+  const d = (hardware: boolean, maxLevel = 0, tenBit = false, maxWidth = 0, maxHeight = 0) => ({
+    hardware,
+    software: !hardware,
+    maxLevel,
+    tenBit,
+    maxWidth,
+    maxHeight,
+  });
   /** A 2017 phone: HEVC and VP9 in hardware, no AV1, an HDR10 display, no Dolby audio. */
   const phone: AndroidDecoders = {
     codecs: { h264: d(true, 52), hevc: d(true, 153, true), vp9: d(true), av1: undefined, aac: d(false), mp3: d(false), flac: d(false), opus: d(false) },
@@ -192,6 +199,29 @@ describe('ExoPlayer device profile (Android)', () => {
     const p = buildDeviceProfile(caps, opts);
     expect(codec(p, 'hevc')?.Conditions?.find((c) => c.Property === 'VideoBitDepth')?.Value).toBe('8');
     expect(p.TranscodingProfiles?.[0]).toMatchObject({ Container: 'ts', Protocol: 'hls', VideoCodec: 'hevc,h264' });
+  });
+
+  it('limits each video codec to the frame size of its decoder (a 1080p-only Fire TV Stick)', () => {
+    const stick: AndroidDecoders = {
+      ...phone,
+      codecs: { ...phone.codecs, h264: d(true, 51, false, 1920, 1088), hevc: d(true, 153, true, 1920, 1088), vp9: d(true, 0, false, 1920, 1088) },
+    };
+    const p = buildDeviceProfile(exoCapabilities(stick), opts);
+    for (const name of ['h264', 'hevc', 'vp9']) {
+      const conds = codec(p, name)?.Conditions ?? [];
+      expect(conds).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ Condition: 'LessThanEqual', Property: 'Width', Value: '1920' }),
+          expect.objectContaining({ Condition: 'LessThanEqual', Property: 'Height', Value: '1088' }),
+        ]),
+      );
+    }
+  });
+
+  it('sets no size limit when the build does not report one', () => {
+    const conds = (profile.CodecProfiles ?? []).flatMap((c) => c.Conditions ?? []);
+    expect(conds.some((c) => c.Property === 'Width' || c.Property === 'Height')).toBe(false);
+    expect(codec(profile, 'vp9')).toBeUndefined();
   });
 
   it('transcodes to HLS with MPEG-TS segments, also for hevc (fMP4 can start with a negative tfdt)', () => {

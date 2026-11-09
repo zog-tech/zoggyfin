@@ -46,7 +46,16 @@ const android = requireOptionalNativeModule<ZoggyfinAndroidModule>('ZoggyfinAndr
 function decoderInfo(v: unknown): DecoderInfo | undefined {
   if (!v || typeof v !== 'object') return undefined;
   const o = v as Record<string, unknown>;
-  return { hardware: o.hardware === true, software: o.software === true, maxLevel: typeof o.maxLevel === 'number' ? o.maxLevel : 0, tenBit: o.tenBit === true };
+  const num = (x: unknown) => (typeof x === 'number' && x > 0 ? x : 0);
+  return {
+    hardware: o.hardware === true,
+    software: o.software === true,
+    maxLevel: num(o.maxLevel),
+    tenBit: o.tenBit === true,
+    // Builds before the size report send no size: 0 means unknown, so no limit.
+    maxWidth: num(o.maxWidth),
+    maxHeight: num(o.maxHeight),
+  };
 }
 
 /** The decoders of an Android device (MediaCodecList). Null when the build has no module. */
