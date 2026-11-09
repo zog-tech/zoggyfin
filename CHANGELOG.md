@@ -158,6 +158,24 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- Late results no longer overwrite newer state. A slow step that ends after you moved on is now dropped:
+  - A quick switch to a channel or film no longer stops it with an error.
+  - A finished queue no longer stops the song you just started.
+  - A late add to a playlist, or a late "Play on", no longer closes the sheet you opened next.
+- Downloads: a pause and resume while a download prepares no longer starts it twice.
+- Player: the "Next up" countdown waits while the video is paused.
+- Live TV:
+  - The guide no longer stays at "loading" after a refresh finds a new guide address.
+  - A change made while your account syncs is now sent to your other devices.
+  - A shared provider that fails to load says so.
+- Watch together: when the host drops, a guest that closed its player no longer becomes the new host, so the
+  other guests no longer wait for a host that never comes. SyncPlay stops loading when you leave the group.
+- Servers: a new address is checked at once, and a failed server search on the first screen ends.
+- Sign in: Cancel stops Quick Connect, also while the code loads.
+- Admin: a refresh keeps your unsaved changes to a user. One action that ends no longer hides the spinners of the others.
+- Extensions: Cancel stops a late install list. After a partial install, the screen shows what is left.
+- One tap does one thing: a fast double tap no longer adds a provider twice or joins an invite twice.
+
 - Live TV on TV: moving through the channel list no longer lags on slow TV sticks. A focus move re-renders only the
   details panel (after the focus rests), each row re-renders only when its own programme changes, and fewer rows stay mounted.
 - Live TV: a channel that played and then stops (broken data from the provider, or the player stuck with no progress)
