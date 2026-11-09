@@ -2,13 +2,13 @@
  * The "Add to playlist" sheet (design system §7.12) and the rename sheet.
  * One host at the root; any screen opens them with `openAddToPlaylist` or
  * `openRenamePlaylist`. Two taps from any item: "Add to playlist", then a
- * playlist (or "New playlist", a name, Return).
+ * playlist (or "New playlist", a name, Return). The phases and the rule
+ * that a late request never acts on a newer open are in `sheet-store.ts`.
  */
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Text, TextInput, View } from 'react-native';
-import { create } from 'zustand';
 
 import * as jf from '@/api/jellyfin';
 import { queryKeys } from '@/api/query-keys';
@@ -24,43 +24,32 @@ import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, t
 
 import { fits, playlistMediaFor, sheetOrder } from './logic';
 import { addItems, createWith, recentPlaylistIds, rename } from './ops';
+import { beginAdd, beginRename, closeAddSheet, closeRenameSheet, endAdd, endRename, startNaming, useSheets } from './sheet-store';
 
-interface SheetState {
-  items: BaseItemDto[] | null;
-  renaming: BaseItemDto | null;
-}
-
-const useSheets = create<SheetState>(() => ({ items: null, renaming: null }));
-
-/** Opens the sheet for one item, a container, or several items (a queue). */
-export function openAddToPlaylist(items: BaseItemDto | BaseItemDto[]): void {
-  const list = (Array.isArray(items) ? items : [items]).filter((i) => i.Id);
-  if (list.length) useSheets.setState({ items: list });
-}
-
-export function openRenamePlaylist(playlist: BaseItemDto): void {
-  useSheets.setState({ renaming: playlist });
-}
+export { openAddToPlaylist, openRenamePlaylist } from './sheet-store';
 
 function success() {
   if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 }
 
 export function AddToPlaylistHost() {
-  const items = useSheets((s) => s.items);
-  const renaming = useSheets((s) => s.renaming);
   return (
     <>
-      <AddSheet items={items} onClose={() => useSheets.setState({ items: null })} />
-      <RenameSheet playlist={renaming} onClose={() => useSheets.setState({ renaming: null })} />
+      <AddSheet />
+      <RenameSheet />
     </>
   );
 }
 
-function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: () => void }) {
+function AddSheet() {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const { api, userId, scope } = useApi();
+  const phase = useSheets((st) => st.add);
+  const items = phase.name === 'closed' ? null : phase.items;
+  const token = phase.name === 'closed' ? 0 : phase.token;
+  const target = phase.name === 'submitting' ? phase.target : null;
+  const naming = phase.name === 'naming' || (phase.name === 'submitting' && phase.back === 'naming');
   const media = playlistMediaFor(items ?? []);
   const q = useQuery({
     queryKey: queryKeys.playlists(scope, media),
@@ -68,39 +57,28 @@ function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: ()
     enabled: !!items,
     staleTime: 30_000,
   });
-  const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const close = () => {
-    setNaming(false);
+  const [nameFor, setNameFor] = useState(token);
+  if (token !== nameFor) {
+    // A new open (or a close): start with an empty name.
+    setNameFor(token);
     setName('');
-    setBusy(null);
-    onClose();
-  };
+  }
 
   const order = useMemo(() => sheetOrder((q.data ?? []).filter((p) => fits(p, media)), recentPlaylistIds()), [q.data, media]);
   const what = items?.length === 1 ? items[0]?.Name : items ? `${items.length} items` : '';
 
   const add = async (p: BaseItemDto) => {
-    if (!items || busy) return;
-    setBusy(p.Id ?? 'x');
-    const ok = await addItems(p, items);
-    setBusy(null);
-    if (ok) {
-      success();
-      close();
-    }
+    const run = beginAdd(p.Id ?? 'x');
+    if (!run) return;
+    const ok = await addItems(p, run.items);
+    if (endAdd(run.token, ok) && ok) success();
   };
   const create = async () => {
-    if (!items || busy) return;
-    setBusy('new');
-    const id = await createWith(name, items);
-    setBusy(null);
-    if (id) {
-      success();
-      close();
-    }
+    const run = beginAdd('new');
+    if (!run) return;
+    const id = await createWith(name, run.items);
+    if (endAdd(run.token, !!id) && id) success();
   };
 
   const row = (p: BaseItemDto, last: boolean) => (
@@ -112,12 +90,12 @@ function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: ()
         </Text>
         {p.ChildCount ? <Text style={s.meta}>{`${p.ChildCount} ${p.ChildCount === 1 ? 'item' : 'items'}`}</Text> : null}
       </View>
-      {busy === p.Id ? <ActivityIndicator color={c.text2} /> : null}
+      {target === p.Id ? <ActivityIndicator color={c.text2} /> : null}
     </SheetRow>
   );
 
   return (
-    <Sheet visible={!!items} title={what ? `Add “${what}” to a playlist` : 'Add to playlist'} onClose={close} doneLabel="Cancel">
+    <Sheet visible={!!items} title={what ? `Add “${what}” to a playlist` : 'Add to playlist'} onClose={closeAddSheet} doneLabel="Cancel">
       <TvScrollView style={s.list} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.group}>
           {naming ? (
@@ -134,10 +112,10 @@ function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: ()
                 style={s.input}
                 accessibilityLabel="Playlist name"
               />
-              <Button title="Create" variant="small" loading={busy === 'new'} onPress={() => void create()} />
+              <Button title="Create" variant="small" loading={target === 'new'} onPress={() => void create()} />
             </View>
           ) : (
-            <SheetRow last accessibilityLabel="New playlist" onPress={() => setNaming(true)}>
+            <SheetRow last accessibilityLabel="New playlist" onPress={startNaming}>
               <View style={s.plus}>
                 <Icon name="plus" size={scaled(iconSize.sm)} color={c.accent} weight="semibold" />
               </View>
@@ -167,27 +145,27 @@ function AddSheet({ items, onClose }: { items: BaseItemDto[] | null; onClose: ()
   );
 }
 
-function RenameSheet({ playlist, onClose }: { playlist: BaseItemDto | null; onClose: () => void }) {
+function RenameSheet() {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
+  const phase = useSheets((st) => st.rename);
+  const playlist = phase.name === 'closed' ? null : phase.playlist;
+  const token = phase.name === 'closed' ? 0 : phase.token;
   const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [shownFor, setShownFor] = useState<BaseItemDto | null>(null);
-  if (playlist !== shownFor) {
+  const [nameFor, setNameFor] = useState(token);
+  if (token !== nameFor) {
     // A new playlist to rename: start from its name.
-    setShownFor(playlist);
+    setNameFor(token);
     setName(playlist?.Name ?? '');
-    setBusy(false);
   }
   const save = async () => {
-    if (!playlist || busy) return;
-    setBusy(true);
-    const ok = await rename(playlist, name);
-    setBusy(false);
-    if (ok) onClose();
+    const run = beginRename();
+    if (!run) return;
+    const ok = await rename(run.playlist, name);
+    endRename(run.token, ok);
   };
   return (
-    <Sheet visible={!!playlist} title="Rename playlist" onClose={onClose} doneLabel="Cancel">
+    <Sheet visible={!!playlist} title="Rename playlist" onClose={closeRenameSheet} doneLabel="Cancel">
       <View style={[s.group, s.newRow]}>
         <TextInput
           value={name}
@@ -202,7 +180,7 @@ function RenameSheet({ playlist, onClose }: { playlist: BaseItemDto | null; onCl
           style={s.input}
           accessibilityLabel="Playlist name"
         />
-        <Button title="Save" variant="small" loading={busy} onPress={() => void save()} />
+        <Button title="Save" variant="small" loading={phase.name === 'saving'} onPress={() => void save()} />
       </View>
       <View style={s.bottom} />
     </Sheet>
