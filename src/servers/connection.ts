@@ -6,6 +6,10 @@
  * downloader all read the address from the session, so a switch takes effect
  * at once. `lib/online.ts` runs the checks: at start, on foreground, on a
  * network change, on a request with no answer, and every 2 minutes.
+ *
+ * A call during a check of the same server runs one more check after it
+ * (`check-runner.ts`), so an address edit is probed at once, not with the
+ * old list. A check that throws clears `checking` and counts as no answer.
  */
 import axios from 'axios';
 import { Platform } from 'react-native';
@@ -16,6 +20,7 @@ import { useSessionStore } from '@/auth/session-store';
 import { devOffline, offlineError } from '@/lib/dev-offline';
 
 import { orderFor, pickAddress, type ProbeFn, type ProbeResult } from './addresses';
+import { serverChecks } from './check-runner';
 import { networkSource } from './network-source';
 import { type ConnectionInfo, UNKNOWN_CONNECTION } from './status';
 import { wifiPreference } from './wifi-rule';
@@ -47,24 +52,34 @@ export function pageIsHttps(): boolean {
   return Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.protocol === 'https:';
 }
 
-const running = new Map<string, Promise<boolean>>();
+const checks = serverChecks(run);
 
-/** Checks the addresses of a server (the active one when no Id is given). True when one answers. Concurrent calls share one check. */
+/**
+ * Checks the addresses of a server (the active one when no Id is given). True when one answers.
+ * A call during a check of the same server waits for one more check, which reads the newest addresses.
+ */
 export function checkConnection(serverId?: string): Promise<boolean> {
   const id = serverId ?? useSessionStore.getState().session?.serverId;
   if (!id) return Promise.resolve(true);
-  const busy = running.get(id);
-  if (busy) return busy;
-  const p = run(id).finally(() => running.delete(id));
-  running.set(id, p);
-  return p;
+  return checks(id);
 }
 
 async function run(serverId: string): Promise<boolean> {
   const server = findServer(useSessionStore.getState().accounts, serverId);
   if (!server) return false;
   patch(serverId, (c) => ({ ...c, checking: true }));
-  const net = server.mode === 'auto' && server.wifi.enabled && networkSource.available ? await networkSource.snapshot() : null;
+  try {
+    return await probe(serverId, server);
+  } catch (e) {
+    if (__DEV__) console.warn(`[connection] ${server.name}: the check failed`, e);
+    patch(serverId, (c) => ({ ...c, checking: false, status: 'unreachable', url: null, kind: null, checkedAt: Date.now() }));
+    return false;
+  }
+}
+
+async function probe(serverId: string, server: NonNullable<ReturnType<typeof findServer>>): Promise<boolean> {
+  // No network facts (a failed read) is the same as no Wi-Fi rule match.
+  const net = server.mode === 'auto' && server.wifi.enabled && networkSource.available ? await networkSource.snapshot().catch(() => null) : null;
   const wanted = server.mode === 'auto' ? wifiPreference(server.wifi, net) : null;
   const ordered = orderFor(server.addresses, server.mode, wanted);
   const results: Record<string, ProbeResult> = {};

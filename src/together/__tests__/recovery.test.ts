@@ -61,6 +61,15 @@ describe('afterHostLoss', () => {
   it('follows the elected member', () => {
     expect(afterHostLoss({ selfId: 'other', oldHostId: 'h', members, elapsed: ELECTION_GRACE })).toEqual({ kind: 'follow', hostId: 'me' });
   });
+  it('does not elect a guest that has the download but closed its player', () => {
+    const closed = [
+      { id: 'me', joinedAt: 5, canHost: true, noMedia: true },
+      { id: 'other', joinedAt: 10, canHost: true },
+    ];
+    expect(afterHostLoss({ selfId: 'me', oldHostId: 'h', members: closed, elapsed: ELECTION_GRACE })).toEqual({ kind: 'follow', hostId: 'other' });
+    expect(afterHostLoss({ selfId: 'other', oldHostId: 'h', members: closed, elapsed: ELECTION_GRACE })).toEqual({ kind: 'become-host' });
+    expect(afterHostLoss({ selfId: 'me', oldHostId: 'h', members: [closed[0]!], elapsed: ELECTION_GRACE })).toEqual({ kind: 'wait-for-host' });
+  });
   it('waits for the host when no member has the media', () => {
     expect(afterHostLoss({ selfId: 'other', oldHostId: 'h', members: [{ id: 'other', canHost: false }], elapsed: 60_000 })).toEqual({ kind: 'wait-for-host' });
   });

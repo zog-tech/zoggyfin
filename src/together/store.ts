@@ -191,7 +191,17 @@ export function releaseTogetherSheet(where: SheetPlace): void {
   if (togetherState().sheet.open && togetherState().sheet.where === where) closeTogetherSheet();
 }
 
-/** True while a session runs (nearby or SyncPlay group). */
+/**
+ * True when this device is past the lobby: in a session, on its way into
+ * one (a join request) or on its end screen, nearby or in a SyncPlay group.
+ * The lobby (idle, browsing) is false. Home and the sheet use it to leave
+ * the nearby link alone and to show the session instead of the lobby.
+ */
+export function pastLobby(s: TogetherState): boolean {
+  return (s.mode !== 'none' && s.phase.name !== 'idle' && s.phase.name !== 'browsing') || s.syncplay.group !== null;
+}
+
+/** True while a session runs (nearby or SyncPlay group). Unlike `pastLobby`, a join request or an end screen is false. */
 export function useInTogether(): boolean {
   return useTogetherStore(
     (s) =>
