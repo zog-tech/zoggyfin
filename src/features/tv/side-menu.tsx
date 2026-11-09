@@ -4,18 +4,22 @@
  * comes into it (Left at the leading edge of the content), it opens over the
  * content with the labels. Right or Back closes it and gives the focus back
  * to the content. The tab stacks are the same as on phones.
+ *
+ * The open panel slides and fades in over the content (transform and opacity on
+ * the UI thread). Nothing animates a size, so the content never lays out again
+ * while the menu moves, and the content is not dimmed (like the streaming apps).
  */
 import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, TabSlot, TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ComponentRef, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
+import { Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { Icon, type IconName } from '@/components/icon';
 import { tvKeyFromEvent } from '@/player/tv-keys';
 import { isNativeTV, isTVPreview } from '@/platform/tv';
-import { type AppTheme, createStyles, font, mediaColors, motion, radius, spacing, tv, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
+import { type AppTheme, createStyles, font, motion, radius, spacing, tv, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
 
 import { focusActivePage, type FocusTarget, focusView, isMenuFocused, noteRemoteKey, restoreContentFocus, setContentGuide, setMenuFocused, TvFocusGuide, tvPages } from './focus';
 import { useTvBack } from './use-tv-back';
@@ -167,62 +171,56 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
     };
   }, [close]);
 
+  // 0 closed, 1 open. The panel and the labels follow it on the UI thread.
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.set(withTiming(open ? 1 : 0, { duration: reduced ? 0 : motion.duration.fast, easing: STANDARD }));
+  }, [open, reduced, progress]);
   const panel = useAnimatedStyle(() => ({
-    width: withTiming(open ? menuW : railW, { duration: reduced ? 0 : motion.duration.base, easing: STANDARD }),
-  }));
-  const scrim = useAnimatedStyle(() => ({
-    opacity: withTiming(open ? 1 : 0, { duration: reduced ? 0 : motion.duration.base, easing: STANDARD }),
+    opacity: progress.get(),
+    transform: [{ translateX: (progress.get() - 1) * (menuW - railW) }],
   }));
 
   return (
-    <>
-      {/* The open menu dims the content under it. */}
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, scrim]}>
-        <LinearGradient
-          colors={[withAlpha(mediaColors.black, 0.96), withAlpha(mediaColors.black, 0.9), withAlpha(mediaColors.black, 0)]}
-          locations={[0, 0.32, 0.7]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-      <TvFocusGuide
-        ref={root}
-        destinations={[active]}
-        style={[s.rail, { width: railW }]}
-        accessibilityRole="menu"
-        accessibilityLabel="Menu">
-        {/* The closed rail: a dark edge, so the icons read over the content. */}
-        <LinearGradient
-          colors={[withAlpha(c.bg, 0.96), withAlpha(c.bg, 0)]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-        {/* Open, the panel is solid: the labels never sit on the content's text. */}
-        <Animated.View style={[s.panel, open && s.panelOpen, panel]}>
-          <View style={[s.menuGlyph, { paddingLeft: SAFE.x + iconInset(railW) }]} accessible={false}>
-            <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
-          </View>
-          <View style={s.items}>
-            {DESTINATIONS.map((d) => (
-              <MenuItem
-                key={d.label}
-                destination={d}
-                open={open}
-                settings={settings}
-                railWidth={railW}
-                onSelected={setActive}
-                onFocus={onItemFocus}
-                onBlur={onItemBlur}
-                onDone={close}
-              />
-            ))}
-          </View>
-        </Animated.View>
-      </TvFocusGuide>
-    </>
+    <TvFocusGuide
+      ref={root}
+      destinations={[active]}
+      style={[s.rail, { width: railW }]}
+      accessibilityRole="menu"
+      accessibilityLabel="Menu">
+      {/* The closed rail: a dark edge, so the icons read over the content. */}
+      <LinearGradient
+        colors={[withAlpha(c.bg, 0.96), withAlpha(c.bg, 0)]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Open, the panel is solid: the labels never sit on the content's text. It slides in from under the rail. */}
+      <Animated.View pointerEvents="none" style={[s.panel, s.panelBg, { width: menuW }, panel]} />
+      {/* The items change width once when the menu opens or closes; the panel above does the motion. */}
+      <View style={[s.panel, { width: open ? menuW : railW }]}>
+        <View style={[s.menuGlyph, { paddingLeft: SAFE.x + iconInset(railW) }]} accessible={false}>
+          <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
+        </View>
+        <View style={s.items}>
+          {DESTINATIONS.map((d) => (
+            <MenuItem
+              key={d.label}
+              destination={d}
+              open={open}
+              settings={settings}
+              railWidth={railW}
+              progress={progress}
+              onSelected={setActive}
+              onFocus={onItemFocus}
+              onBlur={onItemBlur}
+              onDone={close}
+            />
+          ))}
+        </View>
+      </View>
+    </TvFocusGuide>
   );
 }
 
@@ -231,6 +229,7 @@ function MenuItem({
   open,
   settings,
   railWidth,
+  progress,
   onSelected,
   onFocus,
   onBlur,
@@ -241,6 +240,8 @@ function MenuItem({
   /** Settings is open (it is a page in the Home stack, not a tab). */
   settings: boolean;
   railWidth: number;
+  /** The menu's open progress (0 to 1): the labels fade in with the panel. */
+  progress: SharedValue<number>;
   onSelected: (view: FocusTarget | null) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -253,6 +254,7 @@ function MenuItem({
   const tab = useTabTrigger({ name: destination.name ?? 'home' });
   const selected = destination.name ? !settings && !!tab.trigger?.isFocused : settings;
   const view = useRef<FocusTarget | null>(null);
+  const labelStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
   useEffect(() => {
     if (selected) onSelected(view.current);
   }, [selected, onSelected]);
@@ -290,9 +292,9 @@ function MenuItem({
         {selected && !focused ? <View style={s.selectedBar} /> : null}
         <Icon name={destination.icon} size={ICON} color={fg} weight={selected ? 'semibold' : 'regular'} />
         {open ? (
-          <Text style={[s.label, { color: fg }, selected && s.labelSelected]} numberOfLines={1}>
+          <Animated.Text style={[s.label, { color: fg }, selected && s.labelSelected, labelStyle]} numberOfLines={1}>
             {destination.label}
-          </Text>
+          </Animated.Text>
         ) : null}
       </View>
     </Pressable>
@@ -307,7 +309,7 @@ const styles = StyleSheet.create({
 const makeStyles = createStyles(({ c }: AppTheme) => ({
     rail: { position: 'absolute' as const, left: 0, top: 0, bottom: 0, overflow: 'visible' as const },
     panel: { position: 'absolute' as const, left: 0, top: 0, bottom: 0, overflow: 'hidden' as const },
-    panelOpen: { backgroundColor: withAlpha(c.bg, 0.97) },
+    panelBg: { backgroundColor: withAlpha(c.bg, 0.97) },
     menuGlyph: { paddingTop: SAFE.y + spacing.sm, paddingBottom: spacing.xl },
     items: { flex: 1, justifyContent: 'center' as const, gap: spacing.xs, paddingBottom: spacing.huge },
     item: { paddingLeft: SAFE.x, paddingRight: ITEM_END },
