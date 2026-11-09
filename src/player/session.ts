@@ -255,8 +255,12 @@ class VideoSession {
             break;
           }
           if (this.recoverAfterAddressSwitch()) break;
-          setPlayerState({ status: 'error', error: e.error ?? 'The video could not be played.' });
+          setPlayerState({ status: 'error', error: e.error ?? 'The video could not be played.', playing: false });
           void this.reporter?.stop({ positionTicks: secondsToTicks(st.position) });
+        } else if (st.status === 'error') {
+          // A late event of the failed stream must not hide the error. Every new load
+          // (Try again, a reload, the next item) sets 'loading' before the engine loads.
+          break;
         } else if (e.status === 'loading') setPlayerState({ status: st.status === 'loading' ? 'loading' : 'buffering' });
         else if (e.status === 'ready') setPlayerState({ status: 'ready' });
         break;
