@@ -2,7 +2,7 @@ import { type ReactNode, useEffect } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn, FadeOut, SlideInDown, SlideOutDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { isTV } from '@/platform/tv';
@@ -42,6 +42,37 @@ export function Sheet({
   fixedHeight?: boolean;
   children: ReactNode;
 }) {
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      {/*
+        Its own safe area: the modal covers the whole window, but the screen
+        under it (a tab page) reports the tab bar in its bottom inset. That
+        inset left a blank band under the content and cut the list short.
+      */}
+      <SafeAreaProvider>
+        <SheetPanel visible={visible} title={title} onClose={onClose} doneLabel={doneLabel} fixedHeight={fixedHeight}>
+          {children}
+        </SheetPanel>
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function SheetPanel({
+  visible,
+  title,
+  onClose,
+  doneLabel,
+  fixedHeight,
+  children,
+}: {
+  visible: boolean;
+  title?: string | null;
+  onClose: () => void;
+  doneLabel?: string;
+  fixedHeight: boolean;
+  children: ReactNode;
+}) {
   const s = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const drag = useSharedValue(0);
@@ -61,41 +92,39 @@ export function Sheet({
       if (shouldDismiss(e.translationY, e.velocityY)) scheduleOnRN(onClose);
       else drag.set(withSpring(0, { damping: 24, stiffness: 260 }));
     });
+  // Android: a Modal is its own window and needs its own gesture root.
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      {/* Android: a Modal is its own window and needs its own gesture root. */}
-      <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-        <Animated.View entering={FadeIn.duration(motion.duration.base)} exiting={FadeOut.duration(motion.duration.fast)} style={s.scrim}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" focusable={false} />
+    <GestureHandlerRootView style={StyleSheet.absoluteFill}>
+      <Animated.View entering={FadeIn.duration(motion.duration.base)} exiting={FadeOut.duration(motion.duration.fast)} style={s.scrim}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" focusable={false} />
+      </Animated.View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[s.host, isTV && s.hostTV]} pointerEvents="box-none">
+        <Animated.View
+          entering={SlideInDown.duration(motion.duration.base).easing(ENTER)}
+          exiting={SlideOutDown.duration(motion.duration.fast)}
+          style={[s.panel, isTV ? s.panelTV : { paddingBottom: insets.bottom + spacing.md }, fixedHeight && !isTV && s.panelFixed, dragStyle]}
+          accessibilityViewIsModal>
+          <GestureDetector gesture={swipe}>
+            <View>
+              {isTV ? null : <View style={s.grabber} />}
+              {title || doneLabel ? (
+                <View style={s.header}>
+                  <Text style={s.title} numberOfLines={1} accessibilityRole="header">
+                    {title}
+                  </Text>
+                  {doneLabel ? (
+                    <Touchable onPress={onClose} hitSlop={10} radius={8} accessibilityRole="button" accessibilityLabel={doneLabel}>
+                      <Text style={s.done}>{doneLabel}</Text>
+                    </Touchable>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+          </GestureDetector>
+          {children}
         </Animated.View>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[s.host, isTV && s.hostTV]} pointerEvents="box-none">
-          <Animated.View
-            entering={SlideInDown.duration(motion.duration.base).easing(ENTER)}
-            exiting={SlideOutDown.duration(motion.duration.fast)}
-            style={[s.panel, isTV ? s.panelTV : { paddingBottom: insets.bottom + spacing.md }, fixedHeight && !isTV && s.panelFixed, dragStyle]}
-            accessibilityViewIsModal>
-            <GestureDetector gesture={swipe}>
-              <View>
-                {isTV ? null : <View style={s.grabber} />}
-                {title || doneLabel ? (
-                  <View style={s.header}>
-                    <Text style={s.title} numberOfLines={1} accessibilityRole="header">
-                      {title}
-                    </Text>
-                    {doneLabel ? (
-                      <Touchable onPress={onClose} hitSlop={10} radius={8} accessibilityRole="button" accessibilityLabel={doneLabel}>
-                        <Text style={s.done}>{doneLabel}</Text>
-                      </Touchable>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            </GestureDetector>
-            {children}
-          </Animated.View>
-        </KeyboardAvoidingView>
-      </GestureHandlerRootView>
-    </Modal>
+      </KeyboardAvoidingView>
+    </GestureHandlerRootView>
   );
 }
 
