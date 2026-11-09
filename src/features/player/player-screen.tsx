@@ -209,7 +209,7 @@ export function PlayerScreen() {
   // Auto-hide after 3 s while playing; never while paused, scrubbing or with a sheet open.
   useEffect(() => {
     if (!visible || !playing || scrubbing || sheet) return;
-    const t = setTimeout(() => setVisible(false), isTV ? 4000 : player.autoHideMs);
+    const t = setTimeout(() => setVisible(false), player.autoHideMs);
     return () => clearTimeout(t);
   }, [visible, playing, scrubbing, sheet, poke]);
 
@@ -927,8 +927,8 @@ export function PlayerScreen() {
           </Animated.View>
         ) : null}
 
-        {/* Controls */}
-        <Animated.View style={[StyleSheet.absoluteFill, controlsStyle]} pointerEvents={visible ? 'box-none' : 'none'}>
+        {/* Controls. TV shows and hides them at once (no fade); phones, tablets and the web fade them. */}
+        <Animated.View style={[StyleSheet.absoluteFill, isTV ? null : controlsStyle]} pointerEvents={visible ? 'box-none' : 'none'}>
           {/* TV: hidden controls are not mounted, so Select never presses an unseen button. */}
           {!isTV || visible ? (
           <>
