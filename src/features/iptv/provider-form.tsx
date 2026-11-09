@@ -33,7 +33,10 @@ function SharedProvider({ id }: { id: string }) {
     setBusy(true);
     await iptv.refresh(id);
     setBusy(false);
-    toast('Channel list loaded', { icon: 'checkmark' });
+    // A refresh never rejects: a failure leaves its text on the provider's data.
+    const error = iptv.listError(id);
+    if (error) toast(error, { icon: 'exclamationmark.triangle' });
+    else toast('Channel list loaded', { icon: 'checkmark' });
   };
   return (
     <>
