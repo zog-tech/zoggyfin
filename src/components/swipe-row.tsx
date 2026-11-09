@@ -49,6 +49,7 @@ export function SwipeRow({
   leading,
   trailing,
   enabled = true,
+  rowColor,
 }: {
   children: ReactNode;
   /** Swipe left to delete. It takes the right edge: `trailing` is ignored when this is set. */
@@ -57,6 +58,8 @@ export function SwipeRow({
   leading?: SwipeAction;
   trailing?: SwipeAction;
   enabled?: boolean;
+  /** The fill of the moving row, so the action behind does not show through it. Default: the page background. */
+  rowColor?: string;
 }) {
   const { c } = useTheme();
   const lock = usePagerLock();
@@ -135,9 +138,9 @@ export function SwipeRow({
     <View style={styles.wrap}>
       {leading ? (
         <Animated.View style={[styles.side, styles.leading, { backgroundColor: leading.color }, leadingStyle]} pointerEvents="none">
-          <Animated.View style={[styles.mark, leadingMark]}>
-            <Icon name={leading.icon} size={18} color={leading.textColor} />
-            <Text style={[styles.label, { color: leading.textColor }]}>{leading.label}</Text>
+          <Animated.View style={[styles.stack, leadingMark]}>
+            <Icon name={leading.icon} size={20} color={leading.textColor} />
+            <Text style={[styles.small, { color: leading.textColor }]}>{leading.label}</Text>
           </Animated.View>
         </Animated.View>
       ) : null}
@@ -148,14 +151,14 @@ export function SwipeRow({
         </Animated.View>
       ) : trailing ? (
         <Animated.View style={[styles.side, styles.trailing, { backgroundColor: trailing.color }, trailingStyle]} pointerEvents="none">
-          <Animated.View style={[styles.mark, trailingMark]}>
-            <Text style={[styles.label, { color: trailing.textColor }]}>{trailing.label}</Text>
-            <Icon name={trailing.icon} size={18} color={trailing.textColor} />
+          <Animated.View style={[styles.stack, trailingMark]}>
+            <Icon name={trailing.icon} size={20} color={trailing.textColor} />
+            <Text style={[styles.small, { color: trailing.textColor }]}>{trailing.label}</Text>
           </Animated.View>
         </Animated.View>
       ) : null}
       <GestureDetector gesture={pan}>
-        <Animated.View style={rowStyle}>{children}</Animated.View>
+        <Animated.View style={[{ backgroundColor: rowColor ?? c.bg }, rowStyle]}>{children}</Animated.View>
       </GestureDetector>
     </View>
   );
@@ -173,9 +176,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingLeft: spacing.xl,
   },
-  side: { ...StyleSheet.absoluteFill, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xl },
+  side: { ...StyleSheet.absoluteFill, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg },
   leading: { justifyContent: 'flex-start' },
   trailing: { justifyContent: 'flex-end' },
-  mark: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // Icon over a short label, as in iOS swipe actions: it fits in the width the row uncovers at the threshold.
+  stack: { width: 84, alignItems: 'center', gap: 2 },
+  small: { ...font(type.caption1), fontWeight: '600', textAlign: 'center' },
   label: { ...font(type.subheadline), fontWeight: '600' },
 });

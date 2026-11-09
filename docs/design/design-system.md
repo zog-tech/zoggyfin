@@ -477,7 +477,7 @@ The generated tile is a real tile (same press, hover and badge rules). It is not
 
 ### 7.10a Song row swipe
 
-- Swipe a song row right: "Play next" (`accent` fill, `onAccent` label). Swipe left: "Add to queue" (`surface3` fill, `text` label). The action label sits at the edge the row leaves.
+- Swipe a song row right: "Play next" (`accent` fill, `onAccent` label). Swipe left: "Add to queue" (`surface3` fill, `text` label). The icon sits over a short `caption1` label at the edge the row leaves. The moving row has the page background, so the action never shows through it.
 - A partial swipe shows the action and springs back (`snappy` spring). A release past 110 pt, or a fast fling in the direction of travel, runs the action with a `light` haptic and the toast "Playing next" / "Added to queue"; the row springs back. Past 110 pt the row resists and the label grows a little, so the release point is easy to feel.
 - The pan starts only on a mostly horizontal move (12 pt across before 10 pt down), so the list scrolls first. Touches in the first 24 pt from the left edge go to the back swipe. On iOS 26 the album, artist, playlist and music library pages keep only the edge back swipe (no swipe back from the content), so a swipe right on a row is never a back swipe.
 - Rows that delete on a swipe left (playlist entries, Downloads) keep it, and give "Add to queue" on the swipe right only.
