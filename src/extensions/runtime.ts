@@ -6,7 +6,6 @@
 import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api/library-api';
 import { getUserApi } from '@jellyfin/sdk/lib/utils/api/user-api';
 import { router } from 'expo-router';
-import { create } from 'zustand';
 
 import { getApi } from '@/api/client';
 import { getItem, getViews } from '@/api/jellyfin';
@@ -21,6 +20,7 @@ import { homeSections } from '@/registry/home-sections';
 import { type ItemActionContext, itemActions } from '@/registry/item-actions';
 
 import { ExtensionError, FEED_TIMEOUT_MS, buildRequest, type Grants, type JellyfinAccount, parseOptions, send } from './http';
+import { loadInstallRequest } from './install-request';
 import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match';
 import { askChoice, askConfirm, askText, type ChoiceOption } from './prompts';
 import { applyRefresh, handleActionResponse, type ResponseEffects, type TaskRef, toastText } from './response';
@@ -355,30 +355,19 @@ export async function prefill(ext: InstalledExtension): Promise<void> {
 
 // --- Install requests (the confirm screen) -----------------------------------
 
-interface InstallRequest {
-  /** Addresses still loading or loaded. */
-  entries: { input: string; candidate?: Candidate; error?: string }[];
-  loading: boolean;
-}
+export { cancelInstallRequest, confirmInstallRequest, pendingCandidates, useInstallRequest } from './install-request';
 
-export const useInstallRequest = create<InstallRequest>(() => ({ entries: [], loading: false }));
-
-/** Opens one confirm screen for one or more extensions (an address the user typed, or the links of an invite). */
+/**
+ * Opens one confirm screen for one or more extensions (an address the user
+ * typed, or the links of an invite). The state and its rules are in
+ * `install-request.ts`.
+ */
 export async function requestInstall(inputs: string[]): Promise<void> {
   const list = [...new Set(inputs.map((i) => i.trim()).filter(Boolean))].slice(0, 10);
   if (!list.length) return;
-  useInstallRequest.setState({ entries: list.map((input) => ({ input })), loading: true });
+  const loading = loadInstallRequest(list, loadManifest);
   router.push('/extension-install');
-  const entries = await Promise.all(
-    list.map(async (input) => {
-      try {
-        return { input, candidate: await loadManifest(input) };
-      } catch (e) {
-        return { input, error: e instanceof Error ? e.message : 'Cannot load this extension.' };
-      }
-    }),
-  );
-  useInstallRequest.setState({ entries, loading: false });
+  await loading;
 }
 
 /** For invite links: offers the extensions of the inviting user on one confirm screen. */
