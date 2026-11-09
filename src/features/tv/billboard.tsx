@@ -17,6 +17,7 @@ import { create } from 'zustand';
 import { useItem, useResume } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { useImageServer } from '@/api/use-api';
+import { useSessionStore } from '@/auth/session-store';
 import { ItemImage } from '@/components/item-image';
 import { buildImageUrl, imageSource } from '@/images/image-url';
 import { resolveImage } from '@/images/resolve-image';
@@ -38,11 +39,21 @@ import {
   withAlpha,
 } from '@/theme';
 
+import { tvFocusRest } from './focus-settle';
+
 interface BillboardState {
   item: BaseItemDto | null;
 }
 
 const useBillboardStore = create<BillboardState>(() => ({ item: null }));
+
+// Another account (or none): a focus task still waiting belongs to the old account's
+// screens and API, and the billboard item to its library. Drop both.
+useSessionStore.subscribe((now, before) => {
+  if (now.session === before.session) return;
+  tvFocusRest.cancel();
+  useBillboardStore.setState({ item: null });
+});
 
 /**
  * The focus rests on a Home tile: show its item on the billboard. Call it

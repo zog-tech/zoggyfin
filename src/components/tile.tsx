@@ -51,7 +51,7 @@ export interface TileProps {
   artOnly?: boolean;
   /**
    * The tile took the focus (TV). Pass a stable function: the tile is a memo.
-   * Work for `tvFocusRest` must use the item as its key: the tile drops it on blur.
+   * Work for `tvFocusRest` must use the item Id (or the item when it has none) as its key: the tile drops it on blur.
    */
   onFocusItem?: (item: BaseItemDto, index: number) => void;
   /** The tile's place in its row or grid, passed back to `onFocusItem`. */
@@ -116,7 +116,7 @@ export const Tile = memo(function Tile({
       firstFocus={preferredFocus}
       onFocus={onFocusItem ? () => onFocusItem(item, index) : undefined}
       // The focus left before it rested: the work this tile pushed (keyed by its item) must not run.
-      onBlur={onFocusItem ? () => tvFocusRest.drop(item) : undefined}
+      onBlur={onFocusItem ? () => tvFocusRest.drop(item.Id ?? item) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ width }}>
