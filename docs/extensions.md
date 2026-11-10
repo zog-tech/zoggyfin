@@ -32,6 +32,32 @@ Other parts of the app use two functions from `src/extensions`:
 - `installFromInvite(urls)` shows one confirm screen for all the extensions in
   the list that are not installed yet.
 
+### Your extensions follow your account
+
+The installed extensions belong to the Jellyfin account (server and user), not
+to the device. Each account on a device has its own list, and a switch to
+another account shows that account's extensions.
+
+The list also syncs through the account, like Live TV. It is kept in the
+user's display preferences (id `zoggyfin-extensions`, client `zoggyfin`).
+
+- What syncs: the manifest URL, on or off, the permissions you allowed, the
+  settings that are not secret, the page you chose as a tab, and the skip
+  choices per segment label. The manifest itself does not: each device loads
+  it from its URL.
+- Secret settings (`"secret": true`) never leave the device. Enter them again
+  on each device.
+- An extension that you added on another device shows the confirm screen once,
+  with the title "From your account". **Not now** keeps it off this device; it
+  does not ask again until the extension is removed and added again.
+- An extension that you remove on one device goes from your other devices,
+  with no question.
+- The first sync of a device only adds to the account. When the same extension
+  is already in the account, the account's settings win.
+
+The first start of this version copies the list that was on the device to
+every account saved on it.
+
 ## Manifest (schema version 1)
 
 The schema is in `src/extensions/schema/` (zod). The app reads schema versions 1
@@ -85,7 +111,7 @@ keeps its `true`/`false` type.
 
 ### `settings`
 
-Simple fields, kept on the device per extension. Secret text goes to the
+Simple fields, kept per account and extension (they sync, see above). Secret text goes to the
 keychain (secure store on web). The user never has to type a value: each field
 gets one by itself.
 
@@ -336,7 +362,7 @@ has one `row` section, no tab, no Library tile, and the section on Home.
 
 | Field | Notes |
 | --- | --- |
-| `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen. A version 1 manifest cannot ask for them. |
+| `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen, each with its own switch (on by default). Turn one off there or on the extension's page in Settings to stop that use. A version 1 manifest cannot ask for them. |
 | `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`. |
 | `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
 | `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |

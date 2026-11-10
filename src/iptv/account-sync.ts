@@ -26,6 +26,22 @@
  * change on the device shows as a difference between what it has and the
  * ledger (`observe`), so the rest of the IPTV code needs no sync hooks.
  */
+import {
+  canonical,
+  chunkCodec,
+  type CustomPrefs,
+  hashText,
+  isNum,
+  isObject,
+  mergeStamped,
+  readStampedMap,
+  SYNC_CHUNK_CHARS,
+  sortedAlive,
+  type StampedMap,
+  type StampMap,
+  stampsOf,
+} from '@/lib/account-blob';
+
 import { MAX_FAVOURITES, MAX_RECENTS } from './lists';
 import { ALL_PROVIDERS, uniqueProviderName } from './merged';
 import { migrateLists, migrateProviders } from './migrate';
@@ -35,37 +51,21 @@ import { migrateVodLists } from './vod-migrate';
 import type { VodLists, VodPosition } from './vod-types';
 import { VOD_LISTS_SCHEMA_VERSION } from './vod-types';
 
+// The generic parts live in `lib/account-blob.ts`; the names stay exported here for the IPTV code.
+export { canonical, hashText, mergeStamped, SYNC_CHUNK_CHARS, TOMBSTONE_TTL_MS, type Stamp, type Stamped, type StampedMap, type StampMap } from '@/lib/account-blob';
+
 export const SYNC_SCHEMA_VERSION = 1;
 export const SYNC_META_SCHEMA_VERSION = 1;
-/** Removal markers older than this are dropped. */
-export const TOMBSTONE_TTL_MS = 30 * 24 * 3_600_000;
 /** The most providers the blob keeps (with removal markers). */
 export const MAX_SYNC_PROVIDERS = 200;
 /** The film and episode positions per provider that go into the blob (the newest). */
 export const MAX_SYNC_POSITIONS = 100;
-/** One CustomPrefs value holds at most this many characters; a larger blob is split into numbered keys. */
-export const SYNC_CHUNK_CHARS = 200_000;
 /** The largest blob the app writes. Positions, then recents, are left out to stay under it. */
 export const MAX_SYNC_CHARS = 1_600_000;
-/** The most chunks a reader accepts. */
-const MAX_CHUNKS = 64;
-/** The CustomPrefs keys. */
-export const PARTS_KEY = 'iptv.parts';
-export const chunkKey = (i: number) => `iptv.${i}`;
-
-/** A stamp of an entry: when it was added or changed, or removed (`del`). */
-export interface Stamp {
-  at: number;
-  del?: true;
-}
-
-/** An entry in the blob: a stamp and, while it is not removed, its value. */
-export interface Stamped<T> extends Stamp {
-  val?: T;
-}
-
-export type StampedMap<T> = Record<string, Stamped<T>>;
-export type StampMap = Record<string, Stamp>;
+/** The CustomPrefs keys: `iptv.parts` and `iptv.<n>`. */
+const chunks = chunkCodec('iptv', SYNC_CHUNK_CHARS);
+export const PARTS_KEY = chunks.partsKey;
+export const chunkKey = chunks.chunkKey;
 
 /** The secrets that sync. `playlistGuideUrl` is not one: the playlist names it again on each load. */
 export type SyncedSecrets = Pick<ProviderSecrets, 'username' | 'password' | 'playlistUrl' | 'guideUrl'>;
@@ -136,38 +136,6 @@ export interface LocalState {
 }
 
 // ---- Helpers --------------------------------------------------------------------------------
-
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-
-/** JSON with sorted object keys, so equal data gives equal text. */
-export function canonical(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
-  if (isObject(v)) {
-    const keys = Object.keys(v)
-      .filter((k) => v[k] !== undefined)
-      .sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`;
-  }
-  return JSON.stringify(v) ?? 'null';
-}
-
-/** A short hash (cyrb53). Not for security: it only tells that something changed, without keeping it. */
-export function hashText(text: string): string {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-}
 
 function syncedSecrets(s: ProviderSecrets | undefined): SyncedSecrets {
   const out: SyncedSecrets = {};
@@ -323,39 +291,6 @@ export function localBlob(meta: SyncMeta, local: LocalState): SyncBlob {
 
 // ---- Merging ----------------------------------------------------------------------------
 
-/**
- * One entry: the newer stamp wins; on the same stamp a removal wins, then
- * `a` (callers pass the account's map first, so the server decides a tie).
- */
-function pick<T>(a: Stamped<T> | undefined, b: Stamped<T> | undefined): Stamped<T> | undefined {
-  if (!a) return b;
-  if (!b) return a;
-  if (a.at !== b.at) return a.at > b.at ? a : b;
-  if (a.del || b.del) return a.del ? a : b;
-  return a.val === undefined ? b : a;
-}
-
-/**
- * Merges two entry maps: per entry the newer stamp wins. Removal markers
- * older than the TTL go. Of the entries that are not removed, the newest
- * `max` stay (the older ones go with no marker, like on the device).
- */
-export function mergeStamped<T>(a: StampedMap<T> | undefined, b: StampedMap<T> | undefined, now: number, max: number): StampedMap<T> {
-  const out: StampedMap<T> = {};
-  for (const id of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])) {
-    const e = pick(a?.[id], b?.[id]);
-    if (!e) continue;
-    if (e.del && now - e.at > TOMBSTONE_TTL_MS) continue;
-    out[id] = e;
-  }
-  const alive = Object.entries(out).filter(([, e]) => !e.del);
-  if (alive.length > max) {
-    alive.sort((x, y) => y[1].at - x[1].at);
-    for (const [id] of alive.slice(max)) delete out[id];
-  }
-  return out;
-}
-
 const NO_LIMIT = Number.MAX_SAFE_INTEGER;
 
 /** The ids of providers that are not removed and have a value. */
@@ -471,18 +406,6 @@ export interface ApplyPlan {
   vod: Record<string, VodLists>;
   /** The ledger that matches the merged blob. */
   meta: SyncMeta;
-}
-
-function sortedAlive<T>(m: StampedMap<T> | undefined): [string, Stamped<T>][] {
-  return Object.entries(m ?? {})
-    .filter(([, e]) => !e.del)
-    .sort((x, y) => y[1].at - x[1].at || (x[0] < y[0] ? -1 : 1));
-}
-
-function stampsOf<T>(m: StampedMap<T> | undefined): StampMap {
-  const out: StampMap = {};
-  for (const [id, e] of Object.entries(m ?? {})) out[id] = e.del ? { at: e.at, del: true } : { at: e.at };
-  return out;
 }
 
 /** The lists of one provider as the merged blob says, with the device's snaps where the blob has none. */
@@ -611,23 +534,6 @@ export function planIsEmpty(plan: ApplyPlan, local: LocalState): boolean {
 
 // ---- Reading and writing the blob ------------------------------------------------------------
 
-function stampedMap<T>(raw: unknown, value: (id: string, v: unknown) => T | null, maxEntries: number): StampedMap<T> {
-  const out: StampedMap<T> = {};
-  if (!isObject(raw)) return out;
-  let n = 0;
-  for (const [id, e] of Object.entries(raw)) {
-    if (n >= maxEntries) break;
-    if (!id || !isObject(e) || !isNum(e.at)) continue;
-    n++;
-    if (e.del === true) out[id] = { at: e.at, del: true };
-    else {
-      const val = e.val === undefined ? null : value(id, e.val);
-      out[id] = val === null ? { at: e.at } : { at: e.at, val };
-    }
-  }
-  return out;
-}
-
 /** A channel snap from the blob (the list migration keeps only snap fields: no URLs). */
 function snapValue(id: string, v: unknown): ChannelSnap | null {
   return migrateLists({ favourites: [id], recents: [], snaps: { [id]: v } }).snaps[id] ?? null;
@@ -669,7 +575,7 @@ function perProvider<T>(raw: unknown, ok: (id: string) => boolean, read: (v: unk
 export function migrateBlob(raw: unknown): SyncBlob | null {
   if (!isObject(raw) || !isNum(raw.schemaVersion) || raw.schemaVersion < 1) return null;
   // A newer app's blob: this version reads the fields it knows.
-  const all = stampedMap(raw.providers, providerValue, MAX_SYNC_PROVIDERS * 2);
+  const all = readStampedMap(raw.providers, providerValue, MAX_SYNC_PROVIDERS * 2);
   // A provider with no readable value is not one: it is dropped (a removal marker stays).
   const providers: StampedMap<SyncedProvider> = {};
   for (const [id, e] of Object.entries(all)) if (e.del || e.val) providers[id] = e;
@@ -683,16 +589,16 @@ export function migrateBlob(raw: unknown): SyncBlob | null {
     schemaVersion: SYNC_SCHEMA_VERSION,
     providers,
     settings: { at: isNum(s.at) ? s.at : 0, order, startWith },
-    favourites: perProvider(raw.favourites, listOk, (v) => stampedMap(v, snapValue, MAX_FAVOURITES * 2)),
-    recents: perProvider(raw.recents, listOk, (v) => stampedMap(v, snapValue, MAX_RECENTS * 10)),
-    positions: perProvider(raw.positions, listOk, (v) => stampedMap(v, positionValue, MAX_SYNC_POSITIONS * 10)),
+    favourites: perProvider(raw.favourites, listOk, (v) => readStampedMap(v, snapValue, MAX_FAVOURITES * 2)),
+    recents: perProvider(raw.recents, listOk, (v) => readStampedMap(v, snapValue, MAX_RECENTS * 10)),
+    positions: perProvider(raw.positions, listOk, (v) => readStampedMap(v, positionValue, MAX_SYNC_POSITIONS * 10)),
   };
 }
 
 /** The ledger of any version. It never throws: bad data is the empty ledger (the next sync seeds it again). */
 export function migrateMeta(raw: unknown): SyncMeta {
   if (!isObject(raw)) return EMPTY_META;
-  const stamps = (v: unknown): StampMap => stampsOf(stampedMap(v, () => null, NO_LIMIT));
+  const stamps = (v: unknown): StampMap => stampsOf(readStampedMap(v, () => null, NO_LIMIT));
   const stampMaps = (v: unknown): Record<string, StampMap> => {
     const out: Record<string, StampMap> = {};
     if (!isObject(v)) return out;
@@ -726,28 +632,15 @@ export function blobText(blob: SyncBlob): string | null {
 }
 
 /** The CustomPrefs values for a blob text: numbered parts and their count. */
-export function encodeChunks(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const n = Math.max(1, Math.ceil(text.length / SYNC_CHUNK_CHARS));
-  for (let i = 0; i < n; i++) out[chunkKey(i)] = text.slice(i * SYNC_CHUNK_CHARS, (i + 1) * SYNC_CHUNK_CHARS);
-  out[PARTS_KEY] = String(n);
-  return out;
-}
+export const encodeChunks = (text: string): Record<string, string> => chunks.encode(text);
 
 /** True for a CustomPrefs key this module writes. */
-export const isSyncKey = (k: string) => k === PARTS_KEY || /^iptv\.\d+$/.test(k);
+export const isSyncKey = (k: string) => chunks.isKey(k);
 
 /** The blob in the CustomPrefs, or null (none, or unreadable). Never throws. */
-export function decodeChunks(prefs: Record<string, string | null | undefined> | null | undefined): SyncBlob | null {
-  if (!prefs) return null;
-  const n = Number(prefs[PARTS_KEY]);
-  if (!Number.isInteger(n) || n < 1 || n > MAX_CHUNKS) return null;
-  let text = '';
-  for (let i = 0; i < n; i++) {
-    const part = prefs[chunkKey(i)];
-    if (typeof part !== 'string') return null;
-    text += part;
-  }
+export function decodeChunks(prefs: CustomPrefs): SyncBlob | null {
+  const text = chunks.decode(prefs);
+  if (text === null) return null;
   try {
     return migrateBlob(JSON.parse(text));
   } catch {
@@ -756,8 +649,4 @@ export function decodeChunks(prefs: Record<string, string | null | undefined> | 
 }
 
 /** The CustomPrefs to send: the other keys as they are and the blob's keys new. */
-export function withBlob(prefs: Record<string, string | null | undefined> | null | undefined, text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(prefs ?? {})) if (!isSyncKey(k) && typeof v === 'string') out[k] = v;
-  return { ...out, ...encodeChunks(text) };
-}
+export const withBlob = (prefs: CustomPrefs, text: string): Record<string, string> => chunks.withText(prefs, text);
