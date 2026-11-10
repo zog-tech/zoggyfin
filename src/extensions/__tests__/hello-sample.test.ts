@@ -152,7 +152,7 @@ describe('the Hello sample', () => {
     expect(empty).toEqual({ entries: [], next: null, message: 'Sign in to see your list.', action: { title: 'Sign in', panel: 'account' } });
     const panel = await call('/pages/account');
     expect(panel.type).toContain('text/html');
-    expect(panel.text).toContain("zoggyfin('openPage', { page: 'tabs' })");
+    expect(panel.text).toContain("zoggyfin('openPage', { page: 'tabs', tab: 'mine' })");
     expect(JSON.parse((await post('/pages/account/state', { signedIn: true })).text)).toEqual({ signedIn: true });
     const full = parseFeedPage(await get('/pages/mine'), BASE);
     expect(full.entries.length).toBeGreaterThan(0);

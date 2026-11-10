@@ -56,11 +56,13 @@
       out.textContent = String(e.message || e);
     }
   };
-  // Sign in, say so, then show the page: the app loads the feeds again before it opens it.
+  // Sign in, say so, ask for a library refresh, then show the "My list" tab of the page.
+  // The app goes back to the page when it is under the panel, and loads each feed once.
   document.getElementById('signin').onclick = run(async () => {
     await account({ signedIn: true });
     await zoggyfin('toast', { text: 'Signed in to Hello' });
-    await zoggyfin('openPage', { page: 'tabs' });
+    await zoggyfin('refreshLibrary');
+    await zoggyfin('openPage', { page: 'tabs', tab: 'mine' });
   });
   document.getElementById('signout').onclick = run(async () => {
     await account({ signedIn: false });

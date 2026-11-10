@@ -45,6 +45,39 @@ describe('findOpenPage', () => {
     expect(findOpenPage(root(tabs('(home)', null)), target, { ...opts, tabSlot: slot })).toBeNull();
   });
 
+  it('finds the page in the state the iOS app reported: a __root wrapper, the panel in the wrapped stack, the page in the Library stack', () => {
+    const state: NavState = {
+      type: 'stack',
+      index: 0,
+      routes: [
+        {
+          name: '__root',
+          state: {
+            type: 'stack',
+            index: 1,
+            routes: [
+              {
+                name: '(tabs)',
+                params: {},
+                state: {
+                  type: 'tab',
+                  index: 1,
+                  routes: [
+                    { name: '(home)', state: { type: 'stack', index: 1, routes: [{ name: 'index' }, { name: 'extensions/index' }] } },
+                    { name: '(library)', state: { type: 'stack', index: 1, routes: [{ name: 'libraries' }, page('x', 'p')] } },
+                    { name: '(music)', state: { index: 0, routes: [{ name: 'music' }] } },
+                  ],
+                },
+              },
+              panel,
+            ],
+          },
+        },
+      ],
+    };
+    expect(findOpenPage(state, target, opts)).toEqual({ pop: 0 });
+  });
+
   it('reads array params and an empty state', () => {
     const r = root(tabs('(home)', [{ name: 'ext/[ext]/[page]', params: { ext: ['x'], page: ['p'] } }]));
     expect(findOpenPage(r, target, opts)).toEqual({ pop: 0 });

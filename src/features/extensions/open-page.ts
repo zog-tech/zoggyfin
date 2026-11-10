@@ -44,7 +44,12 @@ function isPage(route: NavRoute, target: PageRef): boolean {
   return route.name.endsWith(PAGE_ROUTE) && param(route, 'ext') === target.extId && param(route, 'page') === target.pageId && !param(route, 'section');
 }
 
-const focused = (state: NavState): NavRoute | undefined => state.routes[state.index ?? state.routes.length - 1];
+/** The focused route of a state, or the route under the panel when the panel is focused there. */
+function focusedBelow(state: NavState, panelRoute: string): NavRoute | undefined {
+  let i = state.index ?? state.routes.length - 1;
+  while (i >= 0 && state.routes[i]?.name === panelRoute) i--;
+  return state.routes[i];
+}
 
 /**
  * The page under the panel: how many screens to go back to reach it, or null
@@ -53,19 +58,18 @@ const focused = (state: NavState): NavRoute | undefined => state.routes[state.in
  */
 export function findOpenPage(root: NavState | undefined, target: PageRef, opts: { panelRoute: string; tabSlot?: PageRef | null }): { pop: number } | null {
   if (!root?.routes.length) return null;
-  // The screen under the panel: the root route below the panel.
-  let i = root.index ?? root.routes.length - 1;
-  while (i >= 0 && root.routes[i].name === opts.panelRoute) i--;
-  let route: NavRoute | undefined = root.routes[i];
+  // Follow the focused chain down to the deepest stack, taking the route
+  // under the panel wherever the panel is the focused one (the root stack
+  // can sit inside a wrapper route, so this is checked at every level).
+  let route: NavRoute | undefined = focusedBelow(root, opts.panelRoute);
   let stack: NavState | null = null;
   let inExtTab = false;
-  // Follow the focused chain down to the deepest stack.
   while (route) {
     if (route.name === EXT_TAB) inExtTab = true;
     const st: NavState | undefined = route.state;
     if (!st?.routes.length) break;
     if (st.type === 'stack') stack = st;
-    route = focused(st);
+    route = focusedBelow(st, opts.panelRoute);
   }
   if (stack) {
     for (let j = stack.routes.length - 1; j >= 0; j--) {
