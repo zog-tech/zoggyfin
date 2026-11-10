@@ -36,6 +36,8 @@ interface ItemRowProps {
   preferredFocus?: boolean;
   /** Override the tile press. */
   onPress?: (item: BaseItemDto) => void;
+  /** Long press (the item action sheet). Pass a stable function: the tile is a memo. */
+  onLongPress?: (item: BaseItemDto) => void;
 }
 
 /**
@@ -57,6 +59,7 @@ export function ItemRow({
   titleOnArt,
   preferredFocus,
   onPress,
+  onLongPress,
 }: ItemRowProps) {
   const s = useStyles(makeStyles);
   const open = useOpenItem();
@@ -65,7 +68,7 @@ export function ItemRow({
   const press = onPress ?? open;
   // Long press (right click on the web and the Mac app) opens the item actions. Not on TV: Select is the press there.
   const menu = useItemMenu();
-  const longPress = l.tv ? undefined : menu.open;
+  const longPress = l.tv ? undefined : (onLongPress ?? menu.open);
   // TV Home: art-only tiles; the billboard above shows the focused one.
   const billboard = useContext(BillboardRows) && l.tv;
   const artOnly = billboard && !titleOnArt;
@@ -148,6 +151,7 @@ export function ItemRow({
               width={width}
               shape={shape}
               onPress={press}
+              onLongPress={longPress}
               title={tileTitle?.(item)}
               subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
               titleOnArt={titleOnArt}

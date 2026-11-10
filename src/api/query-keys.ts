@@ -67,6 +67,11 @@ export const queryKeys = {
     [...scopeKey(s), 'children', parentId, kind] as const,
   music: (s: SessionScope, libraryId: string, tab: string, options?: object) =>
     [...scopeKey(s), 'music', libraryId, tab, options ?? {}] as const,
+  /** A part of the music Home tab. Under `music`, so a refresh of the library refreshes it too. */
+  musicHome: (s: SessionScope, libraryId: string, part: string, extra = '') =>
+    [...scopeKey(s), 'music', libraryId, 'home', part, extra] as const,
+  /** The rows of the optional music catalog plugin. Not per library: the plugin has one catalog. */
+  onDemandHome: (s: SessionScope) => [...scopeKey(s), 'onDemandHome'] as const,
   /** Recently and most played songs. Invalidated after audio playback. */
   played: (s: SessionScope, libraryId: string, kind: string) => [...scopeKey(s), 'played', libraryId, kind] as const,
   /** The user's playlists for the Add to playlist sheet. */

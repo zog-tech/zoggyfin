@@ -24,8 +24,11 @@ import { getUserDataApi } from '@jellyfin/sdk/lib/utils/api/user-data-api';
 import { getUserViewApi } from '@jellyfin/sdk/lib/utils/api/user-view-api';
 import axios, { isCancel } from 'axios';
 
+import { clientIdentity } from '@/auth/identity';
 import { devOffline } from '@/lib/dev-offline';
 
+import { type OnDemandHome, parseOnDemandHome } from './ondemand';
+import { buildAuthHeader } from './auth-header';
 import type { LibraryQuery } from './query-keys';
 import { serverUrlCandidates } from './server-url';
 import type {
@@ -510,6 +513,84 @@ export async function getPlayedSongs(api: Api, userId: string, libraryId: string
   return res.data.Items ?? [];
 }
 
+/** The parts of the music Home tab that are one plain request each. */
+export type MusicShelf = 'playPool' | 'newReleases' | 'favouriteAlbums' | 'favouriteArtists' | 'playlists' | 'genres';
+
+/**
+ * One row of the music Home tab, from a music library. `playPool`: the most
+ * played songs with their genres, for the mixes and Rediscover.
+ */
+export async function getMusicShelf(api: Api, userId: string, libraryId: string, shelf: MusicShelf, limit = 24): Promise<BaseItemDto[]> {
+  const lib = getLibraryApi(api);
+  const base = { userId, parentId: libraryId, enableTotalRecordCount: false, ...tile };
+  switch (shelf) {
+    case 'playPool': {
+      const res = await lib.getItems({
+        ...base,
+        includeItemTypes: ['Audio'],
+        recursive: true,
+        filters: ['IsPlayed'],
+        sortBy: ['PlayCount', 'DatePlayed'],
+        sortOrder: ['Descending', 'Descending'],
+        limit,
+        fields: [...TILE_FIELDS, 'Genres'],
+      });
+      return res.data.Items ?? [];
+    }
+    case 'newReleases': {
+      const res = await lib.getItems({
+        ...base,
+        includeItemTypes: ['MusicAlbum'],
+        recursive: true,
+        sortBy: ['PremiereDate', 'ProductionYear', 'SortName'],
+        sortOrder: ['Descending', 'Descending', 'Ascending'],
+        limit,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'favouriteAlbums': {
+      const res = await lib.getItems({
+        ...base,
+        includeItemTypes: ['MusicAlbum'],
+        recursive: true,
+        isFavorite: true,
+        sortBy: ['SortName'],
+        limit,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'favouriteArtists': {
+      const res = await getArtistApi(api).getAlbumArtists({ ...base, isFavorite: true, sortBy: ['SortName'], limit });
+      return res.data.Items ?? [];
+    }
+    case 'playlists': {
+      // Playlists live outside music libraries: the user's own and the ones shared with them.
+      const res = await lib.getItems({
+        ...base,
+        parentId: undefined,
+        includeItemTypes: ['Playlist'],
+        mediaTypes: ['Audio'],
+        recursive: true,
+        sortBy: ['DateCreated', 'SortName'],
+        sortOrder: ['Descending', 'Ascending'],
+        limit,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'genres': {
+      const res = await getGenreApi(api).getGenres({ ...base, fields: [...TILE_FIELDS, 'ItemCounts'], limit });
+      return res.data.Items ?? [];
+    }
+  }
+}
+
+/** Items by Id, in no set order (artists, genres, albums for the music Home tab). */
+export async function getItemsByIds(api: Api, userId: string, ids: readonly string[]): Promise<BaseItemDto[]> {
+  if (!ids.length) return [];
+  const res = await getLibraryApi(api).getItems({ userId, ids: [...ids], enableTotalRecordCount: false, ...tile });
+  return res.data.Items ?? [];
+}
+
 /**
  * Every playable audio item under a container, in play order: an album's
  * tracks, a playlist's entries, an artist's songs (album by album), a
@@ -791,6 +872,34 @@ export async function resolvePlayable(api: Api, userId: string, item: BaseItemDt
 export async function getText(api: Api, url: string): Promise<string> {
   const res = await api.axiosInstance.get<string>(url, { responseType: 'text', transformResponse: (d: unknown) => d });
   return typeof res.data === 'string' ? res.data : String(res.data);
+}
+
+// ---- Server plugin: music catalog --------------------------------------------------
+
+/** How long the app waits for the catalog plugin (ms). It is an extra row, not a page. */
+const ONDEMAND_TIMEOUT_MS = 10_000;
+
+/**
+ * The rows of the optional music catalog plugin (`/OnDemand/Home`). Null when
+ * the server does not have it, and on any failure: a 404, a body of another
+ * shape, or no answer. A browser cannot tell these apart, because a proxy's
+ * 404 page often lacks the CORS headers and looks like a lost connection.
+ *
+ * Plain axios with the auth header, not the session's instance: a failure here
+ * must not start an address check (lost connection) or a sign-out (401).
+ */
+export async function getOnDemandHome(api: Api, limit: number): Promise<OnDemandHome | null> {
+  if (devOffline()) return null;
+  try {
+    const res = await axios.get<unknown>(`${api.basePath}/OnDemand/Home`, {
+      params: { limit },
+      timeout: ONDEMAND_TIMEOUT_MS,
+      headers: { Authorization: buildAuthHeader(clientIdentity(), api.accessToken) },
+    });
+    return parseOnDemandHome(res.data, limit);
+  } catch {
+    return null;
+  }
 }
 
 // ---- Remote control ---------------------------------------------------------------
