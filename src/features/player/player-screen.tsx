@@ -80,6 +80,7 @@ import {
 import { nearby, nearbySupported } from '@/together/nearby';
 import { openTogetherSheet, togetherState } from '@/together/store';
 import { syncPlaySupported } from '@/together/syncplay';
+import { tabGroupNow } from '@/features/extensions/tab-nav';
 
 import { AirPlayButton } from './airplay-button';
 import { LiveChannelCard } from './live-channel-card';
@@ -412,7 +413,7 @@ export function PlayerScreen() {
     closePlayer();
     // The Live TV page under the player takes the request when it gets the focus; else open it.
     setTimeout(() => {
-      if (channelSearchPending()) router.navigate(liveTvHref(isTV || liveTvTab ? '(live)' : '(library)'));
+      if (channelSearchPending()) router.navigate(liveTvHref(isTV || liveTvTab ? '(live)' : tabGroupNow('(library)')));
     }, 400);
   };
   const hasNext = !!now?.next;

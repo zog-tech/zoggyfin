@@ -6,8 +6,8 @@ import { SidebarInsetProvider } from '@/theme/sidebar-inset';
 
 /**
  * The extension tab: one fixed slot that shows the page chosen by
- * `features/extensions/placement.ts` (iPad, the web and the Mac app; hidden
- * on phones and not used on TV). Its pages are shared with Home, Library and
+ * `features/extensions/placement.ts` (iPad, the web and the Mac app; on
+ * phones only in place of the tab the user chose; not used on TV). Its pages are shared with Home, Library and
  * Search: `(home,library,search,ext)/ext/`.
  */
 export const unstable_settings = { anchor: 'ext-tab' };

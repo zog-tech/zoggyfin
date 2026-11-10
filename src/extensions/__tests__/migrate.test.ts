@@ -109,10 +109,11 @@ describe('loadExtensionsData', () => {
     expect(readSavedManifest({ name: 'No id' })).toBeNull();
   });
 
-  it('reads v2 as it is and ignores v1 then', () => {
+  it('reads v2 and ignores v1 then; v2 is saved again as v3', () => {
     const v2 = { schemaVersion: 2, accounts: { [A]: v1Payload(), [B]: { list: [] } }, unclaimed: null };
     const { data, migrated } = loadExtensionsData(v2, { list: [{ junk: true }] }, [A, B, C]);
-    expect(migrated).toBe(false);
+    expect(migrated).toBe(true);
+    expect(data.schemaVersion).toBe(3);
     expect(Object.keys(data.accounts)).toEqual([A, B]);
     expect(data.accounts[B].list).toEqual([]);
   });
@@ -135,5 +136,24 @@ describe('installedElsewhere', () => {
     expect(installedElsewhere(data, A, 'com.example.hello')).toBe(true);
     const onlyA = { ...data, accounts: { [A]: data.accounts[A] } };
     expect(installedElsewhere(onlyA, A, 'com.example.hello')).toBe(false);
+  });
+
+  it('v2 → v3: an existing install has no phone tab choice (a Library tile)', () => {
+    const v2 = { schemaVersion: 2, accounts: { [A]: v1Payload() }, unclaimed: null };
+    const { data } = loadExtensionsData(v2, null, [A]);
+    expect(data.accounts[A].list.length).toBeGreaterThan(0);
+    for (const e of data.accounts[A].list) expect(e).not.toHaveProperty('phoneTab');
+  });
+
+  it('v3: keeps a known phone tab choice, drops an unknown one, and never throws', () => {
+    const entry = v1Payload().list[0];
+    const v3 = (phoneTab: unknown) => ({ schemaVersion: 3, accounts: { [A]: { list: [{ ...entry, phoneTab }] } }, unclaimed: null });
+    const ok = loadExtensionsData(v3('(saved)'), null, [A]);
+    expect(ok.migrated).toBe(false);
+    expect(ok.data.accounts[A].list[0].phoneTab).toBe('(saved)');
+    for (const bad of ['(home)', '(ext)', 'replace:(music)', 7, null, { x: 1 }]) {
+      expect(() => loadExtensionsData(v3(bad), null, [A])).not.toThrow();
+      expect(loadExtensionsData(v3(bad), null, [A]).data.accounts[A].list[0]).not.toHaveProperty('phoneTab');
+    }
   });
 });

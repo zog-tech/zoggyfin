@@ -7,15 +7,26 @@
  *   it. The candidates are the pages with `placement.tab` of the enabled
  *   extensions. The page the user chose (`setTabPage`, synced through the
  *   account) wins; else the first candidate by install date.
- * - Phones (and Android tablets) show no tab slot for now. They already
- *   have five tabs: Android's bottom bar throws with a sixth visible tab,
- *   and iOS moves a sixth into "More". `PHONE_TAB` is the one switch for a
- *   later decision ("replace:<tab>" shows the page in place of that tab).
+ * - Phones (and Android tablets) already have five tabs: Android's bottom
+ *   bar throws with a sixth visible tab, and iOS moves a sixth into "More".
+ *   So the user chooses, per extension ("On this phone", the `phoneTab`
+ *   field, synced to the account's other phones): a Library tile (the
+ *   default, no field) or a tab in place of Music, Downloads, Search or
+ *   Library. Home is never replaced. Exactly one tab hides when the page
+ *   shows, so the bar keeps five (`hiddenTriggers`). The first enabled
+ *   extension by install date with a choice and a tab-capable page wins
+ *   (`choosePhoneTab` keeps one choice per account); its page is its chosen
+ *   tab page, else its first. Every other tab-capable page is a Library
+ *   tile on phones. A replaced tab's screens stay one tap away
+ *   (`lib/tab-destination.ts`).
+ * - The phone choice means nothing on iPad, the web, the Mac app and TV:
+ *   they keep the rules below and ignore `phoneTab`.
  * - iPad, the web and the Mac app show the slot (a tab, or an item in the
  *   sidebar) when a page fills it.
  * - TV has no tab bar: the side menu gets an entry per page with
  *   `placement.tab` or `placement.library`, at most `TV_MENU_MAX`.
- * - The Library grid gets a tile per page with `placement.library`, on every
+ * - The Library grid gets a tile per page with `placement.library` (on
+ *   phones also per tab-capable page that is not the tab), on every
  *   platform but TV (TV has the side menu, as for Live TV). Like Live TV, a
  *   page that is a visible tab gets no tile as well.
  *
@@ -27,27 +38,20 @@
 import type { IconName } from '@/components/icon-names';
 import { pagesOf } from '@/extensions/schema';
 import type { InstalledExtension } from '@/extensions/types';
+import { isReplaceableTab, type ReplaceableTab } from '@/lib/tab-destination';
 
 import { pageIconName } from './icons';
 
 /** The platform kinds that place pages differently. */
 export type PlacementPlatform = 'phone' | 'tablet' | 'tv' | 'web' | 'desktop';
 
-/** The phone tabs a page could take the place of. */
-export type ReplaceableTab = '(library)' | '(music)' | '(saved)' | '(search)';
+export type { ReplaceableTab } from '@/lib/tab-destination';
 
-/** What phones do with the tab slot: nothing, or show the page in place of one tab. */
+/** The "On this phone" choice of an extension: a Library tile, or a tab in place of one tab. */
 export type PhoneTab = 'none' | `replace:${ReplaceableTab}`;
-
-/** The phone rule until the maintainer decides (plan, open question 1). */
-export const PHONE_TAB: PhoneTab = 'none';
 
 /** The most extension pages in the TV side menu. */
 export const TV_MENU_MAX = 2;
-
-export interface PlacementOptions {
-  phoneTab?: PhoneTab;
-}
 
 export interface PlacedPage {
   extId: string;
@@ -70,7 +74,7 @@ export interface PagePlacement {
 }
 
 /** The fields of an installed extension the rule reads. */
-export type PlacementExtension = Pick<InstalledExtension, 'manifest' | 'enabled' | 'installedAt' | 'tab'>;
+export type PlacementExtension = Pick<InstalledExtension, 'manifest' | 'enabled' | 'installedAt' | 'tab' | 'phoneTab'>;
 
 export const NO_PLACEMENT: PagePlacement = { tab: null, replaces: null, library: [], tvMenu: [] };
 
@@ -116,10 +120,34 @@ export function tabSlotPage(exts: readonly PlacementExtension[]): PlacedPage | n
   return (tabs.find((c) => c.chosen) ?? tabs[0])?.page ?? null;
 }
 
-/** Where each page shows on this platform. */
-export function placePages(platform: PlacementPlatform, exts: readonly PlacementExtension[], options: PlacementOptions = {}): PagePlacement {
+/** The page a phone shows as a tab, and the tab it takes the place of, or null (every tab-capable page is a tile). */
+export function phoneTabPage(exts: readonly PlacementExtension[], env: { downloads: boolean } = { downloads: true }): { page: PlacedPage; replaces: ReplaceableTab } | null {
+  const all = candidates(exts);
+  const ordered = exts.filter((e) => e.enabled && isReplaceableTab(e.phoneTab)).sort((a, b) => a.installedAt - b.installedAt);
+  for (const e of ordered) {
+    const replaces = e.phoneTab as ReplaceableTab;
+    // No Downloads tab to take the place of.
+    if (replaces === '(saved)' && !env.downloads) continue;
+    const own = all.filter((c) => c.tab && c.page.extId === e.manifest.id);
+    const pick = own.find((c) => c.page.pageId === e.tab) ?? own[0];
+    if (pick) return { page: pick.page, replaces };
+  }
+  return null;
+}
+
+/** Where each page shows on this platform. `downloads`: this device has a Downloads tab (phones do). */
+export function placePages(platform: PlacementPlatform, exts: readonly PlacementExtension[], env: { downloads: boolean } = { downloads: true }): PagePlacement {
   const all = candidates(exts);
   if (!all.length) return NO_PLACEMENT;
+
+  if (platform === 'phone') {
+    const pick = phoneTabPage(exts, env);
+    const tab = pick?.page ?? null;
+    // The default: a tab-capable page is a Library tile.
+    const library = all.filter((c) => (c.library || c.tab) && !same(c.page, tab)).map((c) => c.page);
+    return { tab, replaces: pick?.replaces ?? null, library, tvMenu: [] };
+  }
+
   const slot = tabSlotPage(exts);
 
   if (platform === 'tv') {
@@ -131,11 +159,63 @@ export function placePages(platform: PlacementPlatform, exts: readonly Placement
     return { tab: null, replaces: null, library: [], tvMenu: menu };
   }
 
-  const phoneTab = options.phoneTab ?? PHONE_TAB;
-  const replaces = platform === 'phone' && phoneTab !== 'none' ? (phoneTab.slice('replace:'.length) as ReplaceableTab) : null;
-  const tab = platform === 'phone' && !replaces ? null : slot;
+  // iPad, the web and the Mac app: the slot, and never a replaced tab (a phone's choice means nothing here).
+  const tab = slot;
   const library = all.filter((c) => c.library && !same(c.page, tab)).map((c) => c.page);
-  return { tab, replaces: tab ? replaces : null, library, tvMenu: [] };
+  return { tab, replaces: null, library, tvMenu: [] };
+}
+
+/** The native tab triggers, in the order of the bar. */
+export type TabTrigger = '(home)' | '(library)' | '(music)' | '(ext)' | '(live)' | '(saved)' | '(search)';
+
+/**
+ * Which tab triggers are hidden. On a phone the extension tab shows only in
+ * place of one tab, so the bar never has more than five (Android throws on
+ * a sixth). `liveTab`: Live TV is a tab (web, the Mac app).
+ */
+export function hiddenTriggers(p: Pick<PagePlacement, 'tab' | 'replaces'>, env: { downloads: boolean; liveTab: boolean }): Record<TabTrigger, boolean> {
+  const r = p.tab ? p.replaces : null;
+  return {
+    '(home)': false,
+    '(library)': r === '(library)',
+    '(music)': r === '(music)',
+    '(ext)': !p.tab,
+    '(live)': !env.liveTab,
+    '(saved)': !env.downloads || r === '(saved)',
+    '(search)': r === '(search)',
+  };
+}
+
+/** The "On this phone" choices, in the order the Settings sheet lists them. */
+export function phoneTabChoices(env: { downloads: boolean }): { value: PhoneTab; label: string }[] {
+  const out: { value: PhoneTab; label: string }[] = [
+    { value: 'none', label: 'Library tile' },
+    { value: 'replace:(music)', label: 'Tab in place of Music' },
+  ];
+  if (env.downloads) out.push({ value: 'replace:(saved)', label: 'Tab in place of Downloads' });
+  out.push({ value: 'replace:(search)', label: 'Tab in place of Search' }, { value: 'replace:(library)', label: 'Tab in place of Library' });
+  return out;
+}
+
+/** The choice an extension's row shows: a tab only when its page is the phone tab now. */
+export function phoneTabValue(placement: Pick<PagePlacement, 'tab' | 'replaces'>, extId: string): PhoneTab {
+  return placement.tab?.extId === extId && placement.replaces ? `replace:${placement.replaces}` : 'none';
+}
+
+/**
+ * The `setPhoneTab` calls for one choice on one extension: the choice on
+ * it, and no choice on every other extension that has one (one phone tab
+ * per account).
+ */
+export function choosePhoneTab(exts: readonly Pick<InstalledExtension, 'manifest' | 'phoneTab'>[], extId: string, choice: PhoneTab): { extId: string; tab: ReplaceableTab | undefined }[] {
+  const want = choice === 'none' ? undefined : (choice.slice('replace:'.length) as ReplaceableTab);
+  const out: { extId: string; tab: ReplaceableTab | undefined }[] = [];
+  for (const e of exts) {
+    if (e.manifest.id === extId) {
+      if (e.phoneTab !== want) out.push({ extId, tab: want });
+    } else if (want && e.phoneTab !== undefined) out.push({ extId: e.manifest.id, tab: undefined });
+  }
+  return out;
 }
 
 /** The pages that may be chosen as the tab, of one extension (the Settings choice). */

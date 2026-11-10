@@ -15,6 +15,7 @@ import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
 import { mountedCut, rowsToMount } from '@/features/tv/shelf-window';
 import { ProfileMenu } from '@/features/profile/profile-menu';
+import { LibraryHeaderButton } from '@/features/extensions/moved-tab-tile';
 import { OfflineBanner } from '@/features/offline/offline-banner';
 import { HomeTogetherSheet, homeTogether, NearbyHomeCard, TogetherHeaderButton } from '@/features/together/home-entry';
 import { useRootScreenOptions } from '@/lib/stack-options';
@@ -175,6 +176,8 @@ export default function HomeScreen() {
           title: 'Home',
           headerRight: () => (
             <View style={s.headerRow}>
+              {/* Only while an extension tab takes the place of Library on this phone. */}
+              <LibraryHeaderButton />
               {homeTogether ? <TogetherHeaderButton /> : null}
               <Touchable
                 onPress={() => setAccounts(true)}

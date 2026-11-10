@@ -38,6 +38,7 @@ import { pendingInvites, readRecords } from '@/invite/records';
 import { useConnection } from '@/servers/connection';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
 import { openTogetherSheet, useTogetherStore } from '@/together/store';
+import { openTabRoot } from '@/features/extensions/tab-nav';
 
 import { connectionPlace, type MenuRow, type MenuRowId, menuRows, roomPeople } from './menu-model';
 
@@ -99,7 +100,7 @@ function ProfileMenuOpen({ onClose }: { onClose: () => void }) {
       case 'remote':
         return close(() => openRemote());
       case 'downloads':
-        return close(() => router.navigate('/(tabs)/(saved)/downloads'));
+        return close(() => openTabRoot('downloads'));
       case 'admin':
         return close(() => openAdmin(session.serverId));
       case 'extensions':

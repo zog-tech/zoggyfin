@@ -12,6 +12,8 @@ import { secureStore } from '@/storage/secure';
 
 import type { Grants } from './http';
 import { claimAccount, EMPTY_EXTENSIONS_DATA, EXTENSIONS_KEY, EXTENSIONS_KEY_V1, type ExtensionsData, installedElsewhere, loadExtensionsData } from './migrate';
+import type { ReplaceableTab } from '@/lib/tab-destination';
+
 import type { Manifest, SettingField, SettingSource, SkipMode } from './schema';
 import { type AccountExtensions, EMPTY_ACCOUNT_EXTENSIONS, type InstalledExtension, type SettingValue, type Values } from './types';
 
@@ -112,6 +114,17 @@ export function setTabPage(id: string, page: string | undefined): void {
       if (e.manifest.id !== id) return e;
       const { tab: _old, ...rest } = e;
       return page ? { ...rest, tab: page } : rest;
+    }),
+  }));
+}
+
+/** Phones only: the tab the extension's page takes the place of (undefined: a Library tile). */
+export function setPhoneTab(id: string, tab: ReplaceableTab | undefined): void {
+  useExtensions.setState((st) => ({
+    list: st.list.map((e) => {
+      if (e.manifest.id !== id) return e;
+      const { phoneTab: _old, ...rest } = e;
+      return tab ? { ...rest, phoneTab: tab } : rest;
     }),
   }));
 }

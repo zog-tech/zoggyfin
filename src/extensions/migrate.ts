@@ -15,17 +15,24 @@
  * - A saved manifest goes through `parseManifest` again, so a v1-era shape
  *   (no `pages`) gets the current model. One that no longer parses but has
  *   the basic fields is kept as it is (`pagesOf` reads it).
+ * - v3 adds the phone-only `phoneTab` per extension ("On this phone").
+ *   A v2 entry has none: its tab page stays a Library tile on phones. An
+ *   unknown value is dropped (the Library tile).
  * - Bad entries are dropped one by one. Nothing here throws.
  *
  * Pure, so it is unit-tested.
  */
+import { isReplaceableTab } from '@/lib/tab-destination';
+
 import { readGrants } from './grants';
 import { parseManifest, SKIP_MODES, type Manifest, type SkipMode } from './schema';
 import { type AccountExtensions, type ChoiceOptions, EMPTY_ACCOUNT_EXTENSIONS, type InstalledExtension, type Values } from './types';
 
 export const EXTENSIONS_KEY_V1 = 'extensions.v1';
 export const EXTENSIONS_KEY = 'extensions.v2';
-export const EXTENSIONS_SCHEMA_VERSION = 2;
+export const EXTENSIONS_SCHEMA_VERSION = 3;
+/** The first version with one list per account: `extensions.v2` holds it from this version on. */
+const PER_ACCOUNT_VERSION = 2;
 
 export interface ExtensionsData {
   schemaVersion: typeof EXTENSIONS_SCHEMA_VERSION;
@@ -65,6 +72,7 @@ function readInstalled(raw: unknown): InstalledExtension | null {
     installedAt: typeof raw.installedAt === 'number' && Number.isFinite(raw.installedAt) ? raw.installedAt : 0,
   };
   if (str(raw.tab)) ext.tab = raw.tab;
+  if (isReplaceableTab(raw.phoneTab)) ext.phoneTab = raw.phoneTab;
   return ext;
 }
 
@@ -126,11 +134,15 @@ const isEmpty = (a: AccountExtensions) => !a.list.length && !Object.keys(a.value
  * true when the caller must write the result.
  */
 export function loadExtensionsData(v2: unknown, v1: unknown, accounts: readonly string[]): { data: ExtensionsData; migrated: boolean } {
-  if (isObject(v2) && typeof v2.schemaVersion === 'number' && v2.schemaVersion >= EXTENSIONS_SCHEMA_VERSION) {
+  if (isObject(v2) && typeof v2.schemaVersion === 'number' && v2.schemaVersion >= PER_ACCOUNT_VERSION) {
     const out: Record<string, AccountExtensions> = {};
     if (isObject(v2.accounts)) for (const [key, a] of Object.entries(v2.accounts)) if (key) out[key] = readAccountExtensions(a);
     const unclaimed = v2.unclaimed ? readAccountExtensions(v2.unclaimed) : null;
-    return { data: { schemaVersion: EXTENSIONS_SCHEMA_VERSION, accounts: out, unclaimed: unclaimed && !isEmpty(unclaimed) ? unclaimed : null }, migrated: false };
+    // v2 → v3: the same shape; no entry has `phoneTab` yet. Saved again as v3.
+    return {
+      data: { schemaVersion: EXTENSIONS_SCHEMA_VERSION, accounts: out, unclaimed: unclaimed && !isEmpty(unclaimed) ? unclaimed : null },
+      migrated: v2.schemaVersion < EXTENSIONS_SCHEMA_VERSION,
+    };
   }
   const device = readAccountExtensions(v1);
   if (isEmpty(device)) return { data: EMPTY_EXTENSIONS_DATA, migrated: v1 !== null && v1 !== undefined };

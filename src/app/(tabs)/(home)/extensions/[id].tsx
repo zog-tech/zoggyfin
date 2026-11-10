@@ -12,7 +12,7 @@ import { OptionSheet } from '@/components/option-sheet';
 import { askText } from '@/extensions/prompts';
 import { currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
 import { describePermission, pagesOf, safeHost, type SettingField } from '@/extensions/schema';
-import { extensionsState, getExtension, removeExtension, setEnabled, setGrant, setTabPage, setValue, upsertExtension, useExtensions } from '@/extensions/store';
+import { extensionsState, getExtension, removeExtension, setEnabled, setGrant, setPhoneTab, setTabPage, setValue, upsertExtension, useExtensions } from '@/extensions/store';
 import { pageHref } from '@/features/extensions/nav';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
 import { ExtensionSkipSettings } from '@/features/settings/skip-section';
@@ -25,12 +25,25 @@ import { mediaColors, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { pageIconName } from '@/features/extensions/icons';
-import { chooseTabPage, tabChoices, tabPagesOf, tabSlotPage } from '@/features/extensions/placement';
-import { PLACEMENT_PLATFORM } from '@/features/extensions/use-placement';
+import { choosePhoneTab, chooseTabPage, type PhoneTab, phoneTabChoices, phoneTabValue, tabChoices, tabPagesOf, tabSlotPage } from '@/features/extensions/placement';
+import { PLACEMENT_PLATFORM, usePagePlacement } from '@/features/extensions/use-placement';
+import { TAB_INFO } from '@/lib/tab-destination';
+
+const PHONE_CHOICES = phoneTabChoices({ downloads: features.downloads });
+
+/** The footer of the "On this phone" row: what each choice keeps reachable. */
+function phoneFooter(value: PhoneTab): string {
+  const base = 'A tab takes the place of one tab, so the bar keeps five. Your other phones get this choice; iPad, the web, the Mac app and TV keep their own layout.';
+  if (value === 'none') return `The page is a tile in Library. ${base}`;
+  const tab = value.slice('replace:'.length) as keyof typeof TAB_INFO;
+  const where = tab === '(library)' ? 'Library stays one tap away from the button at the top of Home.' : `${TAB_INFO[tab].title} stays one tap away from its tile in Library.`;
+  return `${where} ${base}`;
+}
 
 /** Where the chosen tab page shows on this device (features/extensions/placement.ts). */
 function tabFooter(): string {
   if (PLACEMENT_PLATFORM === 'tv') return 'One extension page can be a tab. On TV it comes first in the side menu. The choice follows your account.';
+  if (PLACEMENT_PLATFORM === 'phone') return 'The page that is a tab on iPad, the web and the Mac app. On this phone, "On this phone" decides.';
   return 'One extension page can be a tab on iPad, the web and the Mac app. The choice follows your account to your other devices.';
 }
 
@@ -49,6 +62,8 @@ export default function ExtensionScreen() {
   const options = useExtensions((st) => st.options[id]) ?? NO_OPTIONS;
   const [picker, setPicker] = useState<SettingField | null>(null);
   const [tabPicker, setTabPicker] = useState(false);
+  const [phonePicker, setPhonePicker] = useState(false);
+  const placement = usePagePlacement();
   const list = useExtensions((st) => st.list);
   const [checking, setChecking] = useState(false);
 
@@ -126,6 +141,20 @@ export default function ExtensionScreen() {
   const chooseTab = (pageId: string) => {
     for (const u of chooseTabPage(extensionsState().list, m.id, pageId)) setTabPage(u.extId, u.page);
   };
+  // "On this phone": phones only (Android tablets count as phones), for an extension with a tab-capable page.
+  const phoneRow = PLACEMENT_PLATFORM === 'phone' && ownTabPages.length > 0;
+  const phoneValue = phoneTabValue(placement, m.id);
+  const choosePhone = (v: PhoneTab) => {
+    const updates = choosePhoneTab(extensionsState().list, m.id, v);
+    if (!updates.length) return;
+    // The tab bar changes at once (the tab navigator remounts and opens Home); playback goes on.
+    for (const u of updates) setPhoneTab(u.extId, u.tab);
+    const tab = v === 'none' ? null : (v.slice('replace:'.length) as keyof typeof TAB_INFO);
+    toast(
+      !tab ? `${m.name} is a tile in Library again.` : tab === '(library)' ? `${m.name} is a tab now. Library is at the top of Home.` : `${m.name} is a tab now. ${TAB_INFO[tab].title} is in Library.`,
+      { icon: 'iphone' },
+    );
+  };
 
   return (
     <>
@@ -182,6 +211,18 @@ export default function ExtensionScreen() {
 
           <ExtensionSkipSettings extensionId={m.id} />
 
+          {phoneRow ? (
+            <Group footer={phoneFooter(phoneValue)}>
+              <SettingsRow
+                icon="iphone"
+                label="On this phone"
+                value={PHONE_CHOICES.find((o) => o.value === phoneValue)?.label ?? 'Library tile'}
+                onPress={() => setPhonePicker(true)}
+                last
+              />
+            </Group>
+          ) : null}
+
           {tabChoice.length ? (
             <Group footer={tabFooter()}>
               <SettingsRow icon="square.stack" label="Show as tab" value={slotHere?.title ?? 'Another extension'} onPress={() => setTabPicker(true)} last />
@@ -231,6 +272,17 @@ export default function ExtensionScreen() {
           setTabPicker(false);
         }}
         onClose={() => setTabPicker(false)}
+      />
+      <OptionSheet
+        visible={phonePicker}
+        title="On this phone"
+        options={PHONE_CHOICES}
+        selected={[phoneValue]}
+        onSelect={(v) => {
+          setPhonePicker(false);
+          choosePhone(v as PhoneTab);
+        }}
+        onClose={() => setPhonePicker(false)}
       />
     </>
   );

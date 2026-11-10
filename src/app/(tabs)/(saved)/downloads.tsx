@@ -30,6 +30,7 @@ import {
 import { useExtensions } from '@/extensions/store';
 import { useServerNames } from '@/features/servers/use-server-names';
 import { OfflineBanner } from '@/features/offline/offline-banner';
+import { openTabRoot, useTabRootPlace } from '@/features/extensions/tab-nav';
 import { confirmDestructive } from '@/lib/confirm';
 import { formatBytes, formatEta, formatSpeed } from '@/lib/format';
 import { toast } from '@/lib/toast';
@@ -57,12 +58,14 @@ export default function DownloadsScreen() {
   const signedIn = useSessionStore((st) => !!st.session);
   // A slim header only for the "Sign in" link. The options keep the iPad sidebar out of the content.
   const root = useRootScreenOptions({ bar: !signedIn, background: c.bgGrouped });
+  // In the Library stack when an extension tab takes the place of Downloads on this phone (lib/tab-destination.ts).
+  const pushed = useTabRootPlace('(saved)', 'downloads');
 
   return (
     <>
       <Stack.Screen
         options={{
-          ...root,
+          ...(pushed ? { headerLargeTitleEnabled: false, headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } } : root),
           title: 'Downloads',
           ...(signedIn
             ? null
@@ -91,7 +94,7 @@ export default function DownloadsScreen() {
                 icon="arrow.down.circle"
                 title="No downloads yet"
                 message="Tap the download button on any movie, episode or album."
-                action={signedIn ? { title: 'Browse library', onPress: () => router.navigate('/(tabs)/(library)/libraries') } : undefined}
+                action={signedIn ? { title: 'Browse library', onPress: () => openTabRoot('library') } : undefined}
                 style={s.empty}
               />
             ) : null}

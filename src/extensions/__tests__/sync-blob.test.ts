@@ -3,6 +3,7 @@
  * seen ledger (no confirm-screen loop), first-sync seeding, conflicts by
  * stamp, secrets that never sync, and the CustomPrefs chunks.
  */
+import { placePages } from '@/features/extensions/placement';
 import { chunkCodec, TOMBSTONE_TTL_MS } from '@/lib/account-blob';
 
 import {
@@ -293,5 +294,57 @@ describe('reading and writing the blob', () => {
   it('reads any ledger and never throws', () => {
     expect(migrateExtMeta(null)).toEqual(EMPTY_EXT_META);
     expect(migrateExtMeta({ seeded: true, extensions: { a: { at: 1 }, b: 'x' }, seen: { a: { added: 1, at: 2 }, b: { added: 'x' } } })).toMatchObject({ seeded: true, extensions: { a: { at: 1 } }, seen: { a: { added: 1, at: 2 } } });
+  });
+});
+
+describe('the phone-only tab choice', () => {
+  it('goes to the other phones of the account', () => {
+    const phoneA = device([ext(HELLO)]);
+    const phoneB = device([ext(HELLO)]);
+    let account = sync(phoneA, null, T0).blob;
+    account = sync(phoneB, account, T0 + 1).blob;
+    // Phone A chooses "Tab in place of Music".
+    phoneA.local = { ...phoneA.local, list: [ext(HELLO, 100, { phoneTab: '(music)' })] };
+    const pushed = sync(phoneA, account, T0 + 10);
+    expect(pushed.pushed).toBe(true);
+    expect(pushed.blob.extensions[HELLO].val?.phoneTab).toBe('(music)');
+    // Phone B gets it.
+    sync(phoneB, pushed.blob, T0 + 20);
+    expect(phoneB.local.list[0].phoneTab).toBe('(music)');
+    // Back to the Library tile on phone B: phone A gets that too.
+    phoneB.local = { ...phoneB.local, list: [ext(HELLO)] };
+    const back = sync(phoneB, pushed.blob, T0 + 30);
+    expect(back.blob.extensions[HELLO].val?.phoneTab).toBeUndefined();
+    sync(phoneA, back.blob, T0 + 40);
+    expect(phoneA.local.list[0].phoneTab).toBeUndefined();
+  });
+
+  it('a tablet or a desktop keeps the value as it got it and acts on nothing', () => {
+    const phone = device([ext(HELLO, 100, { phoneTab: '(search)' })]);
+    const tablet = device([ext(HELLO)]);
+    let account = sync(phone, null, T0).blob;
+    sync(tablet, account, T0 + 1);
+    expect(tablet.local.list[0].phoneTab).toBe('(search)');
+    // A change on the tablet (a setting) sends the phone choice along unchanged.
+    tablet.local = { ...tablet.local, values: { [HELLO]: { user: 'Jane Doe' } } };
+    account = sync(tablet, account, T0 + 10).blob;
+    expect(account.extensions[HELLO].val).toMatchObject({ phoneTab: '(search)', settings: { user: 'Jane Doe' } });
+    // The placement on the tablet, the web, the Mac app and TV is the same as with no choice.
+    const without = tablet.local.list.map(({ phoneTab: _p, ...e }) => e);
+    for (const p of ['tablet', 'web', 'desktop', 'tv'] as const) expect(placePages(p, tablet.local.list)).toEqual(placePages(p, without));
+  });
+
+  it('an install from the account takes the choice', () => {
+    const val = { ...syncedOf({ list: [ext(HELLO, 7, { phoneTab: '(saved)' })], values: {}, skip: {} }, HELLO)! };
+    expect(val.phoneTab).toBe('(saved)');
+    expect(accountInstall(ext(HELLO), {}, val).ext.phoneTab).toBe('(saved)');
+    expect(accountInstall(ext(HELLO, 1, { phoneTab: '(music)' }), {}, { ...val, phoneTab: undefined }).ext.phoneTab).toBeUndefined();
+  });
+
+  it('drops a value it does not know (Home is never replaced)', () => {
+    const raw = (phoneTab: unknown) => ({ schemaVersion: 1, extensions: { [HELLO]: { at: 5, val: { manifestUrl: 'http://192.0.2.10/x.json', enabled: true, addedAt: 1, phoneTab } } }, skip: {} });
+    expect(migrateExtBlob(raw('(home)'))?.extensions[HELLO].val?.phoneTab).toBeUndefined();
+    expect(migrateExtBlob(raw(42))?.extensions[HELLO].val?.phoneTab).toBeUndefined();
+    expect(migrateExtBlob(raw('(library)'))?.extensions[HELLO].val?.phoneTab).toBe('(library)');
   });
 });

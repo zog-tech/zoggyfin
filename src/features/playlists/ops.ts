@@ -16,6 +16,7 @@ import type { BaseItemDto } from '@/api/types';
 import { useSessionStore } from '@/auth/session-store';
 import { toast } from '@/lib/toast';
 import { readJson, writeJson } from '@/storage/json';
+import { tabGroupNow } from '@/features/extensions/tab-nav';
 
 import { moveEntry, playlistMediaFor, playlistName, removeEntries, rollbackTo, touchRecent } from './logic';
 
@@ -57,7 +58,7 @@ function fail(e: unknown) {
 function openAction(id: string, name: string) {
   return {
     label: 'Open',
-    onPress: () => router.navigate({ pathname: '/(tabs)/(music)/item/[id]', params: { id, type: 'Playlist', name } } as never),
+    onPress: () => router.navigate({ pathname: `/(tabs)/${tabGroupNow('(music)')}/item/[id]`, params: { id, type: 'Playlist', name } } as never),
   };
 }
 

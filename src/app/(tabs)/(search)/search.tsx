@@ -19,6 +19,7 @@ import { useDownloadsStore } from '@/downloads/store';
 import { TrackRow } from '@/features/detail/rows';
 import { browseGenres, inGenre } from '@/features/genres/genres';
 import { OfflineBanner } from '@/features/offline/offline-banner';
+import { useTabRootPlace } from '@/features/extensions/tab-nav';
 import { useServerNames } from '@/features/servers/use-server-names';
 import {
   filterSections,
@@ -69,6 +70,8 @@ export default function SearchScreen() {
   const l = useLayout();
   // iOS and Android: the native search field lives in a slim header. Web and TV draw their own field.
   const root = useRootScreenOptions({ bar: !ownField });
+  // In the Library stack when an extension tab takes the place of Search on this phone (lib/tab-destination.ts).
+  const pushed = useTabRootPlace('(search)', 'search');
   const [text, setText] = useState('');
   const [filter, setFilter] = useState<SearchFilter>('all');
   // A movie and show genre (its name): the search keeps to it, and with no words lists it.
@@ -158,7 +161,7 @@ export default function SearchScreen() {
     <>
       <Stack.Screen
         options={{
-          ...root,
+          ...(pushed ? { headerLargeTitleEnabled: false } : root),
           title: 'Search',
           headerSearchBarOptions: ownField
             ? undefined

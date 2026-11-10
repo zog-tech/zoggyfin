@@ -3,6 +3,8 @@
  * Jellyfin account (server Id + user Id); `store.ts` shows the one of the
  * signed-in account, `migrate.ts` reads every saved version.
  */
+import type { ReplaceableTab } from '@/lib/tab-destination';
+
 import type { Grants } from './http';
 import type { Manifest, SkipMode } from './schema';
 
@@ -14,6 +16,12 @@ export interface InstalledExtension {
   installedAt: number;
   /** The page the user chose to show as a tab, if any (synced). */
   tab?: string;
+  /**
+   * Phones only ("On this phone"): show the extension's tab page as a tab in
+   * place of this tab. None: a Library tile. Synced, so the account's other
+   * phones get it; iPad, the web, the Mac app and TV ignore it.
+   */
+  phoneTab?: ReplaceableTab;
 }
 
 export type SettingValue = string | boolean;

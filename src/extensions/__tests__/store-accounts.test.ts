@@ -22,7 +22,7 @@ jest.mock('@/storage/secure', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { accountExtensions, bindAccount, effectiveValues, extensionsState, getExtension, removeExtension, resetExtensionsForTests, setEnabled, setSkipMode, setTabPage, setValue, upsertExtension, useExtensions } from '../store';
+import { accountExtensions, bindAccount, effectiveValues, extensionsState, getExtension, removeExtension, resetExtensionsForTests, setEnabled, setPhoneTab, setSkipMode, setTabPage, setValue, upsertExtension, useExtensions } from '../store';
 // eslint-disable-next-line import/first
 import { manifest } from '../test-utils/fixtures';
 // eslint-disable-next-line import/first
@@ -136,5 +136,27 @@ describe('extension store per account', () => {
     expect(saved().accounts[A].skip).toEqual({ 'one:promo': 'auto' });
     removeExtension('one');
     expect(extensionsState().skip).toEqual({});
+  });
+
+  it('saves the phone tab choice with the account, and a removal or another account gives the tab back', () => {
+    bindAccount(A, [A, B]);
+    upsertExtension(ext('one'));
+    setPhoneTab('one', '(music)');
+    expect(getExtension('one')?.phoneTab).toBe('(music)');
+    expect(saved().schemaVersion).toBe(3);
+    expect(saved().accounts[A].list[0].phoneTab).toBe('(music)');
+    // Account B has no such choice.
+    bindAccount(B, [A, B]);
+    expect(extensionsState().list).toEqual([]);
+    bindAccount(A, [A, B]);
+    expect(getExtension('one')?.phoneTab).toBe('(music)');
+    // Turned off: the choice stays for later, the placement ignores it (placement.test.ts).
+    setEnabled('one', false);
+    expect(getExtension('one')?.phoneTab).toBe('(music)');
+    setPhoneTab('one', undefined);
+    expect(getExtension('one')).not.toHaveProperty('phoneTab');
+    setPhoneTab('one', '(search)');
+    removeExtension('one');
+    expect(saved().accounts[A].list).toEqual([]);
   });
 });

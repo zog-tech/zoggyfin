@@ -6,7 +6,10 @@
  * (`lib/account-blob.ts`).
  *
  * - Per extension: the manifest URL, on or off, the grants, the settings
- *   that are not secret, the tab page and when it was added. Secret
+ *   that are not secret, the tab page, the phone-only tab choice
+ *   (`phoneTab`) and when it was added. Every device keeps and sends
+ *   `phoneTab` as it got it; only phones act on it (`placement.ts`). The
+ *   field is optional, so the blob stays version 1: an older app drops it. Secret
  *   settings never go into the blob (they stay in this device's secure
  *   store). The manifest itself never goes either: a device that installs
  *   from the account loads it from the URL.
@@ -48,6 +51,8 @@ import {
   stampsOf,
 } from '@/lib/account-blob';
 
+import { isReplaceableTab, type ReplaceableTab } from '@/lib/tab-destination';
+
 import type { Grants } from '../http';
 import { SKIP_MODES, type Manifest, type SkipMode } from '../schema';
 import type { AccountExtensions, InstalledExtension, Values } from '../types';
@@ -71,6 +76,8 @@ export interface SyncedExtension {
   settings: Values;
   /** The page shown as a tab. */
   tab?: string;
+  /** Phones only: the tab the page takes the place of. */
+  phoneTab?: ReplaceableTab;
   /** When it was added (the install's `installedAt`): a new add has a new one. */
   addedAt: number;
 }
@@ -130,6 +137,7 @@ export function syncedOf(local: LocalExtensions, id: string): SyncedExtension | 
     addedAt: e.installedAt,
   };
   if (e.tab) out.tab = e.tab;
+  if (e.phoneTab) out.phoneTab = e.phoneTab;
   return out;
 }
 
@@ -346,7 +354,9 @@ export function markSeen(meta: ExtSyncMeta, offers: readonly Offer[]): ExtSyncMe
 export function accountInstall(ext: InstalledExtension, values: Values | undefined, val: SyncedExtension): { ext: InstalledExtension; values: Values } {
   const next: InstalledExtension = { ...ext, enabled: val.enabled, installedAt: val.addedAt };
   delete next.tab;
+  delete next.phoneTab;
   if (val.tab) next.tab = val.tab;
+  if (val.phoneTab) next.phoneTab = val.phoneTab;
   const secret = secretKeys(ext.manifest);
   const out: Values = {};
   for (const [k, v] of Object.entries(values ?? {})) if (secret.has(k)) out[k] = v;
@@ -372,7 +382,9 @@ export function applyUpdates(local: LocalExtensions, plan: Pick<ApplyPlan, 'upda
     if (!e) continue;
     const next: InstalledExtension = { ...e, manifestUrl: val.manifestUrl, enabled: val.enabled, grants: { ...val.grants }, installedAt: val.addedAt };
     delete next.tab;
+    delete next.phoneTab;
     if (val.tab) next.tab = val.tab;
+    if (val.phoneTab) next.phoneTab = val.phoneTab;
     list = list.map((x) => (x === e ? next : x));
     const secret = secretKeys(e.manifest);
     const kept: Values = {};
@@ -401,6 +413,7 @@ function syncedValue(_id: string, v: unknown): SyncedExtension | null {
     addedAt: isNum(v.addedAt) ? v.addedAt : 0,
   };
   if (typeof v.tab === 'string' && v.tab) out.tab = v.tab;
+  if (isReplaceableTab(v.phoneTab)) out.phoneTab = v.phoneTab;
   return out;
 }
 

@@ -16,7 +16,7 @@ import { Touchable } from '@/components/touchable';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, radius, useStyles, useTheme } from '@/theme';
 
-import { pageHref } from './nav';
+import { pageHref, useExtGroup } from './nav';
 import { type PlacedPage, pageTileId } from './placement';
 import { usePagePlacement } from './use-placement';
 
@@ -45,6 +45,8 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const height = (width * 9) / 16;
+  // The Library stack, or Home when the grid shows there (Library replaced on a phone).
+  const group = useExtGroup();
   return (
     <Touchable
       kind="tile"
@@ -52,7 +54,7 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
       // TV: the lit caption strip is the focus mark (design system §7.19).
       ring={!isTV}
       firstFocus={preferredFocus}
-      onPress={() => router.push(pageHref('(library)', page.extId, page.pageId))}
+      onPress={() => router.push(pageHref(group === '(home)' ? '(home)' : '(library)', page.extId, page.pageId))}
       accessibilityRole="button"
       accessibilityLabel={`${page.title}, ${page.extensionName}`}
       containerStyle={{ width }}>

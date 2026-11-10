@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
@@ -10,6 +9,7 @@ import { nearbySupported } from '@/together/nearby';
 import { openTogetherSheet } from '@/together/store';
 import { useOfflineEntries } from './use-offline-entries';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
+import { openTabRoot } from '@/features/extensions/tab-nav';
 
 /**
  * The offline banner (design system §7.13), at the top of a tab's content
@@ -43,7 +43,7 @@ export function OfflineBanner({ flush, entries: withEntries }: { flush?: boolean
       {showDownloads || showJoin ? (
         <View style={s.links}>
           {showDownloads ? (
-            <Touchable onPress={() => router.navigate('/downloads')} radius={8} hitSlop={6} accessibilityRole="button">
+            <Touchable onPress={() => openTabRoot('downloads')} radius={8} hitSlop={6} accessibilityRole="button">
               <Text style={s.link}>{`Downloads · ${entries.count}`}</Text>
             </Touchable>
           ) : null}

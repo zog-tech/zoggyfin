@@ -35,6 +35,7 @@ import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
+import { openTabRoot } from '@/features/extensions/tab-nav';
 
 export default function SettingsScreen() {
   const styles = useStyles(makeSettingsStyles);
@@ -268,7 +269,7 @@ function DownloadsSection() {
         icon="internaldrive"
         label="On this device"
         value={`${count} ${count === 1 ? 'item' : 'items'} · ${formatBytes(appBytes)}`}
-        onPress={() => router.navigate('/(tabs)/(saved)/downloads')}
+        onPress={() => openTabRoot('downloads')}
         last
       />
       <OptionSheet
