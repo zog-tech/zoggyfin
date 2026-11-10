@@ -704,6 +704,8 @@ the detail description (8 s at most) and shows:
   and the device saves files (not TV and not the plain web).
 - The buttons of `actions`. `icon` is an icon name of the app
   (`src/components/icon-names.ts`); an unknown name shows a default icon.
+  The app knows common button names, for example `hand.thumbsup`, `bell`, `clock`, `bookmark`,
+  `star`, `eye`, `flag` and `square.and.arrow.up`, each with a `.fill` form where it makes sense.
 - The `sections`, as on a page. A row is the default. A last `grid` or `list`
   scrolls with the page and asks for more. A `grid` or `list` that is not last
   shows its first entries with no "See all".

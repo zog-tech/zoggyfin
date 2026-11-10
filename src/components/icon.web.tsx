@@ -4,6 +4,18 @@ import type { LucideIcon } from 'lucide-react';
 import ALargeSmall from 'lucide-react/dist/esm/icons/a-large-small';
 import Palette from 'lucide-react/dist/esm/icons/palette';
 import Airplay from 'lucide-react/dist/esm/icons/airplay';
+import Bell from 'lucide-react/dist/esm/icons/bell';
+import BellOff from 'lucide-react/dist/esm/icons/bell-off';
+import Bookmark from 'lucide-react/dist/esm/icons/bookmark';
+import Clock from 'lucide-react/dist/esm/icons/clock';
+import Eye from 'lucide-react/dist/esm/icons/eye';
+import EyeOff from 'lucide-react/dist/esm/icons/eye-off';
+import Flag from 'lucide-react/dist/esm/icons/flag';
+import Hand from 'lucide-react/dist/esm/icons/hand';
+import Share from 'lucide-react/dist/esm/icons/share';
+import Star from 'lucide-react/dist/esm/icons/star';
+import ThumbsDown from 'lucide-react/dist/esm/icons/thumbs-down';
+import ThumbsUp from 'lucide-react/dist/esm/icons/thumbs-up';
 import ArrowDown from 'lucide-react/dist/esm/icons/arrow-down';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import ArrowUpDown from 'lucide-react/dist/esm/icons/arrow-up-down';
@@ -247,6 +259,26 @@ const LUCIDE: Record<IconName, Glyph> = {
   keyboard: { icon: Keyboard },
   'textformat.size': { icon: ALargeSmall },
   paintpalette: { icon: Palette },
+  'hand.thumbsup': { icon: ThumbsUp },
+  'hand.thumbsup.fill': { icon: ThumbsUp, filled: true },
+  'hand.thumbsdown': { icon: ThumbsDown },
+  'hand.thumbsdown.fill': { icon: ThumbsDown, filled: true },
+  bell: { icon: Bell },
+  'bell.fill': { icon: Bell, filled: true },
+  'bell.slash': { icon: BellOff },
+  clock: { icon: Clock },
+  'clock.fill': { icon: Clock, filled: true },
+  bookmark: { icon: Bookmark },
+  'bookmark.fill': { icon: Bookmark, filled: true },
+  star: { icon: Star },
+  'star.fill': { icon: Star, filled: true },
+  eye: { icon: Eye },
+  'eye.slash': { icon: EyeOff },
+  flag: { icon: Flag },
+  'square.and.arrow.up': { icon: Share },
+  'play.rectangle.fill': { icon: SquarePlay, filled: true },
+  'xmark.circle': { icon: CircleX },
+  'hand.raised': { icon: Hand },
 };
 
 export function Icon({ name, size, color, weight }: IconProps) {
@@ -265,3 +297,6 @@ export function Icon({ name, size, color, weight }: IconProps) {
     />
   );
 }
+
+/** The icon names this map draws (a test checks it covers every name of icon-names.ts). */
+export const WEB_ICON_NAMES: readonly string[] = Object.keys(LUCIDE);
