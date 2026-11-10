@@ -324,14 +324,15 @@ Version 2 adds native pages, playable media, downloads and skip labels. It
 keeps every version 1 field and contribution except `homeSections`: a Home row
 is now a page section named in `placement.home`.
 
-**Some screens arrive in later releases.** Today the app installs a version 2
-manifest, shows the sections in `placement.home` as Home rows, and shows each
-page with its sections and its search (see "Pages" below). A page opens from
-the extension in Settings → Extensions ("Open <page>") and from the header of
-its Home rows, and in the places its `placement` asks for (see "Where a page
-shows" below). The entry detail page (an entry with `detail` opens a page that
-says "Coming soon"), playback (an entry with `media` says that playback
-arrives in a later update), downloads and skip settings follow.
+The app shows each page with its sections and its search (see "Pages"
+below), the sections in `placement.home` as Home rows, an entry page for an
+entry with `detail`, plays an entry's `media` in the video player (with
+qualities, subtitles, chapters, labelled skip segments and progress reports),
+and saves it on the device (see "Downloads: how it works"). A page opens from
+the extension in Settings → Extensions ("Open <page>"), from the header of its
+Home rows, and in the places its `placement` asks for (see "Where a page
+shows" below). Each skip label has a setting in the "Skip" group of the
+extension's page in Settings → Extensions.
 
 A version 1 manifest is read as version 2 with one page per Home row: the page
 has one `row` section, no tab, no Library tile, and the section on Home.
@@ -461,8 +462,7 @@ it did before.
   extension → "Show as tab" fills it (the choice follows the account to other
   devices). With no choice, the page of the extension installed first fills it.
 - **Phones.** Phones already have five tabs, so a page does not become a tab
-  there for now. It shows as a Library tile (with `library: true`) and its
-  Home rows.
+  there. It shows as a Library tile (with `library: true`) and its Home rows.
 - **TV.** The side menu lists at most two extension pages, before Settings:
   the tab page first, then the pages with `tab` or `library` in install order.
 - The tab and the side menu show the page `title` and `icon`. `icon` is an
@@ -671,6 +671,24 @@ Extensions." With downloads off, Download does not show.
 - Quality choices, `next`, segments and chapters come only from a stream
   description, so a downloaded entry plays without them.
 
+## Try it
+
+1. Start the sample server on a computer (Node 18 or later, no packages):
+   `node examples/extensions/hello/server.mjs`.
+2. In the app (web build on the same computer), Settings → Extensions → **Add
+   an extension**, enter `http://localhost:8787/pages/zoggyfin-extension.json`
+   and tap **Add**.
+3. Open the "Hello Pages" page: scroll the row, the list and the grid, search
+   for "clip 12", open "Sample clip 3", press Save, play it, pick another
+   quality and the English subtitles, and let the intro and credits segments
+   show their Skip button and toast.
+4. On a phone or the Mac app, download an entry and pick one of the two
+   choices; the server's console shows each progress report.
+
+On a phone, start the server with `BASE_URL=http://<your computer's LAN
+address>:8787` and add that address. The section below lists what the
+samples contain.
+
 ## Sample: Hello
 
 `examples/extensions/hello/` has a static manifest, a panel page and a small fake
@@ -701,8 +719,15 @@ Pages") or from the header of its "Latest samples" Home row:
 - A search field: `/pages/search` matches titles and topics, 20 per page.
 - Every entry plays the same 6 s test video, which the sample serves itself
   (`media/sample.mp4`, a test pattern with a tone, with byte ranges). The stream
-  description is at `/pages/entries/<id>/play`, the download description at
-  `/pages/entries/<id>/download`.
+  description is at `/pages/entries/<id>/play`. It has two `qualities` ("High"
+  and "Low", the same file under two URLs), an English WebVTT subtitle file,
+  two segments with the manifest's `skipLabels` (`intro`, default `ask`, and
+  `credits`, default `auto`), two `chapters`, the following sample as `next`,
+  and a `report` path; the server prints each report it gets.
+- The download description at `/pages/entries/<id>/download` offers two
+  `options`; each answers with one file and its subtitles.
+- The page has `tab` and `library` in its `placement`: a tab on iPad, the web
+  and the Mac app, a Library tile on phones, a side menu entry on TV.
 - Every third entry opens an entry page (`/pages/entries/<id>`): Play or
   Resume, a Save button with state that the server keeps in memory until it
   stops (`POST /pages/entries/<id>/save` with `{ "on": {{action.next}} }`; any
@@ -711,5 +736,5 @@ Pages") or from the header of its "Latest samples" Home row:
   progress), Open (with an entry page) and Download.
 - Every third entry has a `detail` page; the others carry `media`.
 
-On a phone, start the server with `BASE_URL=http://<your computer's LAN
-address>:8787` and add that address.
+`src/extensions/__tests__/hello-sample.test.ts` starts the server and reads
+every endpoint through the app's parsers, so the sample stays valid.

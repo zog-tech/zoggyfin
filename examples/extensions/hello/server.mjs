@@ -18,6 +18,14 @@ const video = readFileSync(new URL('./media/sample.mp4', import.meta.url));
 const VIDEO_SECONDS = 6;
 // The Save button of the entry pages: the ids the user saved, in memory only.
 const saved = new Set();
+// The subtitles of the test video (WebVTT), served at /pages/media/sample.en.vtt.
+const SUBTITLES = 'WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nA test pattern.\n\n00:00:02.000 --> 00:00:04.500\nThe tone keeps playing.\n\n00:00:04.500 --> 00:00:06.000\nThe end.\n';
+// The two qualities: the same file under two URLs (a real extension names two encodes).
+const QUALITIES = [
+  { id: 'high', label: 'High' },
+  { id: 'low', label: 'Low' },
+];
+const fileUrl = (q) => `/pages/media/sample.mp4?q=${q}`;
 
 // Fake catalogue for the page sample: neutral titles, no pictures (the app draws generated art).
 const TOPICS = ['Nature', 'Cooking', 'Travel', 'Science', 'Music', 'Craft'];
@@ -51,6 +59,7 @@ function send(res, status, body, type = 'application/json') {
     // A sample: any origin. A real extension lists the app's web origins.
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Range, Authorization, X-Emby-Token, X-Jellyfin-Server-Url, X-Jellyfin-Server-Id, X-Jellyfin-User-Id',
+    'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
   });
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
@@ -91,6 +100,44 @@ function detailOf(e) {
   };
   if (e.progress !== undefined) d.progress = e.progress;
   return d;
+}
+
+// The stream description of a sample entry: every schema version 2 field.
+function streamOf(e) {
+  const i = samples.indexOf(e);
+  const next = samples[(i + 1) % samples.length];
+  return {
+    stream: { url: fileUrl('high'), type: 'file' },
+    qualities: QUALITIES.map((q) => ({ ...q, url: fileUrl(q.id) })),
+    title: e.title,
+    subtitle: 'Hello Pages',
+    duration: VIDEO_SECONDS,
+    subtitles: [{ id: 'en', label: 'English', language: 'en', url: '/pages/media/sample.en.vtt' }],
+    // Labels from `skipLabels` in the manifest: the user picks auto, ask or off per label.
+    segments: [
+      { label: 'intro', start: 0, end: 1.5 },
+      { label: 'credits', start: 4.5, end: VIDEO_SECONDS },
+    ],
+    chapters: [
+      { title: 'Opening', start: 0 },
+      { title: 'Middle', start: 3 },
+    ],
+    next: { id: next.id, title: next.title, subtitle: next.subtitle, media: next.media },
+    report: { path: `/pages/entries/${e.id}/report`, intervalSeconds: 10 },
+  };
+}
+
+// The download description: first two choices, then the file of the chosen one.
+function downloadOf(e, option) {
+  const q = QUALITIES.find((x) => x.id === option);
+  if (!q) return { options: QUALITIES.map((x) => ({ id: x.id, label: `${x.label} (test pattern)`, download: `/pages/entries/${e.id}/download?option=${x.id}` })) };
+  return {
+    url: fileUrl(q.id),
+    bytes: video.length,
+    container: 'mp4',
+    label: q.label,
+    subtitles: [{ label: 'English', language: 'en', url: '/pages/media/sample.en.vtt' }],
+  };
 }
 
 // The test video, with byte ranges (AVPlayer and browsers ask for ranges).
@@ -154,14 +201,20 @@ createServer(async (req, res) => {
     return send(res, 200, pageOf(found, url, 20));
   }
   // Entry pages, their buttons and related rows, stream and download descriptions.
-  const route = /^\/pages\/entries\/(s\d+)(?:\/(play|download|save|related))?$/.exec(url.pathname);
+  const route = /^\/pages\/entries\/(s\d+)(?:\/(play|download|save|related|report))?$/.exec(url.pathname);
   if (route) {
     const [, id, part] = route;
     const e = samples.find((x) => x.id === id);
     if (!e) return send(res, 404, { error: 'No such entry' });
     if (!part) return send(res, 200, detailOf(e));
-    if (part === 'play') return send(res, 200, { stream: { url: '/pages/media/sample.mp4', type: 'file' }, title: e.title, subtitle: 'Hello Pages', duration: VIDEO_SECONDS });
-    if (part === 'download') return send(res, 200, { url: '/pages/media/sample.mp4', bytes: video.length, container: 'mp4', label: 'Test pattern' });
+    if (part === 'play') return send(res, 200, streamOf(e));
+    if (part === 'download') return send(res, 200, downloadOf(e, url.searchParams.get('option')));
+    if (part === 'report' && req.method === 'POST') {
+      // Progress reports: start, progress, pause, resume, seek, stop, finished.
+      const b = await readBody(req);
+      console.log(`report ${id}: ${b.event} at ${b.position} s${b.quality ? ` (${b.quality})` : ''}${b.offline ? ' (offline)' : ''}`);
+      return send(res, 204, '', 'text/plain');
+    }
     if (part === 'related') {
       const i = samples.indexOf(e);
       return send(res, 200, { items: [...samples.slice(i + 1), ...samples.slice(0, i)].slice(0, 8), next: null });
@@ -176,5 +229,6 @@ createServer(async (req, res) => {
     }
   }
   if (url.pathname === '/pages/media/sample.mp4') return sendVideo(req, res);
+  if (url.pathname === '/pages/media/sample.en.vtt') return send(res, 200, SUBTITLES, 'text/vtt; charset=utf-8');
   send(res, 404, { error: 'Not found' });
 }).listen(port, () => console.log(`Hello extension on ${base}`));
