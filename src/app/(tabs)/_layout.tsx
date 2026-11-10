@@ -3,7 +3,7 @@ import type { SFSymbol } from 'expo-symbols';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useDownloadsStore } from '@/downloads/store';
+import { useDownloadsBadge } from '@/downloads/use-badge';
 import { pageTabIcon } from '@/features/extensions/icons';
 import { hiddenTriggers } from '@/features/extensions/placement';
 import { usePagePlacement } from '@/features/extensions/use-placement';
@@ -46,19 +46,6 @@ function FloatingMiniPlayer() {
  * The five native tabs. On iPad and Mac the bar can turn into a sidebar
  * (sidebarAdaptable). Each tab has its own stack.
  */
-/** The Downloads tab badge: active downloads, or "!" when one has failed. */
-function useDownloadsBadge(): string | null {
-  return useDownloadsStore((s) => {
-    let active = 0;
-    let failed = 0;
-    for (const r of Object.values(s.records)) {
-      if (r.state === 'downloading' || r.state === 'queued') active++;
-      else if (r.state === 'failed') failed++;
-    }
-    return active ? String(active) : failed ? '!' : null;
-  });
-}
-
 /** TV: the side menu instead of the tab bar; the mini player floats at the bottom of the content. */
 function TvLayout() {
   const mini = useMiniPlayerVisible();

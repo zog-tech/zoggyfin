@@ -6,7 +6,10 @@
  * first screen in the Library stack (`(library)/more/`). When the page
  * takes the place of Library itself, the Home header shows a Library
  * button instead (`LibraryHeaderButton`), which opens the grid in the Home
- * stack. The routes are in `lib/tab-destination.ts`.
+ * stack. The routes are in `lib/tab-destination.ts`. The Downloads tile
+ * shows the Downloads tab badge (`downloads/badge.ts`): the tab is hidden,
+ * so the tile is where active and failed downloads stay visible. TV has no
+ * downloads and no badge.
  */
 import { router, type Href } from 'expo-router';
 import { type ReactElement, useCallback, useMemo } from 'react';
@@ -16,9 +19,10 @@ import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
 import { TileCaption, TileFocusFill } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
+import { useDownloadsBadge } from '@/downloads/use-badge';
 import { destinationOf, type ReplaceableTab, TAB_INFO, tabRootHref } from '@/lib/tab-destination';
 import { isTV } from '@/platform/tv';
-import { createStyles, type AppTheme, font, radius, spacing, type, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, font, mediaColors, radius, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
 
 import { usePagePlacement, useReplacedTab } from './use-placement';
 
@@ -52,6 +56,9 @@ function MovedTabTile({ tab, by, width, preferredFocus }: { tab: ReplaceableTab;
   const info = TAB_INFO[tab];
   const height = (width * 9) / 16;
   const sub = by ? `Tab bar shows ${by}` : undefined;
+  const downloads = useDownloadsBadge();
+  const badge = tab === '(saved)' && !isTV ? downloads : null;
+  const label = badge === null ? info.title : badge === '!' ? `${info.title}, a download failed` : `${info.title}, ${badge} active`;
   return (
     <Touchable
       kind="tile"
@@ -60,7 +67,7 @@ function MovedTabTile({ tab, by, width, preferredFocus }: { tab: ReplaceableTab;
       firstFocus={preferredFocus}
       onPress={() => router.push(tabRootHref(destinationOf(tab), tab) as Href)}
       accessibilityRole="button"
-      accessibilityLabel={info.title}
+      accessibilityLabel={label}
       containerStyle={{ width }}>
       <TileFocusFill artHeight={height} radius={radius.md} />
       <View style={[s.art, { width, height }]} accessibilityIgnoresInvertColors>
@@ -68,6 +75,11 @@ function MovedTabTile({ tab, by, width, preferredFocus }: { tab: ReplaceableTab;
         <View>
           <Icon name={info.icon} size={Math.round(width * 0.2)} color={c.text2} />
         </View>
+        {badge !== null ? (
+          <View style={s.badge}>
+            <Text style={s.badgeText}>{badge}</Text>
+          </View>
+        ) : null}
       </View>
       <TileCaption title={info.title} sub={sub} />
     </Touchable>
@@ -104,6 +116,20 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     justifyContent: 'center' as const,
     backgroundColor: c.surface2,
   },
+  /** The tile badge of the design system (`components/tile.tsx`). */
+  badge: {
+    position: 'absolute' as const,
+    top: sizes.badgeInset,
+    right: sizes.badgeInset,
+    minWidth: scaled(sizes.badge),
+    height: scaled(sizes.badge),
+    paddingHorizontal: 6,
+    borderRadius: radius.pill,
+    backgroundColor: mediaColors.badgeFill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  badgeText: { ...font(type.caption2, { tabular: true }), color: mediaColors.white },
   headerButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
