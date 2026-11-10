@@ -10,6 +10,9 @@
  *   marked done. When one fails, the screen keeps only the ones not added yet
  *   and says which were added and which failed. Confirm again adds the rest.
  * - Cancel during a confirm stops before the next extension.
+ * - `source` says where the request came from: the user (an address or an
+ *   invite) or the Jellyfin account (account sync offers extensions that
+ *   another device added). The screen words its title and Cancel from it.
  *
  * The load and install steps come in as parameters, so this file is
  * unit-tested with no network and no router.
@@ -28,7 +31,11 @@ export interface InstallEntry {
   done?: boolean;
 }
 
+/** Who asked: the user (an address, an invite, an update) or account sync. */
+export type InstallSource = 'user' | 'account';
+
 export interface InstallRequest {
+  source: InstallSource;
   /** Addresses still loading or loaded. */
   entries: InstallEntry[];
   loading: boolean;
@@ -37,7 +44,7 @@ export interface InstallRequest {
   notice: string | null;
 }
 
-const EMPTY: InstallRequest = { entries: [], loading: false, installing: false, notice: null };
+const EMPTY: InstallRequest = { source: 'user', entries: [], loading: false, installing: false, notice: null };
 const gate = createGate();
 let token = gate.begin();
 
@@ -49,9 +56,9 @@ export function pendingCandidates(entries: readonly InstallEntry[]): Candidate[]
 }
 
 /** Starts a request: shows the addresses at once, then each loaded manifest or its error. */
-export async function loadInstallRequest(inputs: readonly string[], load: (input: string) => Promise<Candidate>): Promise<void> {
+export async function loadInstallRequest(inputs: readonly string[], load: (input: string) => Promise<Candidate>, source: InstallSource = 'user'): Promise<void> {
   const t = (token = gate.begin());
-  useInstallRequest.setState({ ...EMPTY, entries: inputs.map((input) => ({ input })), loading: true });
+  useInstallRequest.setState({ ...EMPTY, source, entries: inputs.map((input) => ({ input })), loading: true });
   const entries = await Promise.all(
     inputs.map(async (input): Promise<InstallEntry> => {
       try {

@@ -2,7 +2,9 @@
  * The install confirm screen. It shows each extension's name, address,
  * permissions and contributions. The user confirms once; the app then fills
  * in the settings by itself. After a failure it offers only the extensions
- * not added yet, with a message (`install-request.ts`).
+ * not added yet, with a message (`install-request.ts`). For extensions
+ * that account sync offers, the title is "From your account" and Cancel
+ * is "Not now" (the offer does not come back for the same add).
  */
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -21,7 +23,7 @@ export default function ExtensionInstallScreen() {
   const s = useStyles(makeStyles);
   const st = useStyles(makeSettingsStyles);
   const { c } = useTheme();
-  const { entries: all, loading, installing, notice } = useInstallRequest();
+  const { entries: all, loading, installing, notice, source } = useInstallRequest();
   // Extensions already added in this request leave the screen.
   const entries = all.filter((e) => !e.done);
   const ready = pendingCandidates(all);
@@ -47,10 +49,11 @@ export default function ExtensionInstallScreen() {
     }
   };
 
-  const title = entries.length > 1 ? 'Add extensions' : 'Add extension';
+  const fromAccount = source === 'account';
+  const title = fromAccount ? 'From your account' : entries.length > 1 ? 'Add extensions' : 'Add extension';
   return (
     <View style={s.page}>
-      <ModalHeader title={title} onClose={close} closeLabel="Cancel" />
+      <ModalHeader title={title} onClose={close} closeLabel={fromAccount ? 'Not now' : 'Cancel'} />
       <ScrollView contentContainerStyle={[st.content, s.content]}>
         <View style={st.inner}>
           {entries.map((e) =>
@@ -79,6 +82,7 @@ export default function ExtensionInstallScreen() {
           {!loading && ready.length ? (
             <View style={s.buttons}>
               <Button title={ready.length > 1 ? `Add ${ready.length} extensions` : ready[0].installed ? 'Update' : 'Add'} onPress={() => void confirm()} loading={installing} />
+              {fromAccount ? <Text style={s.footer}>You added {ready.length > 1 ? 'these extensions' : 'this extension'} on another device. Secret settings, such as keys, do not sync: enter them again in its settings on this device.</Text> : null}
               <Text style={s.footer}>Extensions show buttons, Home rows and pages from their own server. They run no code in Zoggyfin. You can turn one off or remove it in Settings at any time.</Text>
             </View>
           ) : null}

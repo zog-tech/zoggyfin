@@ -20,7 +20,7 @@ import { homeSections } from '@/registry/home-sections';
 import { type ItemActionContext, itemActions } from '@/registry/item-actions';
 
 import { ExtensionError, FEED_TIMEOUT_MS, buildRequest, type Grants, type JellyfinAccount, parseOptions, send } from './http';
-import { loadInstallRequest } from './install-request';
+import { type InstallSource, loadInstallRequest } from './install-request';
 import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match';
 import { askChoice, askConfirm, askText, type ChoiceOption } from './prompts';
 import { applyRefresh, handleActionResponse, type ResponseEffects, type TaskRef, toastText } from './response';
@@ -369,10 +369,10 @@ export { cancelInstallRequest, confirmInstallRequest, pendingCandidates, useInst
  * typed, or the links of an invite). The state and its rules are in
  * `install-request.ts`.
  */
-export async function requestInstall(inputs: string[]): Promise<void> {
+export async function requestInstall(inputs: string[], source: InstallSource = 'user'): Promise<void> {
   const list = [...new Set(inputs.map((i) => i.trim()).filter(Boolean))].slice(0, 10);
   if (!list.length) return;
-  const loading = loadInstallRequest(list, loadManifest);
+  const loading = loadInstallRequest(list, loadManifest, source);
   router.push('/extension-install');
   await loading;
 }
@@ -381,6 +381,16 @@ export async function requestInstall(inputs: string[]): Promise<void> {
 export function installFromInvite(urls: string[]): Promise<void> {
   const fresh = urls.filter((u) => !extensionsState().list.some((e) => e.manifestUrl === u));
   return requestInstall(fresh);
+}
+
+/**
+ * For account sync: offers extensions that another device added to the
+ * account ("From your account"). The app loads each manifest from its URL,
+ * as for any install.
+ */
+export function installFromAccount(urls: string[]): void {
+  const fresh = urls.filter((u) => !extensionsState().list.some((e) => e.manifestUrl === u));
+  void requestInstall(fresh, 'account');
 }
 
 // ---------------------------------------------------------------------------

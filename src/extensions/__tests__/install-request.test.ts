@@ -29,6 +29,15 @@ describe('install request', () => {
     expect(pendingCandidates(state().entries).map((c) => c.manifest.id)).toEqual(['a']);
   });
 
+  it('remembers who asked: the user or account sync', async () => {
+    await loadInstallRequest(['a'], async (i) => cand(i), 'account');
+    expect(state().source).toBe('account');
+    cancelInstallRequest();
+    expect(state().source).toBe('user');
+    await loadInstallRequest(['b'], async (i) => cand(i));
+    expect(state().source).toBe('user');
+  });
+
   it('a late load after Cancel does not bring the list back', async () => {
     const d = deferredLoad();
     const p = loadInstallRequest(['a'], d.load);

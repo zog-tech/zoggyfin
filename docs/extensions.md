@@ -32,6 +32,32 @@ Other parts of the app use two functions from `src/extensions`:
 - `installFromInvite(urls)` shows one confirm screen for all the extensions in
   the list that are not installed yet.
 
+### Your extensions follow your account
+
+The installed extensions belong to the Jellyfin account (server and user), not
+to the device. Each account on a device has its own list, and a switch to
+another account shows that account's extensions.
+
+The list also syncs through the account, like Live TV. It is kept in the
+user's display preferences (id `zoggyfin-extensions`, client `zoggyfin`).
+
+- What syncs: the manifest URL, on or off, the permissions you allowed, the
+  settings that are not secret, the page you chose as a tab, and the skip
+  choices per segment label. The manifest itself does not: each device loads
+  it from its URL.
+- Secret settings (`"secret": true`) never leave the device. Enter them again
+  on each device.
+- An extension that you added on another device shows the confirm screen once,
+  with the title "From your account". **Not now** keeps it off this device; it
+  does not ask again until the extension is removed and added again.
+- An extension that you remove on one device goes from your other devices,
+  with no question.
+- The first sync of a device only adds to the account. When the same extension
+  is already in the account, the account's settings win.
+
+The first start of this version copies the list that was on the device to
+every account saved on it.
+
 ## Manifest (schema version 1)
 
 The schema is in `src/extensions/schema/` (zod). The app reads schema versions 1
@@ -85,7 +111,7 @@ keeps its `true`/`false` type.
 
 ### `settings`
 
-Simple fields, kept on the device per extension. Secret text goes to the
+Simple fields, kept per account and extension (they sync, see above). Secret text goes to the
 keychain (secure store on web). The user never has to type a value: each field
 gets one by itself.
 
