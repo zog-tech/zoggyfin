@@ -9,13 +9,16 @@
  * poster and the actions in a left column. It takes plain data only (no
  * Jellyfin item, no item actions).
  *
+ * The round actions sit in one row: centred while they
+ * fit, else the row scrolls from the left gutter with no scroll bar.
+ *
  * TV: Play takes the first focus; with no Play, the first round action. The
  * D-pad order is Play, the round actions, then the content below.
  */
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { type IconName, isIconName } from '@/components/icon-names';
@@ -98,8 +101,14 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
     </View>
   ) : null;
 
+  // One row. On a phone it bleeds to the screen edges and pads by the gutter, so the first action starts at the gutter.
+  const rowInset = twoColumn ? spacing.sm : l.gutter;
   const actionsRow = (
-    <View style={[s.actions, !twoColumn && s.actionsCenter]}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[s.actionsScroll, { marginHorizontal: -rowInset }]}
+      contentContainerStyle={[s.actions, { paddingHorizontal: rowInset }, !twoColumn && s.actionsCenter, isTV && s.actionsTV]}>
       {actions.map((a, i) => (
         <RoundAction
           key={a.key ?? a.label}
@@ -110,7 +119,7 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
           firstFocus={isTV && !primary && i === 0}
         />
       ))}
-    </View>
+    </ScrollView>
   );
 
   const text = (
@@ -196,6 +205,10 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   credit: { ...font(type.footnote), color: c.text2 },
   resumeTrack: { height: sizes.resumeBar, borderRadius: 2, backgroundColor: c.surface3, marginTop: spacing.md, marginHorizontal: spacing.xxxl, overflow: 'hidden' as const },
   resumeFill: { height: '100%' as const, backgroundColor: c.accent },
-  actions: { flexDirection: 'row' as const, alignSelf: 'stretch' as const, gap: spacing.xl, marginTop: spacing.xs },
+  // The scroll view takes the row's height only; the content grows to the view's width, so it centres while it fits.
+  actionsScroll: { flexGrow: 0, marginTop: spacing.xs },
+  actions: { flexGrow: 1, gap: spacing.xl },
   actionsCenter: { justifyContent: 'center' as const },
+  // TV: room above and below for the focus scale and ring.
+  actionsTV: { paddingVertical: spacing.md },
 }));
