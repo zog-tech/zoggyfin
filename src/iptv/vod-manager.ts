@@ -11,7 +11,7 @@
  * and loaded again when it is a day old or on a refresh. M3U films and series
  * come with the channel list (`m3u-vod.ts`).
  */
-import type { VodPlayRequest, VodRef, VodSource } from '@/player';
+import type { ExternalPlayRequest, ExternalRef, ExternalSource } from '@/player';
 
 import { IptvError, iptvErrorText } from './errors';
 import { iptvFiles } from './files';
@@ -423,10 +423,18 @@ interface Playable {
   streamId?: number;
 }
 
-function sourceFor(pid: string, playables: Map<string, Playable>): VodSource {
+/** An IPTV source always keeps positions on the device. */
+type IptvSource = ExternalSource & { savePosition: NonNullable<ExternalSource['savePosition']> };
+
+/** The play request of an IPTV title: its source always saves positions. */
+type IptvPlayRequest = ExternalPlayRequest & { source: IptvSource };
+
+/** The player's external source for an IPTV provider's films and episodes (`@/player` `ExternalSource`). */
+function sourceFor(pid: string, playables: Map<string, Playable>): IptvSource {
   return {
     providerId: pid,
-    async resolve(ref: VodRef) {
+    label: 'IPTV',
+    async resolve(ref: ExternalRef) {
       const record = providerById(pid);
       const p = playables.get(`${ref.kind}:${ref.id}`) ?? {};
       if (!record) return { candidates: [], userAgent: null, unsupported: 'This provider was removed.' };
@@ -466,17 +474,17 @@ function sourceFor(pid: string, playables: Map<string, Playable>): VodSource {
 }
 
 /** The play request for a film. */
-export function filmRequest(pid: string, film: Film, info: FilmInfo | null, startSeconds: number): VodPlayRequest {
+export function filmRequest(pid: string, film: Film, info: FilmInfo | null, startSeconds: number): IptvPlayRequest {
   const playables = new Map<string, Playable>([[`film:${film.id}`, { ext: info?.ext ?? film.ext, url: film.url, streamId: film.streamId }]]);
   const poster = film.poster ?? info?.poster ?? null;
-  const ref: VodRef = { id: film.id, kind: 'film', title: film.name, poster, ...(film.year ?? info?.year ? { year: film.year ?? info?.year } : {}), ...(info?.duration ? { duration: info.duration } : {}) };
+  const ref: ExternalRef = { id: film.id, kind: 'film', title: film.name, poster, ...(film.year ?? info?.year ? { year: film.year ?? info?.year } : {}), ...(info?.duration ? { duration: info.duration } : {}) };
   return { items: [ref], index: 0, source: sourceFor(pid, playables), startSeconds };
 }
 
 /** The play request for an episode; Next plays the episodes after it, across seasons. */
-export function episodeRequest(pid: string, series: Pick<Series, 'id' | 'name' | 'poster'>, episodes: readonly Episode[], episode: Episode, startSeconds: number): VodPlayRequest {
+export function episodeRequest(pid: string, series: Pick<Series, 'id' | 'name' | 'poster'>, episodes: readonly Episode[], episode: Episode, startSeconds: number): IptvPlayRequest {
   const playables = new Map<string, Playable>();
-  const items: VodRef[] = episodes.map((ep) => {
+  const items: ExternalRef[] = episodes.map((ep) => {
     playables.set(`episode:${ep.id}`, { ext: ep.ext, url: ep.url });
     return {
       id: ep.id,

@@ -1,29 +1,73 @@
 /**
  * Skip Intro / Skip Credits and the next-episode countdown, from Jellyfin
- * media segments. Pure: positions in seconds, clock times in ms.
+ * media segments or an external source's labelled ranges. Pure: positions
+ * in seconds, clock times in ms.
+ *
+ * A segment has a free label (`intro`, `promo`). Jellyfin's five kinds map
+ * to the built-in labels below, so the next-up rules that look for the end
+ * credits (`outro`) work for both.
  */
 import type { MediaSegmentDto } from '@/api/types';
 
-export type SegmentKind = 'Intro' | 'Outro' | 'Recap' | 'Preview' | 'Commercial';
-
 export interface Segment {
-  kind: SegmentKind;
+  /** What the range is: a built-in label or one an extension names. */
+  label: string;
+  /** The name people read: "Skip <title>", "Skipped <title>". */
+  title: string;
   start: number;
   end: number;
 }
 
-const SKIPPABLE: ReadonlySet<string> = new Set<SegmentKind>(['Intro', 'Outro', 'Recap', 'Preview', 'Commercial']);
+/** The labels of Jellyfin's segment kinds. */
+export const BUILTIN_LABELS = ['intro', 'outro', 'recap', 'preview', 'commercial'] as const;
+export type BuiltinLabel = (typeof BUILTIN_LABELS)[number];
+
+/** The key prefix of the built-in labels in the skip settings (`<scope>:<label>`). */
+export const JELLYFIN_SKIP_SCOPE = 'jellyfin';
+
+const JELLYFIN_KINDS: Record<string, BuiltinLabel> = {
+  Intro: 'intro',
+  Outro: 'outro',
+  Recap: 'recap',
+  Preview: 'preview',
+  Commercial: 'commercial',
+};
+
+/** The title of each built-in label. */
+export const BUILTIN_TITLES: Record<BuiltinLabel, string> = {
+  intro: 'Intro',
+  outro: 'Credits',
+  recap: 'Recap',
+  preview: 'Preview',
+  commercial: 'Ad',
+};
 
 /** Segments shorter than this are noise from detection. */
 const MIN_SEGMENT_SECONDS = 2;
 
-/** Cleans the server list: known kinds only, valid ranges, sorted by start. */
+/** Cleans the server list: known kinds only, as built-in labels; valid ranges, sorted by start. */
 export function normalizeSegments(raw: readonly MediaSegmentDto[] | null | undefined): Segment[] {
   return (raw ?? [])
-    .filter((s) => SKIPPABLE.has(s.Type ?? '') && typeof s.StartTicks === 'number' && typeof s.EndTicks === 'number')
-    .map((s) => ({ kind: s.Type as SegmentKind, start: (s.StartTicks ?? 0) / 1e7, end: (s.EndTicks ?? 0) / 1e7 }))
+    .filter((s) => (s.Type ?? '') in JELLYFIN_KINDS && typeof s.StartTicks === 'number' && typeof s.EndTicks === 'number')
+    .map((s) => {
+      const label = JELLYFIN_KINDS[s.Type ?? ''];
+      return { label, title: BUILTIN_TITLES[label], start: (s.StartTicks ?? 0) / 1e7, end: (s.EndTicks ?? 0) / 1e7 };
+    })
     .filter((s) => s.end - s.start >= MIN_SEGMENT_SECONDS)
     .sort((a, b) => a.start - b.start);
+}
+
+/** An external source's ranges: valid ones only, sorted by start. Any length counts (the source chose it). */
+export function externalSegments(raw: readonly Segment[] | null | undefined): Segment[] {
+  return (raw ?? [])
+    .filter((s) => s.label && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start && s.start >= 0)
+    .map((s) => ({ label: s.label, title: s.title || s.label, start: s.start, end: s.end }))
+    .sort((a, b) => a.start - b.start);
+}
+
+/** The key a range is known by within one play (auto skip, Undo). */
+export function rangeKey(s: Pick<Segment, 'label' | 'start'>): string {
+  return `${s.label}@${s.start}`;
 }
 
 export interface SkipPrompt {
@@ -33,14 +77,6 @@ export interface SkipPrompt {
   target: number;
 }
 
-const LABEL: Record<SegmentKind, string> = {
-  Intro: 'Skip Intro',
-  Outro: 'Skip Credits',
-  Recap: 'Skip Recap',
-  Preview: 'Skip Preview',
-  Commercial: 'Skip Ad',
-};
-
 /** Hide the prompt in the last moment of a segment, so a late tap does not skip into the next scene. */
 const TAIL_SECONDS = 1;
 /** An outro that ends this close to the end is the end credits. */
@@ -48,12 +84,19 @@ const END_CREDITS_SLACK = 5;
 
 /**
  * The skip prompt to show at `position`, or null. End credits with a next
- * episode show the next-episode card instead, so no prompt then.
+ * episode show the next-episode card instead, so no prompt then. `shows`
+ * leaves out the segments whose skip setting hides the button.
  */
-export function skipPromptAt(segments: readonly Segment[], position: number, duration: number, hasNext: boolean): SkipPrompt | null {
+export function skipPromptAt(
+  segments: readonly Segment[],
+  position: number,
+  duration: number,
+  hasNext: boolean,
+  shows: (segment: Segment) => boolean = () => true,
+): SkipPrompt | null {
   for (const s of segments) {
-    if (position < s.start || position >= s.end - TAIL_SECONDS) continue;
-    const endCredits = s.kind === 'Outro' && duration > 0 && s.end >= duration - END_CREDITS_SLACK;
+    if (position < s.start || position >= s.end - TAIL_SECONDS || !shows(s)) continue;
+    const endCredits = s.label === 'outro' && duration > 0 && s.end >= duration - END_CREDITS_SLACK;
     if (endCredits && hasNext) return null;
     return skipPromptFor(s, duration);
   }
@@ -66,7 +109,7 @@ export function skipPromptAt(segments: readonly Segment[], position: number, dur
  * so a position tick does not re-render the player.
  */
 export function skipPromptFor(segment: Segment, duration: number): SkipPrompt {
-  return { segment, label: LABEL[segment.kind], target: Math.min(segment.end, duration > 0 ? duration : segment.end) };
+  return { segment, label: `Skip ${segment.title}`, target: Math.min(segment.end, duration > 0 ? duration : segment.end) };
 }
 
 /** With no outro segment, the next-episode card shows this long before the end. */
@@ -80,7 +123,7 @@ export const NEXT_UP_COUNTDOWN_SECONDS = 10;
  */
 export function nextUpStartsAt(segments: readonly Segment[], duration: number): number | null {
   if (!(duration > 0)) return null;
-  const credits = segments.find((s) => s.kind === 'Outro' && s.end >= duration - END_CREDITS_SLACK);
+  const credits = segments.find((s) => s.label === 'outro' && s.end >= duration - END_CREDITS_SLACK);
   if (credits) return credits.start;
   if (duration < NEXT_UP_FALLBACK_SECONDS * 4) return null;
   return duration - NEXT_UP_FALLBACK_SECONDS;

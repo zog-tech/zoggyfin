@@ -7,7 +7,7 @@
 import { desktopWindow, localPath, mpv, type MpvEvent, type MpvTrack, nowPlaying, type NowPlayingInfo, type RemoteCommand } from '@/platform/desktop';
 
 import { fromMpv } from './embedded-tracks';
-import type { EngineEvent, EngineListener, EngineSource, EngineSubtitle, VideoEngine } from './engine-types';
+import { type EngineEvent, type EngineListener, type EngineSource, type EngineSubtitle, sourceHeaders, type VideoEngine } from './engine-types';
 import { PositionLine } from './position-line';
 
 /** What Now Playing shows for the current state; null when nothing plays. */
@@ -271,7 +271,11 @@ export class MpvEngine implements VideoEngine {
       await mpv.set('pause', paused);
       await mpv.set('force-media-title', source.title);
       // An IPTV provider can ask for its own user agent; everything else gets libmpv's default.
-      await mpv.set('user-agent', source.userAgent || 'libmpv');
+      const headers = sourceHeaders(source);
+      const ua = Object.entries(headers).find(([k]) => k.toLowerCase() === 'user-agent')?.[1];
+      await mpv.set('user-agent', ua || 'libmpv');
+      // An extension's headers: set (or cleared) on every load, so they never reach the next stream.
+      await mpv.set('http-header-fields', mpvHeaderFields(headers));
       // Subtitles stay off until the session picks one; audio follows the plan.
       // A download plays from its file on the disk.
       // A stream from a nearby host reads less ahead: every guest shares the host's upload.
@@ -399,4 +403,16 @@ export class MpvEngine implements VideoEngine {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
+}
+
+/**
+ * The headers as libmpv's `http-header-fields` list (`Name: value,…`), with
+ * no User-Agent (its own option). A value with a comma is left out: the
+ * list has no escape for one.
+ */
+export function mpvHeaderFields(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .filter(([k, v]) => k.toLowerCase() !== 'user-agent' && !v.includes(','))
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(',');
 }

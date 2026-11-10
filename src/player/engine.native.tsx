@@ -10,7 +10,7 @@ import { Platform, type StyleProp, View, type ViewStyle } from 'react-native';
 import { setAutoPictureInPicture } from '@/native/zoggyfin-native';
 
 import { expoTrackId, fromExpoVideo } from './embedded-tracks';
-import type { EngineListener, EngineSource, EngineStatus, VideoEngine, VideoFit, VideoTrackInfo } from './engine-types';
+import { type EngineListener, type EngineSource, type EngineStatus, sourceHeaders, type VideoEngine, type VideoFit, type VideoTrackInfo } from './engine-types';
 
 /**
  * iOS: with no artist or artwork from the app, expo-video puts the file's own
@@ -190,6 +190,7 @@ class NativeEngine implements VideoEngine {
 
   load(source: EngineSource): void {
     const p = this.ensurePlayer();
+    const headers = sourceHeaders(source);
     this.pendingStart = source.startSeconds;
     this.pendingPlay = source.autoplay !== false;
     this.wantPlay = this.pendingPlay;
@@ -202,7 +203,8 @@ class NativeEngine implements VideoEngine {
       uri: source.uri,
       contentType: source.isHls ? 'hls' : 'progressive',
       metadata: { title: source.title, artist: source.subtitle ?? '', artwork: source.artworkUri ?? (Platform.OS === 'ios' ? NO_ARTWORK : undefined) },
-      ...(source.userAgent ? { headers: { 'User-Agent': source.userAgent } } : null),
+      // The User-Agent of an IPTV provider, an extension's headers: on every request of the stream.
+      ...(Object.keys(headers).length ? { headers } : null),
     }, true);
   }
 
