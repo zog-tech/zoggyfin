@@ -34,12 +34,14 @@ Other parts of the app use two functions from `src/extensions`:
 
 ## Manifest (schema version 1)
 
-The schema is in `src/extensions/schema.ts` (zod). A manifest that is not valid
-is refused, and the error names the first wrong field.
+The schema is in `src/extensions/schema/` (zod). The app reads schema versions 1
+and 2 (see [Schema version 2](#schema-version-2)). A manifest that is not valid
+is refused, and the error names the first wrong field. A version 1 manifest
+stays valid.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `schemaVersion` | `1` | Required. |
+| `schemaVersion` | `1` or `2` | Required. This section describes version 1. |
 | `id` | string | Lower-case letters, digits, `.`, `_`, `-`. One install per id. |
 | `name`, `version` | string | Shown on the confirm screen. |
 | `description` | string | Optional. |
@@ -285,6 +287,203 @@ A panel must allow framing by those origins (no `X-Frame-Options: DENY`, and no
 
 Actions have 15 s. Feeds, choice lists and task polls have 8 s. A slow or broken
 extension shows an error toast or a small note; it never blocks a screen.
+
+## Schema version 2
+
+Version 2 adds native pages, playable media, downloads and skip labels. It
+keeps every version 1 field and contribution except `homeSections`: a Home row
+is now a page section named in `placement.home`.
+
+**The app reads these; screens that use them arrive in later releases.** Today
+the app checks a version 2 manifest, installs it and shows the sections in
+`placement.home` as Home rows, the same as version 1 rows. Pages, tabs,
+Library tiles, search, the entry detail page, playback, downloads and skip
+settings follow.
+
+A version 1 manifest is read as version 2 with one page per Home row: the page
+has one `row` section, no tab, no Library tile, and the section on Home.
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "org.example.media",
+  "name": "Example Media",
+  "version": "2.0.0",
+  "baseUrl": "https://media.example.org",
+  "permissions": ["network", "playback", "downloads"],
+  "contributes": {
+    "pages": [
+      {
+        "id": "main",
+        "title": "Example",
+        "icon": "play.rectangle",
+        "placement": { "tab": true, "library": true, "home": ["latest"] },
+        "search": { "feed": "/api/search", "placeholder": "Search Example" },
+        "sections": [
+          { "id": "latest", "title": "Latest", "layout": "row", "shape": "thumb", "feed": "/api/feed/latest", "refreshSeconds": 300 },
+          { "id": "all", "title": "Everything", "layout": "grid", "shape": "poster", "feed": "/api/feed/all" },
+          { "id": "queue", "title": "Queue", "layout": "list", "feed": "/api/feed/queue" }
+        ]
+      }
+    ],
+    "skipLabels": [
+      { "id": "intro", "title": "Intro", "default": "ask" },
+      { "id": "promo", "title": "Promotion", "default": "auto" }
+    ]
+  }
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen. A version 1 manifest cannot ask for them. |
+| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`. |
+| `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
+| `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
+| `sections` | `id`, `title`, `feed`, `layout` (`row`, the default, `grid` or `list`), `shape` (`poster`, `thumb`, the default, or `square`), `refreshSeconds` (5 to 3600). `grid` and `list` load the next page near the end. |
+| `skipLabels` | At most 10. `id`, `title`, `default`: `auto` (skip, with Undo), `ask` (the default; a Skip button) or `off`. |
+
+Ids are unique in each list: pages, the sections of one page, the Home ids of
+one page, and skip labels. A Home id must name a section of its page.
+
+### Replies (schema version 2)
+
+All paths are under `baseUrl`, or full URLs on the same origin. The app checks
+every URL in a reply: a URL on another origin is left out, never followed. A
+reply is read entry by entry: a bad entry is left out, and the others stay.
+
+**Feed page.** `GET <feed>?cursor=<cursor>` (search adds `query`):
+
+```json
+{ "items": [], "next": "opaque-cursor-or-null" }
+```
+
+`next` is a cursor, not a URL. No `next`, `null` or `""` means the last page,
+so a version 1 feed is one page. At most 100 entries per page.
+
+**Feed entry.** The version 1 fields stay. Version 2 adds:
+
+```json
+{
+  "id": "e123",
+  "title": "An entry",
+  "subtitle": "12 min · 2 days ago",
+  "image": "/img/e123.jpg",
+  "progress": 0.4,
+  "badge": "New",
+  "detail": "/api/entries/e123",
+  "media": { "id": "e123", "kind": "video", "duration": 734, "playback": "/api/entries/e123/play", "download": "/api/entries/e123/download" }
+}
+```
+
+- `badge`: a short label (40 characters at most).
+- `detail`: answers with a detail description.
+- `media`: `kind` is `video` (the default) or `audio`; `duration` is in seconds;
+  `playback` answers with a stream description; `download` with a download
+  description. Media with neither URL on the origin is left out.
+- A bad `badge`, `detail` or `media` is left out on its own; the entry stays.
+- A card opens, in this order: `detail`, else plays `media`, else `panel`,
+  else `link`.
+
+**Stream description.** `GET media.playback`:
+
+```json
+{
+  "stream": { "url": "/hls/e123/master.m3u8", "type": "hls" },
+  "alternatives": [{ "url": "/files/e123.mp4", "type": "file" }],
+  "title": "An entry",
+  "subtitle": "Example Media",
+  "image": "/img/e123.jpg",
+  "duration": 734,
+  "resume": 120.5,
+  "qualities": [{ "id": "720", "label": "720p", "url": "/hls/e123/720.m3u8" }],
+  "subtitles": [{ "id": "en", "label": "English", "language": "en", "url": "/subs/e123.en.vtt" }],
+  "segments": [{ "label": "intro", "start": 0, "end": 12.5 }],
+  "chapters": [{ "title": "Part 1", "start": 0 }],
+  "next": { "id": "e124", "title": "Next entry", "media": { "id": "e124", "playback": "/api/entries/e124/play" } },
+  "report": { "path": "/api/entries/e123/progress", "intervalSeconds": 10 }
+}
+```
+
+- The player tries `stream`, then each of `alternatives` (5 at most). With no
+  `type`, a path that ends in `.m3u8` is `hls`, any other is `file`. With no
+  stream on the origin, the reply is refused.
+- `live: true` marks a live stream: `duration` and `resume` are ignored.
+- `resume` at or past `duration` is ignored.
+- Segment labels are free text. `skipLabels` say what the player does with each.
+- `next` is a feed entry with `media.playback`; otherwise it is left out.
+- `report.intervalSeconds` is 5 to 300 (10 by default).
+- On the web and in the Mac app, playlists and segments need CORS, as feeds do.
+
+**Progress report.** `POST report.path`. Errors are ignored.
+
+```json
+{ "event": "start | progress | pause | resume | seek | stop | finished", "mediaId": "e123", "position": 130.2, "duration": 734, "rate": 1, "quality": "720", "offline": false }
+```
+
+Times are seconds, to 0.1 s. `duration` is not sent for a live stream, and
+`quality` is not sent when the stream has no qualities.
+
+**Detail description.** `GET entry.detail`:
+
+```json
+{
+  "title": "An entry",
+  "eyebrow": "Example Media",
+  "image": "/img/e123.jpg",
+  "backdrop": "/img/e123-wide.jpg",
+  "lines": ["12 min", "2 days ago"],
+  "description": "Plain text.",
+  "media": { "id": "e123", "kind": "video", "playback": "/api/entries/e123/play" },
+  "progress": 0.4,
+  "actions": [
+    {
+      "id": "save",
+      "title": "Save",
+      "icon": "heart",
+      "state": { "on": false, "onTitle": "Saved", "onIcon": "heart.fill" },
+      "request": { "method": "POST", "path": "/api/entries/e123/save", "body": { "on": "{{action.next}}" } }
+    }
+  ],
+  "sections": [{ "id": "related", "title": "Related", "layout": "row", "feed": "/api/entries/e123/related" }]
+}
+```
+
+- `title` is required. Any other bad field is left out on its own.
+- At most 6 `lines` and 6 `actions`, and 8 `sections`.
+- An action takes `inputs` and `confirm`, as an item action does. With
+  `state`, it is an on/off button; `{{action.next}}` is the state it asks for.
+  An action whose `request.path` is on another origin is left out.
+
+The answer to an action adds two `refresh` values and `state` to
+[Responses](#responses):
+
+```json
+{ "toast": "Saved", "refresh": "none | item | entry | page | library", "state": { "on": true } }
+```
+
+`entry` reloads the detail page, `page` the extension page. Where there is no
+such page (the item action sheet), they do nothing. A `state` that is not valid
+is ignored.
+
+**Download description.** `GET media.download`:
+
+```json
+{
+  "url": "/files/e123-720.mp4",
+  "bytes": 123456789,
+  "container": "mp4",
+  "label": "720p",
+  "subtitles": [{ "label": "English", "language": "en", "url": "/subs/e123.en.vtt" }],
+  "image": "/img/e123.jpg",
+  "options": [{ "id": "720", "label": "720p · 310 MB", "download": "/api/entries/e123/download?q=720" }]
+}
+```
+
+- One progressive file: a `url` whose path ends in `.m3u8` is left out.
+- `options` (10 at most) let the user pick first. Each `download` answers with
+  another download description. A reply can have only `options`.
+- A reply with no file and no option is refused.
 
 ## Sample: Hello
 
