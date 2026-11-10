@@ -18,6 +18,13 @@ export interface EngineTrack {
   /** The queue entry key. */
   key: string;
   uri: string;
+  /**
+   * Where the stream starts in the track, in seconds. A server transcode
+   * started with `StartTimeTicks` begins at that point, so its own time 0 is
+   * this position. The engine adds it to every position it reports and
+   * takes it off every seek.
+   */
+  offset?: number;
 }
 
 export interface LockScreenInfo {
@@ -43,6 +50,8 @@ export type AudioEngineListener = (e: AudioEngineEvent) => void;
 export class AudioEngine {
   private playlist: AudioPlaylist | null = null;
   private keys: string[] = [];
+  /** The `offset` of each entry in `keys`. */
+  private offsets: number[] = [];
   private listeners = new Set<AudioEngineListener>();
   private pendingStart: number | null = null;
   private pendingPlay = false;
@@ -94,6 +103,7 @@ export class AudioEngine {
     p.addListener('playlistStatusUpdate', (raw) => {
       const s = this.webFix(raw);
       const index = s.currentIndex ?? 0;
+      const offset = this.offsets[index] ?? 0;
       if (this.pendingStart !== null && s.isLoaded && index === 0) {
         const start = this.pendingStart;
         const token = this.loadToken;
@@ -108,15 +118,17 @@ export class AudioEngine {
       if (this.loading && s.isLoaded && this.pendingStart === null) this.loading = false;
       this.lastIndex = index;
       if (!this.loading && s.currentTime >= 0) {
-        this.lastPosition = s.currentTime;
+        this.lastPosition = s.currentTime + offset;
         this.statusAt = nowMs();
         this.statusPlaying = s.playing && !s.isBuffering;
       }
-      if (s.duration > 0) this.lastDuration = s.duration;
+      // A progressive transcode can report an infinite or partial length: only a finite one counts.
+      const duration = s.duration > 0 && Number.isFinite(s.duration) ? s.duration + offset : 0;
+      if (duration > 0) this.lastDuration = duration;
       this.emit({
         type: 'status',
         position: this.lastPosition,
-        duration: s.duration,
+        duration,
         playing: s.playing,
         buffering: s.isBuffering,
         loaded: s.isLoaded,
@@ -195,18 +207,23 @@ export class AudioEngine {
     p.pause();
     p.clear();
     this.keys = [];
+    this.offsets = [];
     this.lastIndex = 0;
     this.lastPosition = startSeconds;
     this.lastDuration = 0;
     p.add({ uri: current.uri });
     this.keys.push(current.key);
+    this.offsets.push(current.offset ?? 0);
     if (next) {
       p.add({ uri: next.uri });
       this.keys.push(next.key);
+      this.offsets.push(next.offset ?? 0);
     }
     if (this.rate !== 1) p.playbackRate = this.rate;
-    if (startSeconds > 0.5) {
-      this.pendingStart = startSeconds;
+    // The start inside the stream: a transcode that starts at `startSeconds` needs no seek.
+    const local = startSeconds - (current.offset ?? 0);
+    if (local > 0.5) {
+      this.pendingStart = local;
       this.pendingPlay = autoplay;
     } else {
       this.pendingStart = null;
@@ -225,10 +242,12 @@ export class AudioEngine {
     for (let i = this.keys.length - 1; i > cur; i--) {
       p.remove(i);
       this.keys.pop();
+      this.offsets.pop();
     }
     if (next) {
       p.add({ uri: next.uri });
       this.keys.push(next.key);
+      this.offsets.push(next.offset ?? 0);
     }
   }
 
@@ -262,13 +281,14 @@ export class AudioEngine {
     const p = this.playlist;
     if (!p) return;
     const s = Math.max(0, seconds);
+    const local = Math.max(0, s - (this.offsets[this.lastIndex] ?? 0));
     if (this.pendingStart !== null) {
-      this.pendingStart = s;
+      this.pendingStart = local;
       return;
     }
     this.lastPosition = s;
     this.statusAt = nowMs();
-    void p.seekTo(s);
+    void p.seekTo(local);
   }
 
   setRate(rate: number): void {
@@ -307,6 +327,7 @@ export class AudioEngine {
     this.pendingStart = null;
     this.pendingPlay = false;
     this.keys = [];
+    this.offsets = [];
     this.lastIndex = 0;
     if (!p) return;
     try {

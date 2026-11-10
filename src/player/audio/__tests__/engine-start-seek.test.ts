@@ -99,4 +99,31 @@ describe('audio engine start seek', () => {
     await flush();
     expect(p.play).not.toHaveBeenCalled();
   });
+
+  it('a transcode that starts later reports positions from its offset and seeks inside the stream', async () => {
+    const engine = new AudioEngine();
+    const events: { position: number; duration: number }[] = [];
+    engine.subscribe((e) => {
+      if (e.type === 'status') events.push({ position: e.position, duration: e.duration });
+    });
+    await engine.load({ key: 'a', uri: 'a.mp3?StartTimeTicks=600000000', offset: 60 }, null, 60, true);
+    const p = fake.playlist!;
+    // The stream starts at the offset: no start seek, it plays at once.
+    expect(p.play).toHaveBeenCalledTimes(1);
+    loadedStatus();
+    expect(p.seeks).toEqual([]);
+    p.listeners.get('playlistStatusUpdate')?.({
+      currentIndex: 0,
+      currentTime: 5,
+      isLoaded: true,
+      isBuffering: false,
+      playing: true,
+      duration: Infinity,
+      didJustFinish: false,
+    });
+    expect(events[events.length - 1]).toEqual({ position: 65, duration: 0 });
+    engine.seekTo(70);
+    expect(p.seeks.map((s) => s.seconds)).toEqual([10]);
+    expect(engine.position).toBe(70);
+  });
 });
