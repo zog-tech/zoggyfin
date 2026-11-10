@@ -29,6 +29,7 @@ import { type InputSpec, type ItemActionSpec, type Manifest, parseManifest, type
 import { followSession } from './session-binding';
 import { accountInstall, type Offer, type SyncedExtension } from './sync/blob';
 import { type AccountFacts, effectiveValues, extensionsState, getExtension, type InstalledExtension, setAuto, upsertExtension, useExtensions } from './store';
+import { installEntry } from './install-entry';
 import { plannedContributions, registrationSignature } from './registration';
 import { forgetSavedTask, readSavedTasks, rememberTask, TASKS_KEY, tasksToResume } from './saved-tasks';
 import { startTask, stopTasksExcept, useTasks } from './tasks';
@@ -364,7 +365,7 @@ export async function loadManifest(input: string): Promise<Candidate> {
 
 /** Installs (or updates) an extension and fills in its settings. */
 export async function install(c: Candidate, grants: Grants): Promise<void> {
-  let ext: InstalledExtension = { manifestUrl: c.manifestUrl, manifest: c.manifest, enabled: true, grants, installedAt: c.installed?.installedAt ?? Date.now() };
+  let ext: InstalledExtension = installEntry(c, grants, Date.now());
   if (c.fromAccount && !c.installed) {
     // From the account: its settings, tab and add time; the grants the user set on the screen.
     const id = c.manifest.id;
