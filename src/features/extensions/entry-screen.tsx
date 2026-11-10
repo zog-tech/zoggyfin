@@ -196,6 +196,7 @@ function DetailBody({
     eyebrow: view.eyebrow,
     poster: view.poster,
     backdrop: view.backdrop,
+    shape: view.shape,
     lines: view.lines,
     overview: view.description,
     actions,

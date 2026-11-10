@@ -164,6 +164,7 @@ describe('the Hello sample', () => {
   it('a detail page has a stateful action and a related row', async () => {
     const d = parseDetail(await get('/pages/entries/s3'), BASE);
     expect(d.media?.download).toBe(`${BASE}/pages/entries/s3/download`);
+    expect(d.imageUrl).toBe(`${BASE}/pages/art/main.png`);
     expect(d.actions[0]?.state?.on).toBe(false);
     expect(d.sections.map((s) => s.id)).toEqual(['related']);
     expect(parseFeedPage(await get('/pages/entries/s3/related'), BASE).entries.length).toBeGreaterThan(0);
