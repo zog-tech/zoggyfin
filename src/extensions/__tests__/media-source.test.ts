@@ -129,6 +129,21 @@ describe('extension media source', () => {
     for (const c of granted.stream.candidates) expect(c.url).not.toContain('jf-secret');
   });
 
+  it('refuses to resolve or load subtitles for another account than the one that opened the title', async () => {
+    const t = setup(installed({ jellyfinToken: true }));
+    let who: JellyfinAccount = account;
+    t.deps.account = () => who;
+    const r = mediaPlayRequest(media, t.deps);
+    if (!('request' in r)) throw new Error(r.error);
+    who = { ...account, userId: 'u2', token: 'other-secret' };
+    const stream = await r.request.source.resolve(r.request.items[0]);
+    expect(stream.candidates).toEqual([]);
+    expect(stream.unsupported).toMatch(/another account/);
+    await expect(r.request.source.loadText?.(`${BASE}/subs/e1.en.vtt`)).rejects.toThrow(/another account/);
+    expect(t.requests).toHaveLength(0);
+    expect(t.fetches).toHaveLength(0);
+  });
+
   it('loads subtitles on the origin with the extension headers, never through the Jellyfin client', async () => {
     const { request, fetches } = await resolve(installed());
     const text = await request.source.loadText?.(`${BASE}/subs/e1.en.vtt`);

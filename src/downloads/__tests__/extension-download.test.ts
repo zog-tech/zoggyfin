@@ -284,6 +284,15 @@ describe('accounts', () => {
     expect(mockStart).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses an entry that another account on the device saved, and leaves that record alone', async () => {
+    use({ [DOWNLOAD]: single });
+    const theirs = { ...newExtensionRecord(input, { serverId: 'server-1', userId: 'user-2', baseUrl: BASE, kind: 'video', order: 0, now: 1 }), state: 'paused' as const };
+    putRecord(theirs);
+    await expect(downloadManager.downloadExtension(input, true)).rejects.toThrow('Another account');
+    expect(downloadsState().records[ID]).toEqual(theirs);
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
   it('removes only the downloads of the extension and account asked for', async () => {
     use({ [DOWNLOAD]: single, [`${BASE}/api/e2/download`]: single });
     await downloadManager.downloadExtension(input, true);

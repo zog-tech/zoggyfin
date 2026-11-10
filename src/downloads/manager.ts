@@ -656,6 +656,10 @@ class DownloadManager {
     await this.init();
     const id = extensionRecordId(input.extension, input.mediaId);
     const existing = downloadsState().records[id];
+    // The record id has no account: another account's download of this entry must not be resumed or taken over.
+    if (existing && existing.state !== 'cancelled' && isExtensionRecord(existing) && existing.source.account !== `${account.serverId}.${account.userId}`) {
+      throw new Error('Another account on this device has saved this title. Delete it there first.');
+    }
     if (existing && existing.state !== 'cancelled') {
       if (existing.state === 'failed') apply(id, { type: 'retry' });
       if (existing.state === 'paused') apply(id, { type: 'resume' });

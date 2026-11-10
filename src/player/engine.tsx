@@ -11,7 +11,7 @@ import { hasMpv, mpv, showVideoThrough } from '@/platform/desktop';
 
 import { MpvEngine } from './engine-mpv';
 import { type ElementTrackLike, fromHls, fromMediaElement } from './embedded-tracks';
-import { type EngineListener, type EngineSource, sourceHeaders, type VideoEngine, type VideoFit } from './engine-types';
+import { type EngineListener, type EngineSource, headersForRequest, sourceHeaders, type VideoEngine, type VideoFit } from './engine-types';
 
 type MediaSessionAction = 'play' | 'pause' | 'seekbackward' | 'seekforward' | 'seekto' | 'nexttrack' | 'previoustrack';
 
@@ -196,10 +196,12 @@ class WebEngine implements VideoEngine {
           lowLatencyMode: false,
           ...(withHeaders
             ? {
-                xhrSetup: (xhr: XMLHttpRequest) => {
-                  for (const [k, value] of Object.entries(headers)) xhr.setRequestHeader(k, value);
+                // Only to the stream's origin: segments on another server get no headers.
+                xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+                  for (const [k, value] of Object.entries(headersForRequest(headers, source.uri, url))) xhr.setRequestHeader(k, value);
                 },
-                fetchSetup: (context: { url: string }, init: RequestInit) => new Request(context.url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...headers } }),
+                fetchSetup: (context: { url: string }, init: RequestInit) =>
+                  new Request(context.url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...headersForRequest(headers, source.uri, context.url) } }),
               }
             : null),
         });

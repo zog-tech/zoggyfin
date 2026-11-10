@@ -22,7 +22,7 @@ jest.mock('@/storage/secure', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { accountExtensions, bindAccount, extensionsState, getExtension, removeExtension, resetExtensionsForTests, setEnabled, setSkipMode, setTabPage, setValue, upsertExtension } from '../store';
+import { accountExtensions, bindAccount, effectiveValues, extensionsState, getExtension, removeExtension, resetExtensionsForTests, setEnabled, setSkipMode, setTabPage, setValue, upsertExtension, useExtensions } from '../store';
 // eslint-disable-next-line import/first
 import { manifest } from '../test-utils/fixtures';
 // eslint-disable-next-line import/first
@@ -93,13 +93,36 @@ describe('extension store per account', () => {
     bindAccount(A, [A, B]);
     upsertExtension(ext('com.example.hello'));
     setValue('com.example.hello', field, 'secret');
+    // A secret from before the per-account store (the legacy key).
+    mockSecure.set('ext.com.example.hello.apiKey', 'old');
     bindAccount(B, [A, B]);
     upsertExtension(ext('com.example.hello'));
     removeExtension('com.example.hello');
-    expect(mockSecure.get('ext.com.example.hello.apiKey')).toBe('secret');
+    expect(mockSecure.get(`ext.acct.${A}.com.example.hello.apiKey`)).toBe('secret');
+    expect(mockSecure.get('ext.com.example.hello.apiKey')).toBe('old');
     bindAccount(A, [A, B]);
     removeExtension('com.example.hello');
+    expect(mockSecure.has(`ext.acct.${A}.com.example.hello.apiKey`)).toBe(false);
     expect(mockSecure.has('ext.com.example.hello.apiKey')).toBe(false);
+  });
+
+  it('keeps a secret per account: one account never reads or overwrites the secret of another', () => {
+    const m = manifest();
+    const field = m.contributes.settings!.find((f) => f.key === 'apiKey')!;
+    // Both accounts came from the device list: both read the legacy secret first.
+    mockSecure.set('ext.com.example.hello.apiKey', 'shared-old');
+    bindAccount(A, [A, B]);
+    upsertExtension({ ...ext('com.example.hello'), manifest: m });
+    setValue('com.example.hello', field, 'key-of-a');
+    expect(effectiveValues(m, extensionsState(), null).apiKey).toBe('key-of-a');
+    bindAccount(B, [A, B]);
+    upsertExtension({ ...ext('com.example.hello'), manifest: m });
+    useExtensions.setState((st) => ({ values: { ...st.values, 'com.example.hello': { apiKey: '•' } } }));
+    expect(effectiveValues(m, extensionsState(), null).apiKey).toBe('shared-old');
+    setValue('com.example.hello', field, 'key-of-b');
+    expect(effectiveValues(m, extensionsState(), null).apiKey).toBe('key-of-b');
+    bindAccount(A, [A, B]);
+    expect(effectiveValues(m, extensionsState(), null).apiKey).toBe('key-of-a');
   });
 
   it('saves the tab page and the skip choices with the account', () => {

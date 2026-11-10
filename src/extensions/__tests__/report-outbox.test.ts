@@ -126,4 +126,29 @@ describe('createReportOutbox', () => {
     expect(t.sent).toEqual([]);
     expect(t.box.pending('srv.u1')).toHaveLength(1);
   });
+
+  it('stops sending when the account changes during a run: account A reports never go with account B', async () => {
+    let saved: unknown = null;
+    const storage = { read: () => saved, write: (v: ReportOutbox) => void (saved = JSON.parse(JSON.stringify(v))) };
+    let account = 'srv.u1';
+    const sent: { mediaId: string; account: string }[] = [];
+    const box = createReportOutbox(
+      storage,
+      {
+        account: () => account,
+        send: async (e) => {
+          sent.push({ mediaId: e.body.mediaId, account });
+          // The user switches accounts while the first report is on its way.
+          account = 'srv.u2';
+          return true;
+        },
+      },
+      () => NOW,
+    );
+    box.add('srv.u1', entry('a', 'm1', NOW - 2000));
+    box.add('srv.u1', entry('b', 'm2', NOW - 1000));
+    await box.flush();
+    expect(sent).toEqual([{ mediaId: 'm1', account: 'srv.u1' }]);
+    expect(box.pending('srv.u1').map((e) => e.body.mediaId)).toEqual(['m2']);
+  });
 });

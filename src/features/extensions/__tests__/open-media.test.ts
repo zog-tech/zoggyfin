@@ -13,6 +13,7 @@ const mockOptions = jest.fn();
 const mockDownload = jest.fn();
 const mockAskChoice = jest.fn();
 const mockExtensions = new Map<string, InstalledExtension>();
+const mockAccount = { current: 'srv.u1' as string | null };
 
 jest.mock('@/downloads', () => ({
   extensionDownloadOptions: (...a: unknown[]) => mockOptions(...a),
@@ -23,7 +24,7 @@ jest.mock('@/player', () => ({ playMedia: (...a: unknown[]) => mockPlayMedia(...
 jest.mock('@/lib/toast', () => ({ toast: (...a: unknown[]) => mockToast(...a) }));
 jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a) }, useSegments: () => [] }));
 jest.mock('@/lib/navigation', () => ({ useOpenItem: () => jest.fn() }));
-jest.mock('@/extensions/store', () => ({ getExtension: (id: string) => mockExtensions.get(id) }));
+jest.mock('@/extensions/store', () => ({ getExtension: (id: string) => mockExtensions.get(id), extensionsState: () => ({ account: mockAccount.current }) }));
 jest.mock('@/platform/tv', () => ({ features: { extensionPanels: true, downloads: true }, isTV: false }));
 
 
@@ -48,6 +49,7 @@ beforeEach(() => {
   mockOptions.mockReset().mockResolvedValue({ ok: true, options: [] });
   mockDownload.mockReset().mockResolvedValue({ ok: true });
   mockAskChoice.mockReset();
+  mockAccount.current = 'srv.u1';
   mockExtensions.clear();
 });
 
@@ -109,6 +111,17 @@ describe('downloadMedia', () => {
     mockAskChoice.mockResolvedValueOnce('720');
     await downloadMedia(installed({ playback: true, downloads: true }), entry);
     expect(mockDownload).toHaveBeenCalledWith(expect.objectContaining({ option: '720' }));
+  });
+
+  it('starts nothing when the account changes while the quality prompt is open', async () => {
+    mockOptions.mockResolvedValueOnce({ ok: true, options: [{ id: '720', label: '720p' }] });
+    mockAskChoice.mockImplementationOnce(async () => {
+      mockAccount.current = 'srv.u2';
+      return '720';
+    });
+    await downloadMedia(installed({ playback: true, downloads: true }), entry);
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(mockToast).not.toHaveBeenCalled();
   });
 
   it('shows the error and starts nothing when the description fails', async () => {

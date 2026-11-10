@@ -166,7 +166,9 @@ export function createReportOutbox(storage: OutboxStorage, deps: { account(): st
     if (!account) return;
     const entries = pendingReports(load(), account);
     if (!entries.length) return;
-    const left = await replay(entries, deps.send);
+    // An account switch during the run: the rest waits for its own account
+    // (the sender reads the signed-in account's extension and token).
+    const left = await replay(entries, (e) => (deps.account() === account ? deps.send(e) : Promise.resolve(false)));
     const done = entries.filter((e) => !left.includes(e));
     // Read again: a report may have come in while this run sent.
     const cur = load();

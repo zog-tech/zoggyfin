@@ -22,7 +22,19 @@ interface ExtensionsState extends AccountExtensions {
   account: string | null;
 }
 
-export const secretKey = (extId: string, key: string) => `ext.${extId}.${key}`;
+/**
+ * The secure-store key of a secret setting. Each account has its own
+ * (`ext.acct.<account>.<extId>.<key>`), so one account never sends another
+ * account's secret. The key with no account is where versions before the
+ * per-account store kept it: still read (and removed with the last copy of
+ * the extension) for the accounts that came from that list.
+ */
+export const secretKey = (extId: string, key: string, account?: string | null) => (account ? `ext.acct.${account}.${extId}.${key}` : `ext.${extId}.${key}`);
+
+/** The secret of the account, else the one from before the per-account store. */
+export function readSecret(extId: string, key: string, account: string | null): string | null {
+  return (account ? secureStore.get(secretKey(extId, key, account)) : null) ?? secureStore.get(secretKey(extId, key));
+}
 
 /** Every account's extensions. Loaded on the first `bindAccount`. */
 let data: ExtensionsData | null = null;
@@ -116,8 +128,13 @@ export function setSkipMode(extId: string, label: string, mode: SkipMode | undef
 export function removeExtension(id: string): void {
   const ext = getExtension(id);
   // Secrets are kept by extension id: another account with this extension still uses them.
-  const shared = !!data && installedElsewhere(data, useExtensions.getState().account, id);
-  if (!shared) for (const f of ext?.manifest.contributes.settings ?? []) if (f.type === 'text' && f.secret) secureStore.remove(secretKey(id, f.key));
+  const account = useExtensions.getState().account;
+  const shared = !!data && installedElsewhere(data, account, id);
+  for (const f of ext?.manifest.contributes.settings ?? []) {
+    if (f.type !== 'text' || !f.secret) continue;
+    if (account) secureStore.remove(secretKey(id, f.key, account));
+    if (!shared) secureStore.remove(secretKey(id, f.key));
+  }
   useExtensions.setState((st) => {
     const { [id]: _v, ...values } = st.values;
     const { [id]: _a, ...auto } = st.auto;
@@ -129,8 +146,10 @@ export function removeExtension(id: string): void {
 
 export function setValue(extId: string, field: SettingField, value: SettingValue | undefined): void {
   if (field.type === 'text' && field.secret) {
-    if (value === undefined || value === '') secureStore.remove(secretKey(extId, field.key));
-    else secureStore.set(secretKey(extId, field.key), String(value));
+    // The account's own key: another account with this extension keeps its value.
+    const account = useExtensions.getState().account;
+    if (value === undefined || value === '') secureStore.remove(secretKey(extId, field.key, account));
+    else secureStore.set(secretKey(extId, field.key, account), String(value));
     // Keep a marker so the screen knows a value exists, never the value itself.
     value = value === undefined || value === '' ? undefined : '•';
   }
@@ -183,14 +202,14 @@ export function effectiveValues(
   m: Manifest,
   st: Pick<AccountExtensions, 'values' | 'auto' | 'options'>,
   account: AccountFacts | null,
-  readSecret: (key: string) => string | null = (k) => secureStore.get(secretKey(m.id, k)),
+  readSecretOf: (key: string) => string | null = (k) => readSecret(m.id, k, useExtensions.getState().account),
 ): Values {
   const out: Values = {};
   const user = st.values[m.id] ?? {};
   const auto = st.auto[m.id] ?? {};
   for (const f of m.contributes.settings ?? []) {
     if (f.type === 'text' && f.secret) {
-      const s = user[f.key] !== undefined ? readSecret(f.key) : null;
+      const s = user[f.key] !== undefined ? readSecretOf(f.key) : null;
       out[f.key] = s ?? (f.default ?? '');
       continue;
     }

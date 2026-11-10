@@ -437,7 +437,8 @@ function ExtensionRow({ record: r, last }: { record: DownloadRecord; last: boole
   const meta = [source?.subtitle, source?.label, formatBytes(r.bytesDone)].filter(Boolean).join(' · ');
   const play = () => {
     const request = source ? extensionLocalPlay({ extension: source.extId, mediaId: source.mediaId }) : null;
-    if (request) player.playVod(request);
+    // playMedia: the together refusal names extension media, and the local file plays first.
+    if (source && request) player.playMedia({ extension: source.extId, mediaId: source.mediaId, playback: source.playback ?? '', title });
     else toast('This download cannot play here.', { icon: 'exclamationmark.triangle' });
   };
   const remove = async () => {

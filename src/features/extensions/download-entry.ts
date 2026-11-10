@@ -11,7 +11,7 @@
  */
 import type { DetailDescription, FeedEntry } from '@/extensions/feeds';
 import { askChoice } from '@/extensions/prompts';
-import type { InstalledExtension } from '@/extensions/store';
+import { extensionsState, type InstalledExtension } from '@/extensions/store';
 import { toast } from '@/lib/toast';
 
 /**
@@ -28,8 +28,12 @@ export async function downloadMedia(extension: InstalledExtension, target: FeedE
   const { downloadExtensionMedia, extensionDownloadOptions } = require('@/downloads') as typeof import('@/downloads');
   const title = target.title || extension.manifest.name;
   const facts = target as { subtitle?: string; eyebrow?: string };
+  // The entry belongs to the account that showed it: after a switch (during the prompt) nothing starts.
+  const account = extensionsState().account;
+  const stale = () => extensionsState().account !== account;
   // A description with options needs a choice first; an empty list means one file.
   const listed = await extensionDownloadOptions({ extension, download: media.download });
+  if (stale()) return;
   if (!listed.ok) {
     toast(listed.error, { icon: 'exclamationmark.triangle' });
     return;
@@ -37,12 +41,13 @@ export async function downloadMedia(extension: InstalledExtension, target: FeedE
   let option: string | undefined;
   if (listed.options.length) {
     const picked = await askChoice({ title: 'Download quality', load: async () => listed.options.map((o) => ({ value: o.id, label: o.label })) });
-    if (!picked) return;
+    if (!picked || stale()) return;
     option = picked;
   }
   const r = await downloadExtensionMedia({
     extension, mediaId: media.id, download: media.download, playback: media.playback, kind: media.kind,
     title, subtitle: facts.subtitle ?? facts.eyebrow, image: target.imageUrl, duration: media.duration, option,
   });
+  if (stale()) return;
   toast(r.ok ? `Downloading ${title}` : r.error, { icon: r.ok ? 'arrow.down.circle' : 'exclamationmark.triangle' });
 }

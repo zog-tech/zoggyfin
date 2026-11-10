@@ -53,6 +53,21 @@ export function sourceHeaders(source: Pick<EngineSource, 'headers' | 'userAgent'
   return out;
 }
 
+/**
+ * The headers of one request of a stream: all of them for a URL on the
+ * stream's own origin, none for another origin (an HLS playlist can name
+ * segments on another server, and the headers can hold a token). A URL that
+ * does not parse gets none.
+ */
+export function headersForRequest(headers: Record<string, string>, streamUrl: string, requestUrl: string): Record<string, string> {
+  try {
+    const origin = new URL(streamUrl).origin;
+    return new URL(requestUrl, streamUrl).origin === origin ? headers : {};
+  } catch {
+    return {};
+  }
+}
+
 /** A subtitle for an engine that draws subtitles itself. */
 export interface EngineSubtitle {
   /** Jellyfin stream index (the stream index in the file for embedded subtitles). */

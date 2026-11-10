@@ -137,11 +137,17 @@ export function extensionSource(extId: string, deps: ExtensionMediaDeps, refs = 
   const fetchFn = deps.fetch ?? fetchWithTimeout;
   /** The headers of a request now: the settings or the grant may have changed since the last one. */
   const headersNow = (ext: InstalledExtension) => streamHeaders(ext.manifest, deps.context(ext), ext, deps.account());
+  // The account that opened the title. After a switch, Try again, a quality
+  // reload or the next entry would send the other account's headers: refuse.
+  const keyOf = (a: JellyfinAccount | null) => (a ? `${a.serverId}.${a.userId}` : null);
+  const owner = keyOf(deps.account());
+  const otherAccount = () => keyOf(deps.account()) !== owner;
   return {
     providerId: `ext:${extId}`,
     label: deps.extension(extId)?.manifest.name,
     itemId: (ref) => mediaItemId(extId, ref.id),
     async resolve(ref) {
+      if (otherAccount()) return none('This title was opened by another account. Open it again.');
       const ext = deps.extension(extId);
       const why = playRefusal(ext);
       if (why || !ext) return none(why ?? 'This extension is not installed any more.');
@@ -168,6 +174,7 @@ export function extensionSource(extId: string, deps: ExtensionMediaDeps, refs = 
       return streamFromDescription(d, m, headers, refs, post, ref.id);
     },
     async loadText(url) {
+      if (otherAccount()) throw new ExtensionError('This title was opened by another account.');
       const ext = deps.extension(extId);
       if (playRefusal(ext) || !ext) throw new ExtensionError('This extension cannot play media.');
       const target = urlOnOrigin(ext.manifest.baseUrl, url);
