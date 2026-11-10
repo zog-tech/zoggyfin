@@ -68,6 +68,22 @@ passes. Write the device, the build and the result next to a line that fails.
 - [ ] Stop playback in airplane mode, then turn airplane mode off. Expected: the console shows the `stop` report with `"offline": true` once the app reaches the server.
 - [ ] Settings → Extensions → Hello Pages → Remove. Expected: the app asks whether to delete its downloads too; both choices do what they say.
 
+### 2a. iPhone: "On this phone" (Settings → Extensions → Hello Pages)
+
+- [ ] Open the row. Expected: "Library tile" (selected), "Tab in place of Music", "… Downloads", "… Search", "… Library"; no Home choice. The row is not on iPad, the web, the Mac app or TV.
+- [ ] Pick each "Tab in place of …" in turn. Expected each time: the bar has five tabs (Home always first), "Hello Pages" is a tab and the chosen tab is gone; the app opens Home; a playing song or video goes on and the mini player stays.
+- [ ] With Music, Downloads and Search replaced in turn: open Library. Expected: a tile with that tab's name and icon after the libraries; a tap opens the screen with a back button (Search: the search field works; Music: the library picker works; Downloads: rows play and delete).
+- [ ] With Library replaced: Home shows a "Library" button at the top. Expected: a tap opens the grid with Live TV and extension tiles; a library opens.
+- [ ] Downloads replaced: start a download, tap "Go to Downloads" in the toast; Home's Downloads row "See all"; the profile menu's Downloads row; Settings → Downloads. Expected: each opens Downloads in the Library stack.
+- [ ] Music replaced: in Now Playing, open the album or artist; add a song to a playlist and tap "Open". Expected: the page opens in Library, never in a hidden tab.
+- [ ] Library replaced: in Downloads with nothing saved, tap "Browse library". Expected: the grid opens in Home.
+- [ ] Open `zoggyfin://downloads` (Downloads replaced) and `zoggyfin://libraries` (Library replaced) from Notes. Expected: the moved screen opens; no blank screen.
+- [ ] Simulate no server (Settings → Development) with Downloads replaced, tap the offline banner's Downloads link. Expected: Downloads opens in Library. Sign out and use offline mode from the sign-in screen. Expected: Downloads as before, with "Sign in".
+- [ ] Pick "Library tile" again. Expected: the replaced tab comes back, the tile or button goes, "Hello Pages" is a Library tile again.
+- [ ] Choose a tab, then turn the extension off; turn it on; remove it. Expected: off and removed give the tab back at once; on brings the choice back.
+- [ ] Choose a tab as account A, switch to account B (no extension). Expected: five normal tabs. Back to A: the choice is there.
+- [ ] Choose a tab on this phone; pull on a second phone as the same account. Expected: the same tab there. Pull on an iPad. Expected: the iPad tab bar does not change.
+
 ## 3. iPad
 
 - [ ] Regular width (full screen). Expected: "Hello Pages" shows as a tab in the tab bar or sidebar, with the page icon and title.
@@ -86,6 +102,12 @@ passes. Write the device, the build and the result next to a line that fails.
 - [ ] Download an entry. Expected: the Android download notification shows progress and completion.
 - [ ] Kill the app during a download and open it again. Expected: the download continues.
 - [ ] Play the download in airplane mode. Expected: it plays with subtitles, image and the saved position.
+
+### 4a. Android phone: "On this phone"
+
+- [ ] Do the checks of 2a. Expected: the same results, and never a crash from the bottom bar (five items at most) when a choice is picked, changed back, synced in from another phone or undone by turning the extension off.
+- [ ] An Android tablet. Expected: it behaves as a phone (the row shows, five tabs).
+- [ ] Back button on a moved screen (Music in Library). Expected: back to the Library grid, then the app's usual back behaviour.
 
 ## 5. Android TV
 

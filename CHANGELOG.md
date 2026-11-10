@@ -14,8 +14,9 @@ first commit to today. All of it was built in the first weeks of the project.
 ### Added
 
 - **Extensions, schema version 2.** An extension can add native pages (rows, grids and lists that
-  load more as you scroll, with search), shown as a tab on iPad, the web and the Mac app, as a
-  Library tile on phones and in the TV side menu. Entries open an entry page with Play, on/off
+  load more as you scroll, with search), shown as a tab on iPad, the web and the Mac app, in the
+  TV side menu, and on phones as a Library tile or, if you choose ("On this phone"), as a tab in
+  place of Music, Downloads, Search or Library; the replaced tab stays one tap away. Entries open an entry page with Play, on/off
   buttons and related rows. The video player plays an extension's media with its headers (and the
   Jellyfin token only when you allow it), quality choices, subtitles, chapters, a next title and
   labelled skip segments (auto skip with Undo, a Skip button, or off, per label in Settings).

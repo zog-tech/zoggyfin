@@ -453,16 +453,33 @@ it did before.
 
 | Place | iPhone, Android phone and tablet | iPad | Web, Mac app | TV |
 |---|---|---|---|---|
-| The tab (`tab`) | Not shown (see below) | A tab (the sidebar in regular width) | A tab, an item in the sidebar | An item in the side menu |
-| A Library tile (`library`) | A tile after the libraries | A tile after the libraries | A tile, unless the page is the tab | An item in the side menu |
+| The tab (`tab`) | A Library tile, or a tab in place of one tab (the user chooses, see below) | A tab (the sidebar in regular width) | A tab, an item in the sidebar | An item in the side menu |
+| A Library tile (`library`) | A tile after the libraries, unless the page is the tab | A tile after the libraries | A tile, unless the page is the tab | An item in the side menu |
 | Home rows (`home`) | Yes | Yes | Yes | Yes |
 
 - **One tab.** The app has one tab slot for all extensions. When more than one
   page has `tab: true`, the page chosen in Settings → Extensions → the
   extension → "Show as tab" fills it (the choice follows the account to other
   devices). With no choice, the page of the extension installed first fills it.
-- **Phones.** Phones already have five tabs, so a page does not become a tab
-  there. It shows as a Library tile (with `library: true`) and its Home rows.
+- **Phones.** Phones already have five tabs (Android cannot show a sixth), so
+  the user chooses in Settings → Extensions → the extension → "On this phone":
+  - **Library tile** (the default): the page with `tab: true` is a tile in
+    Library, like a page with `library: true`.
+  - **Tab in place of Music, Downloads, Search or Library**: the page is a
+    tab, and the chosen tab hides. Home is never replaced. The bar keeps five
+    tabs.
+
+  The replaced tab stays one tap away. Music, Downloads and Search get a tile
+  in Library with the tab's name and icon; it opens the same screen in the
+  Library stack. When Library is replaced, Home shows a "Library" button at
+  the top. Links, the music player's "open" actions and "Go to Downloads"
+  go to the new place. One extension at a time can be the phone tab; its
+  page is the one chosen with "Show as tab", else its first tab page. The
+  choice follows the account to your other phones; iPad, the web, the Mac
+  app and TV ignore it. When the extension is off or removed, loses its tab
+  page in an update, or you sign in to an account without it, the replaced
+  tab comes back. A change rebuilds the tab bar and opens Home; playback and
+  the mini player go on.
 - **TV.** The side menu lists at most two extension pages, before Settings:
   the tab page first, then the pages with `tab` or `library` in install order.
 - The tab and the side menu show the page `title` and `icon`. `icon` is an
