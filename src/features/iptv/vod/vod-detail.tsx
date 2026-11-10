@@ -12,12 +12,11 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
+import { PlainArt } from '@/components/plain-art';
 import { Overview, RoundAction } from '@/features/detail/detail-scaffold';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, radius, scaled, scriptStyle, sizes, spacing, type, useLayout, useStyles, useTheme, withAlpha } from '@/theme';
-
-import { VodArt } from './vod-art';
 
 export interface VodAction {
   icon: 'arrow.counterclockwise' | 'heart' | 'heart.fill' | 'arrow.clockwise';
@@ -106,7 +105,7 @@ export function VodDetail({
 
   const hero = backdrop ? (
     <View style={[s.hero, { height: heroH }]}>
-      <VodArt uri={backdrop} name={title} id={id} kind={kind} width={l.contentWidth} aspectRatio={l.contentWidth / heroH} rounded={0} showTitle={false} />
+      <PlainArt uri={backdrop} name={title} id={id} kind={kind} width={l.contentWidth} aspectRatio={l.contentWidth / heroH} rounded={0} showTitle={false} />
       <LinearGradient colors={[withAlpha(c.bg, 0), withAlpha(c.bg, 0), c.bg]} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
     </View>
   ) : null;
@@ -122,7 +121,7 @@ export function VodDetail({
         <View style={[s.columns, { width: pageWidth, paddingHorizontal: l.gutter, marginTop: hero ? -heroH * 0.5 : isTV ? spacing.xxl : spacing.huge }]}>
           <View style={[s.left, { width: leftWidth }]}>
             <View style={s.raised}>
-              <VodArt uri={poster} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={2 / 3} />
+              <PlainArt uri={poster} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={2 / 3} />
             </View>
             <View style={{ width: Math.min(leftWidth, 280), gap: spacing.lg }}>
               {play}
@@ -140,7 +139,7 @@ export function VodDetail({
         {hero}
         <View style={[s.body, { paddingHorizontal: l.gutter, marginTop: hero ? -scaled(90) : spacing.lg }]}>
           <View style={[s.raised, s.selfCenter]}>
-            <VodArt uri={poster} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={2 / 3} />
+            <PlainArt uri={poster} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={2 / 3} />
           </View>
           {text}
         </View>

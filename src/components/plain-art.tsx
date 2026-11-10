@@ -1,8 +1,9 @@
 /**
- * The poster or still of an IPTV film, series or episode. Provider images
- * are plain http(s) URLs on other hosts: they load with no Jellyfin token
- * (never through `ItemImage`, which adds one). Generated art (§7.5) shows
- * when there is no image or it does not load, like on server items.
+ * The art of a tile that is not a Jellyfin item (an IPTV film, an extension
+ * entry). The images are plain http(s) URLs on other hosts: they load with
+ * no Jellyfin token (never through `ItemImage`, which adds one). Generated
+ * art (§7.5) shows when there is no image or it does not load, like on
+ * server items.
  */
 import { Image } from 'expo-image';
 import { memo, useState } from 'react';
@@ -12,7 +13,12 @@ import { GeneratedArtView } from '@/components/item-image';
 import { generatedArt } from '@/images/generated-art';
 import { createStyles, type AppTheme, mediaColors, motion, radius, useStyles } from '@/theme';
 
-export const VodArt = memo(function VodArt({
+/** What a plain tile shows. It picks the glyph of the generated art. */
+export type PlainKind = 'film' | 'series' | 'episode' | 'video' | 'audio';
+
+const ART_TYPE: Record<PlainKind, string> = { film: 'Movie', series: 'Series', episode: 'Episode', video: 'Video', audio: 'Audio' };
+
+export const PlainArt = memo(function PlainArt({
   uri,
   name,
   id,
@@ -26,7 +32,7 @@ export const VodArt = memo(function VodArt({
   name: string;
   /** Seeds the generated art. */
   id: string;
-  kind: 'film' | 'series' | 'episode';
+  kind: PlainKind;
   width: number;
   aspectRatio: number;
   rounded?: number;
@@ -51,7 +57,7 @@ export const VodArt = memo(function VodArt({
         />
       ) : (
         <GeneratedArtView
-          art={generatedArt(name, kind === 'film' ? 'Movie' : kind === 'series' ? 'Series' : 'Episode', null, id)}
+          art={generatedArt(name, ART_TYPE[kind], null, id)}
           width={width}
           height={height}
           circle={false}
