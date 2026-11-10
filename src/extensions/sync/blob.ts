@@ -21,9 +21,13 @@
  *   it offered (`seen`, by when they were added). "Not now" leaves it seen.
  *   A new add on another device (a new `addedAt`) is offered again. A
  *   change of its settings elsewhere is not.
- * - When the device then installs an offered extension, it takes the
- *   account's stamp, so the account's settings, grants and add time win
- *   the tie (the install's own defaults never overwrite the account).
+ * - The confirm screen for an offer starts from the account's grants, and
+ *   the install takes the account's settings, tab and add time
+ *   (`accountInstall`). When the result equals the account's entry, it
+ *   takes the account's stamp and sends nothing. When the user changed a
+ *   grant on the screen, it is a change of this device: a new stamp, so it
+ *   wins and goes to the account, and a later pull of the older account
+ *   value does not undo it. A newer change elsewhere still wins after.
  * - Data from the server is checked field by field: bad data is dropped,
  *   never thrown. Nothing here holds a secret.
  *
@@ -76,10 +80,11 @@ export interface ExtSyncBlob {
   skip: StampedMap<SkipMode>;
 }
 
-/** An offered extension: the add it belongs to and the account's stamp then. */
+/** An offered extension: the add it belongs to, the account's stamp then, and the hash of the account's entry. */
 export interface Seen {
   added: number;
   at: number;
+  hash?: string;
 }
 
 /** The device's ledger, per account (MMKV). No secrets. */
@@ -176,10 +181,10 @@ export function observe(meta: ExtSyncMeta, local: LocalExtensions, now: number):
     current,
     (id, old) => {
       if (seeding) return SEED_STAMP;
-      // An install of an extension this device offered from the account (on the confirm screen, or by
-      // hand after "Not now"): it takes the account's stamp, so the account's version wins the tie.
+      // An install of an offered extension that is the same as the account's entry takes the account's
+      // stamp (nothing to send). One the user changed on the confirm screen is a new change: it wins.
       const offered = meta.seen[id];
-      if ((!old || old.del) && offered && offered.at > (old?.at ?? 0)) return offered.at;
+      if ((!old || old.del) && offered?.hash && offered.at > (old?.at ?? 0) && offered.hash === hashText(canonical(current[id]))) return offered.at;
       return Math.max(now, (old?.at ?? 0) + 1);
     },
     now,
@@ -255,6 +260,8 @@ export interface Offer {
   manifestUrl: string;
   added: number;
   at: number;
+  /** The account's entry: the confirm screen and the install start from it. */
+  val: SyncedExtension;
 }
 
 export interface ApplyPlan {
@@ -286,7 +293,7 @@ export function planApply(local: LocalExtensions, blob: ExtSyncBlob, meta: ExtSy
     }
     if (!installed.has(id)) {
       // Not in this device's ledger, so a later look does not count it as removed here.
-      if (e.val && meta.seen[id]?.added !== e.val.addedAt) offer.push({ id, manifestUrl: e.val.manifestUrl, added: e.val.addedAt, at: e.at });
+      if (e.val && meta.seen[id]?.added !== e.val.addedAt) offer.push({ id, manifestUrl: e.val.manifestUrl, added: e.val.addedAt, at: e.at, val: e.val });
       continue;
     }
     const mine = syncedOf(local, id) as SyncedExtension;
@@ -325,8 +332,25 @@ export function planApply(local: LocalExtensions, blob: ExtSyncBlob, meta: ExtSy
 export function markSeen(meta: ExtSyncMeta, offers: readonly Offer[]): ExtSyncMeta {
   if (!offers.length) return meta;
   const seen = { ...meta.seen };
-  for (const o of offers) seen[o.id] = { added: o.added, at: o.at };
+  for (const o of offers) seen[o.id] = { added: o.added, at: o.at, hash: hashText(canonical(o.val)) };
   return { ...meta, seen };
+}
+
+/**
+ * An install from an offer: the new extension with the account's add time,
+ * on/off state and tab, and its values with the account's settings (secret
+ * ones stay as they are on the device). The grants are the ones the user
+ * set on the confirm screen.
+ */
+export function accountInstall(ext: InstalledExtension, values: Values | undefined, val: SyncedExtension): { ext: InstalledExtension; values: Values } {
+  const next: InstalledExtension = { ...ext, enabled: val.enabled, installedAt: val.addedAt };
+  delete next.tab;
+  if (val.tab) next.tab = val.tab;
+  const secret = secretKeys(ext.manifest);
+  const out: Values = {};
+  for (const [k, v] of Object.entries(values ?? {})) if (secret.has(k)) out[k] = v;
+  for (const [k, v] of Object.entries(val.settings)) if (!secret.has(k)) out[k] = v;
+  return { ext: next, values: out };
 }
 
 /** True when the plan changes nothing on the device. */
@@ -411,7 +435,7 @@ export function migrateExtMeta(raw: unknown): ExtSyncMeta {
     return out;
   };
   const seen: Record<string, Seen> = {};
-  if (isObject(raw.seen)) for (const [k, x] of Object.entries(raw.seen)) if (isObject(x) && isNum(x.added) && isNum(x.at)) seen[k] = { added: x.added, at: x.at };
+  if (isObject(raw.seen)) for (const [k, x] of Object.entries(raw.seen)) if (isObject(x) && isNum(x.added) && isNum(x.at)) seen[k] = typeof x.hash === 'string' ? { added: x.added, at: x.at, hash: x.hash } : { added: x.added, at: x.at };
   return {
     schemaVersion: EXT_SYNC_META_SCHEMA_VERSION,
     seeded: raw.seeded === true,

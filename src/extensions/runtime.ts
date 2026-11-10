@@ -26,6 +26,7 @@ import { askChoice, askConfirm, askText, type ChoiceOption } from './prompts';
 import { applyRefresh, handleActionResponse, type ResponseEffects, type TaskRef, toastText } from './response';
 import { type InputSpec, type ItemActionSpec, type Manifest, parseManifest, type RequestSpec, type ShareTargetSpec } from './schema';
 import { followSession } from './session-binding';
+import { accountInstall, type Offer, type SyncedExtension } from './sync/blob';
 import { type AccountFacts, effectiveValues, extensionsState, getExtension, type InstalledExtension, setAuto, upsertExtension, useExtensions } from './store';
 import { plannedContributions, registrationSignature } from './registration';
 import { forgetSavedTask, readSavedTasks, rememberTask, TASKS_KEY, tasksToResume } from './saved-tasks';
@@ -292,6 +293,8 @@ export interface Candidate {
   manifest: Manifest;
   /** Set when this extension is already installed. */
   installed?: InstalledExtension;
+  /** Set when account sync offers it: the account's entry (grants, settings, tab). */
+  fromAccount?: SyncedExtension;
 }
 
 /** Fetches and checks a manifest. `input` is a manifest URL or a site address. */
@@ -316,8 +319,14 @@ export async function loadManifest(input: string): Promise<Candidate> {
 
 /** Installs (or updates) an extension and fills in its settings. */
 export async function install(c: Candidate, grants: Grants): Promise<void> {
-  const ext: InstalledExtension = { manifestUrl: c.manifestUrl, manifest: c.manifest, enabled: true, grants, installedAt: c.installed?.installedAt ?? Date.now() };
-  upsertExtension(ext);
+  let ext: InstalledExtension = { manifestUrl: c.manifestUrl, manifest: c.manifest, enabled: true, grants, installedAt: c.installed?.installedAt ?? Date.now() };
+  if (c.fromAccount && !c.installed) {
+    // From the account: its settings, tab and add time; the grants the user set on the screen.
+    const id = c.manifest.id;
+    const r = accountInstall(ext, extensionsState().values[id], c.fromAccount);
+    ext = r.ext;
+    useExtensions.setState((st) => ({ list: [...st.list.filter((e) => e.manifest.id !== id), r.ext], values: { ...st.values, [id]: r.values } }));
+  } else upsertExtension(ext);
   await prefill(ext);
 }
 
@@ -369,10 +378,10 @@ export { cancelInstallRequest, confirmInstallRequest, pendingCandidates, useInst
  * typed, or the links of an invite). The state and its rules are in
  * `install-request.ts`.
  */
-export async function requestInstall(inputs: string[], source: InstallSource = 'user'): Promise<void> {
+export async function requestInstall(inputs: string[], source: InstallSource = 'user', load: (input: string) => Promise<Candidate> = loadManifest): Promise<void> {
   const list = [...new Set(inputs.map((i) => i.trim()).filter(Boolean))].slice(0, 10);
   if (!list.length) return;
-  const loading = loadInstallRequest(list, loadManifest, source);
+  const loading = loadInstallRequest(list, load, source);
   router.push('/extension-install');
   await loading;
 }
@@ -388,9 +397,19 @@ export function installFromInvite(urls: string[]): Promise<void> {
  * account ("From your account"). The app loads each manifest from its URL,
  * as for any install.
  */
-export function installFromAccount(urls: string[]): void {
-  const fresh = urls.filter((u) => !extensionsState().list.some((e) => e.manifestUrl === u));
-  void requestInstall(fresh, 'account');
+export function installFromAccount(offers: Offer[]): void {
+  const fresh = offers.filter((o) => !extensionsState().list.some((e) => e.manifestUrl === o.manifestUrl || e.manifest.id === o.id));
+  const byUrl = new Map(fresh.map((o) => [o.manifestUrl, o]));
+  void requestInstall(
+    fresh.map((o) => o.manifestUrl),
+    'account',
+    async (input) => {
+      const c = await loadManifest(input);
+      const o = byUrl.get(input);
+      // The account's entry only for the extension it names (the URL may serve another one now).
+      return o && o.id === c.manifest.id ? { ...c, fromAccount: o.val } : c;
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

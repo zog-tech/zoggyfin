@@ -1,4 +1,4 @@
-import { cancelInstallRequest, confirmInstallRequest, loadInstallRequest, pendingCandidates, useInstallRequest } from '../install-request';
+import { cancelInstallRequest, confirmInstallRequest, initialGrants, loadInstallRequest, pendingCandidates, useInstallRequest } from '../install-request';
 import type { Candidate } from '../runtime';
 import { manifest } from '../test-utils/fixtures';
 
@@ -27,6 +27,20 @@ describe('install request', () => {
     expect(state().loading).toBe(false);
     expect(state().entries[1].error).toBe('Not an extension.');
     expect(pendingCandidates(state().entries).map((c) => c.manifest.id)).toEqual(['a']);
+  });
+
+  it('the screen starts from the account grants for an extension from the account', () => {
+    const c = cand('a');
+    expect(initialGrants(c)).toEqual({ itemPath: true, jellyfinToken: true });
+    const fromAccount = { manifestUrl: c.manifestUrl, enabled: true, grants: { itemPath: false, jellyfinToken: false }, settings: {}, addedAt: 1 };
+    expect(initialGrants({ ...c, fromAccount })).toEqual({ itemPath: false, jellyfinToken: false });
+    expect(initialGrants({ ...c, fromAccount: { ...fromAccount, grants: { itemPath: true, jellyfinToken: true } } })).toEqual({ itemPath: true, jellyfinToken: true });
+    // No grant without its permission, whatever the account says.
+    const noToken = { ...c, manifest: { ...c.manifest, permissions: ['network' as const] } };
+    expect(initialGrants({ ...noToken, fromAccount: { ...fromAccount, grants: { itemPath: true, jellyfinToken: true } } })).toEqual({ itemPath: false, jellyfinToken: false });
+    // An update keeps the installed token choice.
+    const installed = { manifestUrl: c.manifestUrl, manifest: c.manifest, enabled: true, grants: { itemPath: true, jellyfinToken: false }, installedAt: 1 };
+    expect(initialGrants({ ...c, installed }).jellyfinToken).toBe(false);
   });
 
   it('remembers who asked: the user or account sync', async () => {

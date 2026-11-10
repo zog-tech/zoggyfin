@@ -21,6 +21,7 @@ import { create } from 'zustand';
 
 import { createGate } from '@/lib/async-gate';
 
+import type { Grants } from './http';
 import type { Candidate } from './runtime';
 
 export interface InstallEntry {
@@ -49,6 +50,22 @@ const gate = createGate();
 let token = gate.begin();
 
 export const useInstallRequest = create<InstallRequest>(() => EMPTY);
+
+/**
+ * The grants the confirm screen starts with. An update keeps the installed
+ * token choice; an extension from the account starts from the account's
+ * grants; a new one asks for every permission the manifest names (the
+ * token on, so the install needs no other step). A grant is never on
+ * without its permission.
+ */
+export function initialGrants(c: Pick<Candidate, 'manifest' | 'installed' | 'fromAccount'>): Grants {
+  const perms = c.manifest.permissions;
+  const account = c.installed ? undefined : c.fromAccount?.grants;
+  return {
+    itemPath: perms.includes('itemPath') && (account?.itemPath ?? true),
+    jellyfinToken: perms.includes('jellyfinToken') && (c.installed?.grants.jellyfinToken ?? account?.jellyfinToken ?? true),
+  };
+}
 
 /** The extensions the screen still offers: loaded and not added yet. */
 export function pendingCandidates(entries: readonly InstallEntry[]): Candidate[] {

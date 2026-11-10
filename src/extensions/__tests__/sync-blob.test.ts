@@ -6,6 +6,7 @@
 import { chunkCodec, TOMBSTONE_TTL_MS } from '@/lib/account-blob';
 
 import {
+  accountInstall,
   applyUpdates,
   decodeExtBlob,
   EMPTY_EXT_META,
@@ -84,7 +85,7 @@ describe('extension account sync', () => {
     const account = sync(a, null, T0).blob;
     const b = device();
     const first = sync(b, account, T0 + 1);
-    expect(first.plan.offer).toEqual([{ id: HELLO, manifestUrl: `http://192.0.2.10/${HELLO}.json`, added: 100, at: 1 }]);
+    expect(first.plan.offer).toEqual([{ id: HELLO, manifestUrl: `http://192.0.2.10/${HELLO}.json`, added: 100, at: 1, val: account.extensions[HELLO].val }]);
     // "Not now": the device installs nothing. Ten more pulls offer nothing.
     for (let i = 0; i < 10; i++) expect(sync(b, account, T0 + 2 + i).plan.offer).toEqual([]);
     // The offer is not in the ledger as installed, so nothing is removed from the account.
@@ -107,15 +108,26 @@ describe('extension account sync', () => {
     expect(sync(b, account, T0 + 7).plan.offer.map((o) => o.added)).toEqual([T0 + 5]);
   });
 
-  it('an install of an offered extension takes the account settings and grants, and sends nothing back', () => {
-    const a = device([ext(HELLO, 100, { grants: { itemPath: true, jellyfinToken: false }, tab: 'latest' })], { [HELLO]: { user: 'Jane Doe', apiKey: '•' } });
+  /** The account with the extension from the first device, and a second device that was offered it. */
+  function offered(grants = { itemPath: true, jellyfinToken: true }) {
+    const a = device([ext(HELLO, 100, { grants, tab: 'latest' })], { [HELLO]: { user: 'Jane Doe', apiKey: '•' } });
     a.meta = { ...EMPTY_EXT_META, seeded: true };
     const account = sync(a, null, T0).blob;
     const c = device();
     c.meta = { ...EMPTY_EXT_META, seeded: true };
-    sync(c, account, T0 + 1);
-    // The confirm screen installs it now, with its own defaults and time.
-    c.local = { ...c.local, list: [ext(HELLO, T0 + 2)], values: { [HELLO]: { user: 'Default' } } };
+    const [offer] = sync(c, account, T0 + 1).plan.offer;
+    /** The confirm screen's install, with the grants the user set there. */
+    const installWith = (g: InstalledExtension['grants']) => {
+      const r = accountInstall(ext(HELLO, T0 + 2, { grants: g }), { user: 'Default' }, offer.val);
+      c.local = { ...c.local, list: [r.ext], values: { [HELLO]: r.values } };
+    };
+    return { a, c, account, offer, installWith };
+  }
+
+  it('an install of an offered extension takes the account settings and grants, and sends nothing back', () => {
+    const { c, account, offer, installWith } = offered({ itemPath: true, jellyfinToken: false });
+    expect(offer.val.grants).toEqual({ itemPath: true, jellyfinToken: false });
+    installWith(offer.val.grants);
     const rc = sync(c, account, T0 + 4);
     expect(rc.pushed).toBe(false);
     const got = c.local.list[0];
@@ -124,6 +136,37 @@ describe('extension account sync', () => {
     expect(got.installedAt).toBe(100);
     expect(c.local.values[HELLO]).toEqual({ user: 'Jane Doe' });
     expect(sync(c, account, T0 + 5).pushed).toBe(false);
+  });
+
+  it('a grant the user turns off on the confirm screen stays off after the next pull, and goes to the account', () => {
+    const { c, account, installWith } = offered();
+    installWith({ itemPath: true, jellyfinToken: false });
+    const r = sync(c, account, T0 + 4);
+    expect(r.pushed).toBe(true);
+    expect(c.local.list[0].grants.jellyfinToken).toBe(false);
+    expect(r.blob.extensions[HELLO].val?.grants.jellyfinToken).toBe(false);
+    // The account's settings still came with the install.
+    expect(r.blob.extensions[HELLO].val?.settings).toEqual({ user: 'Jane Doe' });
+    // A later pull of the older account value (the push did not reach the server) does not undo it.
+    const again = sync(c, account, T0 + 5);
+    expect(c.local.list[0].grants.jellyfinToken).toBe(false);
+    expect(again.blob.extensions[HELLO].val?.grants.jellyfinToken).toBe(false);
+    // And a pull of the account after the push changes nothing.
+    expect(sync(c, r.blob, T0 + 6).pushed).toBe(false);
+    expect(c.local.list[0].grants.jellyfinToken).toBe(false);
+  });
+
+  it('a newer grant change on another device still applies after the choice on the screen', () => {
+    const { a, c, account, installWith } = offered();
+    installWith({ itemPath: true, jellyfinToken: false });
+    let blob = sync(c, account, T0 + 4).blob;
+    blob = sync(a, blob, T0 + 5).blob;
+    expect(a.local.list[0].grants.jellyfinToken).toBe(false);
+    // Later, the first device turns the token grant on again.
+    a.local = { ...a.local, list: [{ ...a.local.list[0], grants: { itemPath: true, jellyfinToken: true } }] };
+    blob = sync(a, blob, T0 + 100).blob;
+    sync(c, blob, T0 + 101);
+    expect(c.local.list[0].grants.jellyfinToken).toBe(true);
   });
 
   it('a removal on one device removes the extension on the others, with no offer', () => {

@@ -97,13 +97,13 @@ async function push(scope: Scope, blob: ExtSyncBlob): Promise<void> {
 }
 
 /** Opens the confirm screen for the offers. Set by the runtime, so this file has no router import. */
-let openOffers: ((urls: string[]) => void) | null = null;
+let openOffers: ((offers: Offer[]) => void) | null = null;
 
 /** Shows the offers unless another confirm screen is open; true when they showed. */
 function offer(offers: readonly Offer[]): boolean {
   if (!offers.length || !openOffers) return false;
   if (useInstallRequest.getState().entries.length) return false;
-  openOffers(offers.map((o) => o.manifestUrl));
+  openOffers([...offers]);
   return true;
 }
 
@@ -190,9 +190,9 @@ let started = false;
 
 /**
  * Starts account sync of the extension list. `open` shows the confirm
- * screen for manifest URLs from the account. Safe to call often.
+ * screen for extensions of the account. Safe to call often.
  */
-export function startExtensionSync(open: (urls: string[]) => void): void {
+export function startExtensionSync(open: (offers: Offer[]) => void): void {
   openOffers = open;
   if (started) return;
   started = true;

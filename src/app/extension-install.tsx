@@ -12,6 +12,7 @@ import { ActivityIndicator, ScrollView, Switch, Text, View } from 'react-native'
 
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
+import { initialGrants } from '@/extensions/install-request';
 import { cancelInstallRequest, confirmInstallRequest, install, pendingCandidates, type Candidate, useInstallRequest } from '@/extensions/runtime';
 import { describePermission, type Manifest, safeHost } from '@/extensions/schema';
 import { ModalHeader } from '@/extensions/ui/modal-header';
@@ -27,9 +28,10 @@ export default function ExtensionInstallScreen() {
   // Extensions already added in this request leave the screen.
   const entries = all.filter((e) => !e.done);
   const ready = pendingCandidates(all);
-  // The token permission: shown with its own switch, on, so the install needs no other step.
+  // The token permission: shown with its own switch, pre-set by `initialGrants` (on for a new
+  // extension, the account's value for one from the account). What the user sets here wins.
   const [tokenChoice, setToken] = useState<Record<string, boolean>>({});
-  const token: Record<string, boolean> = Object.fromEntries(ready.map((cand) => [cand.manifest.id, tokenChoice[cand.manifest.id] ?? cand.installed?.grants.jellyfinToken ?? true]));
+  const token: Record<string, boolean> = Object.fromEntries(ready.map((cand) => [cand.manifest.id, tokenChoice[cand.manifest.id] ?? initialGrants(cand).jellyfinToken]));
 
   const close = () => {
     cancelInstallRequest();
@@ -39,7 +41,7 @@ export default function ExtensionInstallScreen() {
 
   const confirm = async () => {
     const r = await confirmInstallRequest((cand) =>
-      install(cand, { itemPath: cand.manifest.permissions.includes('itemPath'), jellyfinToken: !!token[cand.manifest.id] && cand.manifest.permissions.includes('jellyfinToken') }),
+      install(cand, { itemPath: initialGrants(cand).itemPath, jellyfinToken: !!token[cand.manifest.id] && cand.manifest.permissions.includes('jellyfinToken') }),
     );
     if (r.kind === 'done') {
       toast(r.names.length === 1 ? `${r.names[0]} is on` : `${r.names.length} extensions are on`, { icon: 'checkmark' });
