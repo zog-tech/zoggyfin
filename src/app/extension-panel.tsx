@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/states';
 import type { BridgeRequest } from '@/extensions/bridge';
 import { handleBridgeRequest } from '@/extensions/bridge';
 import { resolveOnOrigin } from '@/extensions/match';
+import { openExternalUrl } from '@/extensions/open-external';
 import { playRefusal } from '@/extensions/media/source';
 import { pagesOf } from '@/extensions/schema';
 import { currentAccount, refreshExtension, refreshLibrary, templateContext } from '@/extensions/runtime';
@@ -112,6 +113,8 @@ export default function ExtensionPanelScreen() {
         refreshPage: () => {
           if (ext) refreshExtension(ext.manifest.id);
         },
+        hasNetwork: () => !!ext && ext.manifest.permissions.includes('network'),
+        openExternal: openExternalUrl,
       }),
     [ext, scheme, player, api, userId, close],
   );

@@ -1,8 +1,8 @@
-import { handleBridgeRequest, readBridgeMessage, sameOrigin } from '../bridge';
+import { handleBridgeRequest, readBridgeMessage, readExternalUrl, sameOrigin } from '../bridge';
 
 const BASE = 'http://192.0.2.10:3000';
 
-const deps = (over: { refusal?: string | null } = {}) => ({
+const deps = (over: { refusal?: string | null; network?: boolean; opened?: boolean } = {}) => ({
   context: jest.fn(() => ({ a: 1 })),
   play: jest.fn(),
   openItem: jest.fn(),
@@ -16,6 +16,8 @@ const deps = (over: { refusal?: string | null } = {}) => ({
   hasPage: jest.fn((id: string) => id === 'main'),
   openPage: jest.fn(),
   refreshPage: jest.fn(),
+  hasNetwork: jest.fn(() => over.network ?? true),
+  openExternal: jest.fn(async () => over.opened ?? true),
 });
 
 describe('bridge', () => {
@@ -34,6 +36,26 @@ describe('bridge', () => {
     expect(d.refreshPage).toHaveBeenCalledTimes(1);
     expect(d.refreshLibrary).not.toHaveBeenCalled();
     expect(readBridgeMessage({ zoggyfin: 1, id: 2, method: 'refreshPage' })).toEqual({ id: 2, method: 'refreshPage', params: {} });
+  });
+  it('opens an https URL in the system browser and says whether it opened', async () => {
+    const d = deps();
+    expect(await handleBridgeRequest({ id: 1, method: 'openExternal', params: { url: 'https://example.org/sign-in?x=1' } }, d)).toEqual({ zoggyfin: 1, id: 1, result: { opened: true } });
+    expect(d.openExternal).toHaveBeenCalledWith('https://example.org/sign-in?x=1');
+    const no = deps({ opened: false });
+    expect(await handleBridgeRequest({ id: 2, method: 'openExternal', params: { url: 'https://example.org' } }, no)).toEqual({ zoggyfin: 1, id: 2, result: { opened: false } });
+  });
+  it('refuses openExternal for other schemes, credentials, bad values and without the network permission', async () => {
+    for (const url of ['http://example.org', 'javascript:alert(1)', 'file:///etc/hosts', 'zoggyfin://share', 'https://user:pw@example.org', 'https://user@example.org', 'not a url', '', 5, 'https://example.org/' + 'a'.repeat(2000)]) {
+      const d = deps();
+      const reply = await handleBridgeRequest({ id: 1, method: 'openExternal', params: { url } }, d);
+      expect(reply.error).toBeTruthy();
+      expect(reply.error).not.toContain('example.org');
+      expect(d.openExternal).not.toHaveBeenCalled();
+    }
+    const d = deps({ network: false });
+    expect((await handleBridgeRequest({ id: 1, method: 'openExternal', params: { url: 'https://example.org' } }, d)).error).toBe('The extension has no network permission');
+    expect(d.openExternal).not.toHaveBeenCalled();
+    expect(readExternalUrl({ url: ' https://Example.org/a b ' })).toBe('https://example.org/a%20b');
   });
   it('checks the origin', () => {
     expect(sameOrigin('http://192.0.2.10:3000/panel', 'http://192.0.2.10:3000')).toBe(true);

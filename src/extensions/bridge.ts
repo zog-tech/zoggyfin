@@ -13,13 +13,17 @@
  *   the extension's feeds again first, so the page shows what the panel changed.
  * - `refreshPage`: loads the feeds of this extension only (its pages, Home
  *   rows and search results), not the rest of the app.
+ * - `openExternal`: an `https` URL with no user name or password, opened in
+ *   the system browser, with no confirm (as a feed card's `link` and a
+ *   `target="_blank"` link in a web panel). It needs the `network`
+ *   permission, which every extension has. The answer is `{ opened }`.
  * Panels are not on TV, so these methods are never the only way to content.
  *
  * Pure, so it is unit-tested.
  */
 import { urlOnOrigin } from './match';
 
-export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage', 'refreshPage'] as const;
+export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage', 'refreshPage', 'openExternal'] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
 export interface BridgeRequest {
@@ -55,6 +59,10 @@ export interface BridgeDeps {
   openPage(pageId: string): void;
   /** Loads the feeds of this extension again. */
   refreshPage(): void;
+  /** True when the extension has the `network` permission. */
+  hasNetwork(): boolean;
+  /** Opens a checked `https` URL in the system browser; true when it opened. */
+  openExternal(url: string): Promise<boolean> | boolean;
 }
 
 export interface BridgeMedia {
@@ -124,6 +132,27 @@ export function readMediaParams(p: Record<string, unknown>, baseUrl: string): Br
   return out;
 }
 
+export const MAX_EXTERNAL_URL = 2000;
+
+/**
+ * Reads the `url` of `openExternal`: `https` only, no user name or password,
+ * 2000 characters at most. Throws an error that never holds the URL.
+ */
+export function readExternalUrl(p: Record<string, unknown>): string {
+  const raw = p.url;
+  if (typeof raw !== 'string' || !raw.trim() || raw.length > MAX_EXTERNAL_URL) throw new Error('url is required');
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    throw new Error('url is not valid');
+  }
+  if (u.protocol !== 'https:') throw new Error('url must use https');
+  if (u.username || u.password) throw new Error('url must not hold a user name or a password');
+  if (!u.hostname) throw new Error('url is not valid');
+  return u.toString();
+}
+
 /** Runs one request and builds the reply. */
 export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps): Promise<BridgeReply> {
   try {
@@ -172,6 +201,12 @@ export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps):
       case 'refreshPage':
         deps.refreshPage();
         break;
+      case 'openExternal': {
+        const url = readExternalUrl(req.params);
+        if (!deps.hasNetwork()) throw new Error('The extension has no network permission');
+        result = { opened: await deps.openExternal(url) };
+        break;
+      }
     }
     return { zoggyfin: 1, id: req.id, result };
   } catch (e) {

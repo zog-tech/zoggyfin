@@ -298,9 +298,18 @@ function zoggyfin(method, params = {}) {
 | `openEntry` | `{ detail, title? }` | Closes the panel and opens the entry page of `detail` (on the extension's origin). Schema version 2. |
 | `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. The app loads the extension's feeds again first, so the page shows what the panel changed. Schema version 2. |
 | `refreshPage` | – | Loads the feeds of this extension again (its pages, Home rows and search results), and nothing else. The panel stays open. |
+| `openExternal` | `{ url }` | Opens `url` in the system browser (web and the Mac app: a new browser tab). `url` must use `https` and must not hold a user name or a password; another URL is an error. Needs the `network` permission (every extension has it). The answer is `{ "opened": true }` or `{ "opened": false }`. There is no confirm, as for a feed card's `link`. On the web, a blocked popup still answers `true`. |
 
 The app answers only messages from the extension's origin, and sends answers
 only to that origin.
+
+**Links in a panel.** Use `openExternal` for a page that must open outside
+the app (a sign-in page of another site, a help page). A plain link behaves
+differently on each platform: on the web and in the Mac app, a
+`target="_blank"` link opens a new browser tab (the iframe allows popups) and
+a plain link loads in the panel; on iPhone and iPad, a `target="_blank"` link
+does nothing and a plain link loads in the panel; on Android, both load in the
+panel. A page on another origin that loads in the panel cannot use the bridge.
 
 **After a change in a panel.** When a panel closes (by `close`, `openPage`,
 `openItem`, `openEntry`, the close button or Back), the app loads the feeds of
