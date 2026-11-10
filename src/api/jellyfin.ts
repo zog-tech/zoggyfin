@@ -510,6 +510,84 @@ export async function getPlayedSongs(api: Api, userId: string, libraryId: string
   return res.data.Items ?? [];
 }
 
+/** The parts of the music Home tab that are one plain request each. */
+export type MusicShelf = 'playPool' | 'newReleases' | 'favouriteAlbums' | 'favouriteArtists' | 'playlists' | 'genres';
+
+/**
+ * One row of the music Home tab, from a music library. `playPool`: the most
+ * played songs with their genres, for the mixes and Rediscover.
+ */
+export async function getMusicShelf(api: Api, userId: string, libraryId: string, shelf: MusicShelf, limit = 24): Promise<BaseItemDto[]> {
+  const lib = getLibraryApi(api);
+  const base = { userId, parentId: libraryId, enableTotalRecordCount: false, ...tile };
+  switch (shelf) {
+    case 'playPool': {
+      const res = await lib.getItems({
+        ...base,
+        includeItemTypes: ['Audio'],
+        recursive: true,
+        filters: ['IsPlayed'],
+        sortBy: ['PlayCount', 'DatePlayed'],
+        sortOrder: ['Descending', 'Descending'],
+        limit,
+        fields: [...TILE_FIELDS, 'Genres'],
+      });
+      return res.data.Items ?? [];
+    }
+    case 'newReleases': {
+      const res = await lib.getItems({
+        ...base,
+        includeItemTypes: ['MusicAlbum'],
+        recursive: true,
+        sortBy: ['PremiereDate', 'ProductionYear', 'SortName'],
+        sortOrder: ['Descending', 'Descending', 'Ascending'],
+        limit,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'favouriteAlbums': {
+      const res = await lib.getItems({
+        ...base,
+        includeItemTypes: ['MusicAlbum'],
+        recursive: true,
+        isFavorite: true,
+        sortBy: ['SortName'],
+        limit,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'favouriteArtists': {
+      const res = await getArtistApi(api).getAlbumArtists({ ...base, isFavorite: true, sortBy: ['SortName'], limit });
+      return res.data.Items ?? [];
+    }
+    case 'playlists': {
+      // Playlists live outside music libraries: the user's own and the ones shared with them.
+      const res = await lib.getItems({
+        ...base,
+        parentId: undefined,
+        includeItemTypes: ['Playlist'],
+        mediaTypes: ['Audio'],
+        recursive: true,
+        sortBy: ['DateCreated', 'SortName'],
+        sortOrder: ['Descending', 'Ascending'],
+        limit,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'genres': {
+      const res = await getGenreApi(api).getGenres({ ...base, fields: [...TILE_FIELDS, 'ItemCounts'], limit });
+      return res.data.Items ?? [];
+    }
+  }
+}
+
+/** Items by Id, in no set order (artists, genres, albums for the music Home tab). */
+export async function getItemsByIds(api: Api, userId: string, ids: readonly string[]): Promise<BaseItemDto[]> {
+  if (!ids.length) return [];
+  const res = await getLibraryApi(api).getItems({ userId, ids: [...ids], enableTotalRecordCount: false, ...tile });
+  return res.data.Items ?? [];
+}
+
 /**
  * Every playable audio item under a container, in play order: an album's
  * tracks, a playlist's entries, an artist's songs (album by album), a

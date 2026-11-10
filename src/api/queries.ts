@@ -217,6 +217,28 @@ export function usePlayedSongs(libraryId: string | undefined, kind: 'recent' | '
   });
 }
 
+/** One row of the music Home tab (`enabled`: discovery rows wait while offline). */
+export function useMusicShelf(libraryId: string, shelf: jf.MusicShelf, limit?: number, enabled = true) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.musicHome(scope, libraryId, shelf, String(limit ?? '')),
+    queryFn: () => jf.getMusicShelf(api, userId, libraryId, shelf, limit),
+    staleTime: shelf === 'genres' ? 6 * HOUR : undefined,
+    enabled: enabled && !!libraryId,
+  });
+}
+
+/** Items by Id for a music Home row (mixes, Rediscover). The Ids are part of the key. */
+export function useMusicItemsByIds(libraryId: string, part: string, ids: readonly string[], enabled = true) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.musicHome(scope, libraryId, part, ids.join(',')),
+    queryFn: () => jf.getItemsByIds(api, userId, ids),
+    enabled: enabled && ids.length > 0,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useGenreItems(libraryId: string | undefined, genreId: string | undefined) {
   const { api, userId, scope } = useApi();
   return useQuery({
