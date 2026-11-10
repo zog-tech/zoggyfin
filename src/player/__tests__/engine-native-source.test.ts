@@ -61,6 +61,8 @@ jest.mock('expo-video', () => ({
 jest.mock('@/native/zoggyfin-native', () => ({ setAutoPictureInPicture: jest.fn() }));
 
 // eslint-disable-next-line import/first
+import { Platform } from 'react-native';
+// eslint-disable-next-line import/first
 import { getEngine } from '../engine.native';
 
 const SOURCE = { uri: 'https://media.example.org/a.mp4?q=high', isHls: false, title: 'A clip' };
@@ -135,5 +137,34 @@ describe('native engine: a new source on a player that has one', () => {
     off = t.off;
     t.engine.load({ ...SOURCE, uri: 'https://media.example.org/a.mp4?q=low', startSeconds: 3, autoplay: false });
     expect(t.p.pause).toHaveBeenCalled();
+  });
+
+  it('a pause while the new source loads keeps it paused when it is ready', () => {
+    const t = setup();
+    off = t.off;
+    t.engine.load({ ...SOURCE, uri: 'https://media.example.org/a.mp4?q=low', startSeconds: 3 });
+    t.p.play.mockClear();
+    t.engine.pause();
+    t.p.fire('playingChange', { isPlaying: false });
+    expect(t.events).toContainEqual({ type: 'playing', playing: false });
+    t.p.fire('statusChange', { status: 'readyToPlay' });
+    expect(t.p.currentTime).toBe(3);
+    expect(t.p.play).not.toHaveBeenCalled();
+  });
+
+  it('Android: sourceLoad can come before the player is ready, so only readyToPlay seeks', () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    try {
+      const t = setup();
+      off = t.off;
+      t.engine.load({ ...SOURCE, uri: 'https://media.example.org/a.mp4?q=low', startSeconds: 3 });
+      t.p.currentTime = 0;
+      t.p.fire('sourceLoad', { duration: 6 });
+      expect(t.p.currentTime).toBe(0);
+      t.p.fire('statusChange', { status: 'readyToPlay' });
+      expect(t.p.currentTime).toBe(3);
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 });

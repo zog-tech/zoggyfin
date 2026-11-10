@@ -149,8 +149,10 @@ class NativeEngine implements VideoEngine {
       p.addListener('sourceLoad', ({ duration }) => {
         // iOS: a paused player that is ready and gets a new source (another
         // quality) can stay 'readyToPlay' the whole time, so no statusChange
-        // comes. The loaded source is the sign that it is ready.
-        if (this.applyPending(p)) {
+        // comes. The loaded source is the sign that it is ready. Not Android:
+        // there sourceLoad comes with the first tracks, before the player is
+        // ready, and readyToPlay always follows.
+        if (Platform.OS === 'ios' && this.applyPending(p)) {
           this.sourceReady = true;
           this.emit({ type: 'status', status: 'ready' });
         }
@@ -279,6 +281,8 @@ class NativeEngine implements VideoEngine {
 
   pause(): void {
     this.wantPlay = false;
+    // A pause while a new source loads: it stays paused when it is ready.
+    this.pendingPlay = false;
     this.player?.pause();
   }
 
