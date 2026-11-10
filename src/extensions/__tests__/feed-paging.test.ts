@@ -1,3 +1,6 @@
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
+
+import { scopeKey } from '@/api/query-keys';
 import { createGate } from '@/lib/async-gate';
 
 import {
@@ -11,6 +14,8 @@ import {
   MAX_QUERY_LENGTH,
   nextCursor,
   normalizeQuery,
+  isExtensionFeedKey,
+  refreshExtensionFeeds,
   StaleSearchError,
   withFeedParams,
 } from '../feeds';
@@ -138,5 +143,53 @@ describe('search', () => {
 
   it('keeps the reply of the newest search', async () => {
     await expect(latestOnly(createGate(), async () => 1)).resolves.toBe(1);
+  });
+});
+
+describe('reloading the feeds of an extension', () => {
+  const scope = { serverId: 's1', userId: 'u1' };
+  const fresh = () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: Infinity } } });
+    qc.setQueryData(feedQueryKey(scope, 'ext.a', '/feed/list'), { pages: [], pageParams: [] });
+    qc.setQueryData(feedQueryKey(scope, 'ext.a', '/search', 'clip'), { pages: [], pageParams: [] });
+    qc.setQueryData(feedQueryKey(scope, 'ext.b', '/feed/list'), { pages: [], pageParams: [] });
+    qc.setQueryData([...scopeKey(scope), 'item', 'i1'], {});
+    return qc;
+  };
+  const invalid = (qc: QueryClient, key: readonly unknown[]) => qc.getQueryState(key)?.isInvalidated;
+
+  it('marks every feed of that extension stale (page sections, Home rows, searches), and nothing else', async () => {
+    const qc = fresh();
+    await refreshExtensionFeeds(qc, scope, 'ext.a');
+    expect(invalid(qc, feedQueryKey(scope, 'ext.a', '/feed/list'))).toBe(true);
+    expect(invalid(qc, feedQueryKey(scope, 'ext.a', '/search', 'clip'))).toBe(true);
+    expect(invalid(qc, feedQueryKey(scope, 'ext.b', '/feed/list'))).toBe(false);
+    expect(invalid(qc, [...scopeKey(scope), 'item', 'i1'])).toBe(false);
+  });
+
+  it('names the feed keys of one extension, so a panel library refresh can leave them for the close', () => {
+    expect(isExtensionFeedKey(feedQueryKey(scope, 'ext.a', '/feed'), 'ext.a')).toBe(true);
+    expect(isExtensionFeedKey(feedQueryKey(scope, 'ext.b', '/feed'), 'ext.a')).toBe(false);
+    expect(isExtensionFeedKey([...scopeKey(scope), 'item', 'ext.a'], 'ext.a')).toBe(false);
+  });
+
+  it('keeps a load that already runs, so two reloads in a row load once', async () => {
+    const qc = fresh();
+    let calls = 0;
+    const key = feedQueryKey(scope, 'ext.a', '/feed/x');
+    const obs = new QueryObserver(qc, { queryKey: key, queryFn: () => new Promise((r) => setTimeout(() => r(++calls), 20)) });
+    const unsub = obs.subscribe(() => {});
+    void refreshExtensionFeeds(qc, scope, 'ext.a');
+    void refreshExtensionFeeds(qc, scope, 'ext.a');
+    await new Promise((r) => setTimeout(r, 60));
+    unsub();
+    expect(calls).toBe(1);
+  });
+
+  it('the library refresh (the whole account scope) covers every extension feed', async () => {
+    const qc = fresh();
+    await qc.invalidateQueries({ queryKey: scopeKey(scope) });
+    expect(invalid(qc, feedQueryKey(scope, 'ext.a', '/feed/list'))).toBe(true);
+    expect(invalid(qc, feedQueryKey(scope, 'ext.b', '/feed/list'))).toBe(true);
   });
 });

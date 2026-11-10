@@ -118,6 +118,49 @@ describe('the Hello sample', () => {
     expect(entry.detail).toBe(`${BASE}/pages/entries/s3`);
   });
 
+  it('the second page has three tabs, a flat fallback for app versions without tabs, and a Home row inside a tab', async () => {
+    const r = parseManifest(await get('/pages/zoggyfin-extension.json'));
+    if (!r.ok) throw new Error(r.error);
+    const tabs = r.manifest.contributes.pages?.find((p) => p.id === 'tabs');
+    expect(tabs?.tabs?.map((t) => t.title)).toEqual(['Clips', 'Up next', 'My list']);
+    expect(tabs?.sections.map((s) => s.id)).toEqual(['clips-latest', 'mine', 'clips-all']);
+    expect(tabs?.tabs?.[2].search?.feed).toBe('/pages/mine/search');
+    expect(r.manifest.contributes.homeSections?.map((h) => h.feed)).toEqual(['/pages/latest', '/pages/mine']);
+    expect(r.manifest.contributes.panels?.map((p) => p.id)).toEqual(['account']);
+    // An app version without tabs ignores `tabs` and reads `sections`; its Home id must be there too, or it refuses the manifest.
+    const old = await get('/pages/zoggyfin-extension.json');
+    const flat = JSON.parse(JSON.stringify(old)) as { contributes: { pages: { tabs?: unknown }[] } };
+    flat.contributes.pages.forEach((p) => delete p.tabs);
+    expect(parseManifest(flat).ok).toBe(true);
+  });
+
+  it('each page has Library tile art: a small PNG on the origin', async () => {
+    const r = parseManifest(await get('/pages/zoggyfin-extension.json'));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.manifest.contributes.pages?.map((p) => p.image)).toEqual(['/pages/art/main.png', '/pages/art/tabs.png']);
+    for (const p of ['/pages/art/main.png', '/pages/art/tabs.png']) {
+      const res = await call(p);
+      expect(res.status).toBe(200);
+      expect(res.type).toBe('image/png');
+      expect(res.bytes).toBeGreaterThan(100);
+      expect(res.bytes).toBeLessThan(20_000);
+    }
+  });
+
+  it('"My list" says why it is empty until the panel signs in, then lists entries', async () => {
+    const empty = parseFeedPage(await get('/pages/mine'), BASE);
+    expect(empty).toEqual({ entries: [], next: null, message: 'Sign in to see your list.', action: { title: 'Sign in', panel: 'account' } });
+    const panel = await call('/pages/account');
+    expect(panel.type).toContain('text/html');
+    expect(panel.text).toContain("zoggyfin('openPage', { page: 'tabs', tab: 'mine' })");
+    expect(JSON.parse((await post('/pages/account/state', { signedIn: true })).text)).toEqual({ signedIn: true });
+    const full = parseFeedPage(await get('/pages/mine'), BASE);
+    expect(full.entries.length).toBeGreaterThan(0);
+    expect(full.message).toBeUndefined();
+    expect(parseFeedPage(await get('/pages/mine/search?query=clip%2010'), BASE).entries.map((e) => e.title)).toContain('Sample clip 10');
+    await post('/pages/account/state', { signedIn: false });
+  });
+
   it('a detail page has a stateful action and a related row', async () => {
     const d = parseDetail(await get('/pages/entries/s3'), BASE);
     expect(d.media?.download).toBe(`${BASE}/pages/entries/s3/download`);

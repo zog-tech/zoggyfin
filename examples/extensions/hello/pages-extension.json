@@ -3,27 +3,164 @@
   "id": "org.example.hello.pages",
   "name": "Hello Pages",
   "version": "2.0.0",
-  "description": "A sample of schema version 2: a page with a row, a list, a grid and search; entry pages with a Save button and a related row; a short test video with two qualities, subtitles, chapters, skip segments, a next entry and progress reports; and downloads with two choices.",
+  "description": "A sample of schema version 2: a page with a row, a list, a grid and search; a second page with tabs and a list that needs a sign-in in a panel; entry pages with a Save button and a related row; a short test video with two qualities, subtitles, chapters, skip segments, a next entry and progress reports; and downloads with two choices.",
   "baseUrl": "http://localhost:8787",
-  "permissions": ["network", "playback", "downloads"],
+  "permissions": [
+    "network",
+    "playback",
+    "downloads"
+  ],
   "contributes": {
     "pages": [
       {
         "id": "main",
         "title": "Hello Pages",
         "icon": "play.rectangle",
-        "placement": { "tab": true, "library": true, "home": ["latest"] },
-        "search": { "feed": "/pages/search", "placeholder": "Search the samples" },
+        "image": "/pages/art/main.png",
+        "placement": {
+          "tab": true,
+          "library": true,
+          "home": [
+            "latest"
+          ]
+        },
+        "search": {
+          "feed": "/pages/search",
+          "placeholder": "Search the samples"
+        },
         "sections": [
-          { "id": "latest", "title": "Latest samples", "layout": "row", "shape": "thumb", "feed": "/pages/latest", "refreshSeconds": 60 },
-          { "id": "queue", "title": "Up next", "layout": "list", "feed": "/pages/queue" },
-          { "id": "all", "title": "All samples", "layout": "grid", "shape": "poster", "feed": "/pages/all" }
+          {
+            "id": "latest",
+            "title": "Latest samples",
+            "layout": "row",
+            "shape": "thumb",
+            "feed": "/pages/latest",
+            "refreshSeconds": 60
+          },
+          {
+            "id": "queue",
+            "title": "Up next",
+            "layout": "list",
+            "feed": "/pages/queue"
+          },
+          {
+            "id": "all",
+            "title": "All samples",
+            "layout": "grid",
+            "shape": "poster",
+            "feed": "/pages/all"
+          }
+        ]
+      },
+      {
+        "id": "tabs",
+        "title": "Hello Tabs",
+        "icon": "square.grid.2x2",
+        "image": "/pages/art/tabs.png",
+        "placement": {
+          "library": true,
+          "home": [
+            "mine"
+          ]
+        },
+        "search": {
+          "feed": "/pages/search",
+          "placeholder": "Search the samples"
+        },
+        "sections": [
+          {
+            "id": "clips-latest",
+            "title": "Latest samples",
+            "layout": "row",
+            "shape": "thumb",
+            "feed": "/pages/latest"
+          },
+          {
+            "id": "mine",
+            "title": "My list",
+            "layout": "row",
+            "shape": "poster",
+            "feed": "/pages/mine"
+          },
+          {
+            "id": "clips-all",
+            "title": "All samples",
+            "layout": "grid",
+            "shape": "poster",
+            "feed": "/pages/all"
+          }
+        ],
+        "tabs": [
+          {
+            "id": "clips",
+            "title": "Clips",
+            "sections": [
+              {
+                "id": "clips-latest",
+                "title": "Latest samples",
+                "layout": "row",
+                "shape": "thumb",
+                "feed": "/pages/latest"
+              },
+              {
+                "id": "clips-all",
+                "title": "All samples",
+                "layout": "grid",
+                "shape": "poster",
+                "feed": "/pages/all"
+              }
+            ]
+          },
+          {
+            "id": "next",
+            "title": "Up next",
+            "sections": [
+              {
+                "id": "next-queue",
+                "title": "Up next",
+                "layout": "list",
+                "feed": "/pages/queue"
+              }
+            ]
+          },
+          {
+            "id": "mine",
+            "title": "My list",
+            "search": {
+              "feed": "/pages/mine/search",
+              "placeholder": "Search my list"
+            },
+            "sections": [
+              {
+                "id": "mine",
+                "title": "My list",
+                "layout": "grid",
+                "shape": "poster",
+                "feed": "/pages/mine"
+              }
+            ]
+          }
         ]
       }
     ],
+    "panels": [
+      {
+        "id": "account",
+        "title": "Hello account",
+        "url": "/pages/account"
+      }
+    ],
     "skipLabels": [
-      { "id": "intro", "title": "Intro", "default": "ask" },
-      { "id": "credits", "title": "Credits", "default": "auto" }
+      {
+        "id": "intro",
+        "title": "Intro",
+        "default": "ask"
+      },
+      {
+        "id": "credits",
+        "title": "Credits",
+        "default": "auto"
+      }
     ]
   }
 }

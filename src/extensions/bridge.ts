@@ -1,22 +1,30 @@
 /**
  * The panel bridge. A panel page sends
  * `{ zoggyfin: 1, id, method, params }` with postMessage; the app answers
- * `{ zoggyfin: 1, id, result }` or `{ zoggyfin: 1, id, error }`. These nine
- * methods are all a panel can do in the app.
+ * `{ zoggyfin: 1, id, result }` or `{ zoggyfin: 1, id, error }`. These
+ * methods (`BRIDGE_METHODS`) are all a panel can do in the app.
  *
  * The schema version 2 methods keep the rules of the native paths:
  * - `playMedia`: the `playback` URL must be on the extension's origin, and
  *   the extension needs the `playback` permission and the user's grant
  *   (`playRefusal`). A picture on another origin is left out.
  * - `openEntry`: the `detail` URL must be on the extension's origin.
- * - `openPage`: the page must be one of the manifest's pages.
+ * - `openPage`: the page must be one of the manifest's pages; `tab`, when
+ *   given, one of its tabs. The app goes back to the page when it is already
+ *   under the panel, else opens it; the feeds load once when the panel closes.
+ * - `refreshPage`: loads the feeds of this extension only (its pages, Home
+ *   rows and search results), not the rest of the app.
+ * - `openExternal`: an `https` URL with no user name or password, opened in
+ *   the system browser, with no confirm (as a feed card's `link` and a
+ *   `target="_blank"` link in a web panel). It needs the `network`
+ *   permission, which every extension has. The answer is `{ opened }`.
  * Panels are not on TV, so these methods are never the only way to content.
  *
  * Pure, so it is unit-tested.
  */
 import { urlOnOrigin } from './match';
 
-export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage'] as const;
+export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage', 'refreshPage', 'openExternal'] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
 export interface BridgeRequest {
@@ -47,9 +55,15 @@ export interface BridgeDeps {
   playMedia(media: BridgeMedia): Promise<void> | void;
   /** Opens an entry page; `detail` is a full URL on the origin. */
   openEntry(entry: { detail: string; title?: string }): void;
-  /** True when the manifest has this page. */
-  hasPage(pageId: string): boolean;
-  openPage(pageId: string): void;
+  /** True when the manifest has this page (and, with `tabId`, this tab on it). */
+  hasPage(pageId: string, tabId?: string): boolean;
+  openPage(pageId: string, tabId?: string): void;
+  /** Loads the feeds of this extension again. */
+  refreshPage(): void;
+  /** True when the extension has the `network` permission. */
+  hasNetwork(): boolean;
+  /** Opens a checked `https` URL in the system browser; true when it opened. */
+  openExternal(url: string): Promise<boolean> | boolean;
 }
 
 export interface BridgeMedia {
@@ -119,6 +133,27 @@ export function readMediaParams(p: Record<string, unknown>, baseUrl: string): Br
   return out;
 }
 
+export const MAX_EXTERNAL_URL = 2000;
+
+/**
+ * Reads the `url` of `openExternal`: `https` only, no user name or password,
+ * 2000 characters at most. Throws an error that never holds the URL.
+ */
+export function readExternalUrl(p: Record<string, unknown>): string {
+  const raw = p.url;
+  if (typeof raw !== 'string' || !raw.trim() || raw.length > MAX_EXTERNAL_URL) throw new Error('url is required');
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    throw new Error('url is not valid');
+  }
+  if (u.protocol !== 'https:') throw new Error('url must use https');
+  if (u.username || u.password) throw new Error('url must not hold a user name or a password');
+  if (!u.hostname) throw new Error('url is not valid');
+  return u.toString();
+}
+
 /** Runs one request and builds the reply. */
 export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps): Promise<BridgeReply> {
   try {
@@ -161,7 +196,19 @@ export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps):
       case 'openPage': {
         const page = textParam(req.params, 'page', 64);
         if (!page || !deps.hasPage(page)) throw new Error('page is not a page of this extension');
-        deps.openPage(page);
+        const tab = textParam(req.params, 'tab', 64);
+        if (tab && !deps.hasPage(page, tab)) throw new Error('tab is not a tab of this page');
+        if (tab) deps.openPage(page, tab);
+        else deps.openPage(page);
+        break;
+      }
+      case 'refreshPage':
+        deps.refreshPage();
+        break;
+      case 'openExternal': {
+        const url = readExternalUrl(req.params);
+        if (!deps.hasNetwork()) throw new Error('The extension has no network permission');
+        result = { opened: await deps.openExternal(url) };
         break;
       }
     }

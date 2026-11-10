@@ -10,7 +10,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { TabStrip } from './tab-strip';
 import type { TabPagerProps } from './tab-pager-types';
 
-export function TabPager({ tabs, renderPage, initialIndex = 0, onIndexChange }: TabPagerProps) {
+export function TabPager({ tabs, renderPage, initialIndex = 0, onIndexChange, select: request }: TabPagerProps) {
   const scrollRef = useRef<{ scrollTo: (o: { x: number; animated: boolean }) => void } | null>(null);
   const [width, setWidth] = useState(0);
   const [index, setIndex] = useState(initialIndex);
@@ -25,6 +25,15 @@ export function TabPager({ tabs, renderPage, initialIndex = 0, onIndexChange }: 
     setVisited((v) => (v.has(i) ? v : new Set(v).add(i)));
     onIndexChange?.(i);
   };
+
+  // A selection from outside (a panel's openPage with a tab).
+  const requestSeq = request?.seq;
+  useEffect(() => {
+    if (!request || request.index === indexRef.current || request.index < 0 || request.index >= tabs.length) return;
+    select(request.index);
+    scrollRef.current?.scrollTo({ x: request.index * width, animated: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestSeq]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;

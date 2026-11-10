@@ -6,7 +6,7 @@
  *
  * Pure, so it is unit-tested.
  */
-import { homeRowKey, pagesOf, type Manifest, type PageSpec, type SectionSpec } from '@/extensions/schema';
+import { findPageSection, homeRowKey, pagesOf, type Manifest, type PageSpec, type SectionSpec, type TabSpec } from '@/extensions/schema';
 import { urlOnOrigin } from '@/extensions/match';
 
 type Param = string | string[] | undefined;
@@ -19,8 +19,10 @@ export function firstParam(v: Param): string | undefined {
 
 export interface PageRoute {
   page: PageSpec;
-  /** The sections the screen shows, in order. */
+  /** The sections the screen shows, in order (with `tabs`: the first tab's). */
   sections: SectionSpec[];
+  /** Set when the screen shows the page's tabs (never with `section`). */
+  tabs?: TabSpec[];
   /** Set when the screen shows one section on its own ("See all"). */
   section?: SectionSpec;
 }
@@ -32,8 +34,8 @@ export function resolvePageRoute(m: Pick<Manifest, 'contributes'> | undefined, p
   const page = pagesOf(m).find((p) => p.id === pageId);
   if (!page) return null;
   const sectionId = firstParam(params.section);
-  if (!sectionId) return { page, sections: page.sections };
-  const section = page.sections.find((s) => s.id === sectionId);
+  if (!sectionId) return page.tabs?.length ? { page, sections: page.tabs[0].sections, tabs: page.tabs } : { page, sections: page.sections };
+  const section = findPageSection(page, sectionId);
   return section ? { page, sections: [section], section } : null;
 }
 
@@ -43,7 +45,7 @@ export function resolveHomeRow(m: Pick<Manifest, 'contributes'> | undefined, row
   for (const page of pagesOf(m)) {
     for (const sid of page.placement.home) {
       if (homeRowKey(page.id, sid) !== rowKey) continue;
-      const section = page.sections.find((s) => s.id === sid);
+      const section = findPageSection(page, sid);
       if (section) return { page, section };
     }
   }

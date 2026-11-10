@@ -2,7 +2,9 @@
  * An extension page: its title, an optional search field, then its
  * sections in order (`section-view.ts` says how each renders). While a
  * search runs, its results replace the sections. With `sectionId` the
- * screen shows that one section on its own ("See all").
+ * screen shows that one section on its own ("See all"). A page with `tabs`
+ * shows a tab strip under its title and one such body per tab
+ * (`page-tabs.ts` has the rules).
  *
  * A section that fails shows a short note and never blocks the page. Pull
  * to refresh loads every feed of the extension again. TV: the first tile of
@@ -10,16 +12,17 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
-import { type ReactElement, useCallback, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { useApi } from '@/api/use-api';
+import { TabPager } from '@/components/tab-pager';
 import { Icon } from '@/components/icon';
 import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
 import { EmptyState } from '@/components/states';
 import { Touchable } from '@/components/touchable';
 import { extensionFeedsKey } from '@/extensions/feeds';
-import type { SectionSpec, Shape } from '@/extensions/schema';
+import type { PageSpec, SectionSpec, Shape } from '@/extensions/schema';
 import { useExtensions } from '@/extensions/store';
 import { useFeedSearch, useFeedSection } from '@/extensions/ui/use-feed';
 import { TvScrollView } from '@/features/tv/page-scroll';
@@ -30,6 +33,7 @@ import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme, webInput } from '@/theme';
 
 import { pageHref, useExtGroup } from './nav';
+import { initialTabIndex, onTabRequest, rememberTab, tabSearch } from './page-tabs';
 import { resolvePageRoute } from './routes';
 import { InfiniteEntries, SectionBlock } from './sections';
 import { sectionMode } from './section-view';
@@ -74,8 +78,67 @@ export function PageScreen({ extId, pageId, sectionId, tabRoot = false }: { extI
     <>
       {head}
       <View style={s.page}>
-        <PageBody extId={extId} extensionName={ext.manifest.name} pageId={route.page.id} title={title} sections={route.sections} search={route.section ? undefined : route.page.search} standalone={!!route.section} tabRoot={tabRoot} />
+        {route.tabs ? (
+          <TabbedPage extId={extId} extensionName={ext.manifest.name} page={route.page} title={title} tabRoot={tabRoot} />
+        ) : (
+          <PageBody extId={extId} extensionName={ext.manifest.name} pageId={route.page.id} title={title} sections={route.sections} search={route.section ? undefined : route.page.search} standalone={!!route.section} tabRoot={tabRoot} />
+        )}
       </View>
+    </>
+  );
+}
+
+/**
+ * A page with tabs: the tab strip under the title (TV: a focusable row,
+ * under the title), then the selected tab's sections and search. Each tab
+ * mounts on its first visit and stays mounted.
+ */
+function TabbedPage({ extId, extensionName, page, title, tabRoot }: { extId: string; extensionName: string; page: PageSpec; title: string; tabRoot: boolean }) {
+  const s = useStyles(makeStyles);
+  const l = useLayout();
+  const tabs = page.tabs ?? [];
+  const [initial] = useState(() => initialTabIndex(tabs, extId, page.id));
+  const pagerTabs = tabs.map((t) => ({ key: t.id, title: t.title }));
+  // A panel's openPage with a tab selects it on this page (the same screen, not a new copy).
+  const [select, setSelect] = useState<{ index: number; seq: number } | undefined>(undefined);
+  useEffect(
+    () =>
+      onTabRequest((e, p, tabId) => {
+        if (e !== extId || p !== page.id) return;
+        const index = (page.tabs ?? []).findIndex((t) => t.id === tabId);
+        if (index >= 0) setSelect((cur) => ({ index, seq: (cur?.seq ?? 0) + 1 }));
+      }),
+    [extId, page.id, page.tabs],
+  );
+  return (
+    <>
+      {isTV ? <Text style={[s.tvTitle, s.tvTabsTitle, { paddingHorizontal: l.gutter }]}>{title}</Text> : null}
+      <TabPager
+        tabs={pagerTabs}
+        initialIndex={initial}
+        select={select}
+        onIndexChange={(i) => {
+          const tab = tabs[i];
+          if (tab) rememberTab(extId, page.id, tab.id);
+        }}
+        renderPage={(_t, i) => {
+          const tab = tabs[i];
+          if (!tab) return null;
+          return (
+            <PageBody
+              extId={extId}
+              extensionName={extensionName}
+              pageId={page.id}
+              title={title}
+              sections={tab.sections}
+              search={tabSearch(tab, page)}
+              standalone={false}
+              tabRoot={tabRoot}
+              tvTitle={false}
+            />
+          );
+        }}
+      />
     </>
   );
 }
@@ -89,6 +152,7 @@ function PageBody({
   search,
   standalone,
   tabRoot,
+  tvTitle = true,
 }: {
   extId: string;
   extensionName: string;
@@ -98,6 +162,8 @@ function PageBody({
   search?: { feed: string; placeholder?: string };
   standalone: boolean;
   tabRoot: boolean;
+  /** TV: the page title in the toolbar (a tabbed page shows it above its tabs). */
+  tvTitle?: boolean;
 }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
@@ -135,9 +201,9 @@ function PageBody({
   });
 
   const toolbar =
-    search || isTV ? (
+    search || (isTV && tvTitle) ? (
       <View style={[s.toolbar, { paddingHorizontal: l.gutter }]}>
-        {isTV ? <Text style={s.tvTitle}>{title}</Text> : null}
+        {isTV && tvTitle ? <Text style={s.tvTitle}>{title}</Text> : null}
         {search ? (
           <View style={s.field}>
             <Icon name="magnifyingglass" size={scaled(iconSize.sm)} color={c.text3} />
@@ -261,6 +327,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   flex: { flex: 1 },
   page: { flex: 1, backgroundColor: c.bg },
   tvTitle: { ...font(type.largeTitle), color: c.text, marginRight: spacing.lg },
+  tvTabsTitle: { paddingTop: spacing.xxl },
   toolbar: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingTop: isTV ? spacing.xxl : spacing.sm, paddingBottom: spacing.sm },
   field: {
     flex: 1,

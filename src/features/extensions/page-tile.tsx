@@ -1,12 +1,16 @@
 /**
  * The tile of an extension page in the Library grid: the page sits with the
  * server's libraries as one more source, like the Live TV tile. It has no
- * server image, so its art is the page's icon on a quiet surface, with the
- * page title and the extension's name in the caption. Which pages get a tile
+ * server image: its art is the page's `image` (from the extension's origin,
+ * loaded like an entry image, with no Jellyfin token), with the page's icon on
+ * a quiet surface under it while it loads or when it fails. The caption is
+ * the page title (as on a Jellyfin library tile), and the extension's name
+ * under it for a tile without `image`. Which pages get a tile
  * is decided in placement.ts.
  */
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { type ReactElement, useCallback, useMemo } from 'react';
+import { type ReactElement, useCallback, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
@@ -47,6 +51,8 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
   const height = (width * 9) / 16;
   // The Library stack, or Home when the grid shows there (Library replaced on a phone).
   const group = useExtGroup();
+  const [failed, setFailed] = useState<string | null>(null);
+  const image = page.image && failed !== page.image ? page.image : null;
   return (
     <Touchable
       kind="tile"
@@ -64,8 +70,10 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
         <View>
           <Icon name={page.icon} size={Math.round(width * 0.2)} color={c.accent} />
         </View>
+        {image ? <Image source={{ uri: image }} style={s.image} contentFit="cover" transition={150} recyclingKey={image} onError={() => setFailed(image)} accessible={false} /> : null}
       </View>
-      <TileCaption title={page.title} sub={page.extensionName} />
+      {/* With artwork the caption is the title alone, as on a Jellyfin library tile (same height in the grid). */}
+      <TileCaption title={page.title} sub={page.image ? undefined : page.extensionName} />
     </Touchable>
   );
 }
@@ -79,4 +87,5 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     justifyContent: 'center' as const,
     backgroundColor: c.accentSoft,
   },
+  image: { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 },
 }));

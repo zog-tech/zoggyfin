@@ -7,7 +7,7 @@ buttons on items, Home rows and a page.
 An extension is **data only**. The app reads a JSON manifest from your server and
 draws the contributions. No code from an extension runs in the app (App Store
 guideline 2.5.2): there is no `eval`, and the app downloads no scripts. A panel is
-a normal web page in a WebView or an iframe. It can only use the nine bridge
+a normal web page in a WebView or an iframe. It can only use the bridge
 methods below.
 
 Extensions work on iPhone, iPad, Android, web and the Mac app.
@@ -23,8 +23,25 @@ Extensions work on iPhone, iPad, Android, web and the Mac app.
    contributions. Tap **Add**. The app fills in the settings by itself.
 
 You can turn an extension off, change its permissions and settings, check for an
-update, or remove it on its page in Settings → Extensions. An update that asks
-for a new permission shows the confirm screen again.
+update, or remove it on its page in Settings → Extensions.
+
+### Updates
+
+The app loads the manifest of each installed extension again at start, when
+you sign in to another account, and then at most once every 6 hours while it
+is in use. "Check for an update" on the extension's page checks at once.
+
+- An update that needs no new permission and places no new page (a page that
+  asks for a tab or a Library tile it did not ask for before) applies by
+  itself, with no question. New `tabs`, sections, settings and a new
+  `version` are such updates.
+- An update that asks for a new permission or places a new page is not
+  applied. The extension shows "Update available" in Settings → Extensions,
+  its page has "Review the update" (the confirm screen), and the app shows
+  one toast per account, extension and version. "Check for an update" opens
+  the confirm screen for it at once.
+- A manifest that does not load, is not valid, or has another `id` changes
+  nothing.
 
 Other parts of the app use two functions from `src/extensions`:
 
@@ -291,15 +308,34 @@ function zoggyfin(method, params = {}) {
 | `getContext` | – | `{ extension, settings, jellyfin, theme, platform }`. `jellyfin.token` is there only with `jellyfinToken`. |
 | `play` | `{ itemId }` | Plays the item. |
 | `openItem` | `{ itemId }` | Closes the panel and opens the item. |
-| `refreshLibrary` | – | Loads the app's data again. |
+| `refreshLibrary` | – | Loads the app's data again: the Jellyfin data, the feeds of other extensions and entry pages, now and again after 8 s and 25 s. The calling extension's feeds load once, when the panel closes. |
 | `toast` | `{ text }` | Shows a toast. |
 | `close` | – | Closes the panel. |
 | `playMedia` | `{ mediaId, playback, title?, image? }` | Plays the media, as a card with `media` does. `playback` (and `image`) must be on the extension's origin. Needs the `playback` permission, and the user's switch must be on; otherwise the answer is an error that says so. Schema version 2. |
 | `openEntry` | `{ detail, title? }` | Closes the panel and opens the entry page of `detail` (on the extension's origin). Schema version 2. |
-| `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. Schema version 2. |
+| `openPage` | `{ page, tab? }` | Closes the panel and shows one of the manifest's pages. When the page is already open under the panel (in the same tab, or as the root of the extension tab), the app goes back to it; else it opens it. `tab`: the id of one of the page's tabs to select (an unknown id is an error). The feeds load again once, when the panel closes. Schema version 2. |
+| `refreshPage` | – | Loads the feeds of this extension again (its pages, Home rows and search results), and nothing else. The panel stays open. |
+| `openExternal` | `{ url }` | Opens `url` in the system browser (web and the Mac app: a new browser tab). `url` must use `https` and must not hold a user name or a password; another URL is an error. Needs the `network` permission (every extension has it). The answer is `{ "opened": true }` or `{ "opened": false }`. There is no confirm, as for a feed card's `link`. On the web, a blocked popup still answers `true`. |
 
 The app answers only messages from the extension's origin, and sends answers
 only to that origin.
+
+**Links in a panel.** Use `openExternal` for a page that must open outside
+the app (a sign-in page of another site, a help page). A plain link behaves
+differently on each platform: on the web and in the Mac app, a
+`target="_blank"` link opens a new browser tab (the iframe allows popups) and
+a plain link loads in the panel; on iPhone and iPad, a `target="_blank"` link
+does nothing and a plain link loads in the panel; on Android, both load in the
+panel. A page on another origin that loads in the panel cannot use the bridge.
+
+**After a change in a panel.** When a panel closes (by `close`, `openPage`,
+`openItem`, `openEntry`, the close button or Back), the app loads the feeds of
+that extension again, once per feed. A panel that changes what the feeds show
+(for example a sign-in) can therefore close with `openPage` or `close`; it
+does not need `refreshLibrary`. Use `refreshPage` to reload the feeds while
+the panel stays open (they load once more when it closes). The app sends feed requests itself, with the manifest `headers`; it
+never sends the panel's cookies. Keep a sign-in made in a panel on the
+extension's server, not only in a cookie of the panel page.
 
 ### CORS
 
@@ -371,14 +407,17 @@ has one `row` section, no tab, no Library tile, and the section on Home.
 | Field | Notes |
 | --- | --- |
 | `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen, each with its own switch (on by default). Turn one off there or on the extension's page in Settings to stop that use. A version 1 manifest cannot ask for them. |
-| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`. |
+| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), an optional `image` (the artwork of its Library tile, see below), `placement`, an optional `search`, and 1 to 8 `sections`, or `tabs` (see [Tabs](#tabs)), or both. |
+| `tabs` | 2 to 6 tabs. Each has `id`, `title`, 1 to 8 `sections` and an optional `search`. |
 | `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
 | `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
 | `sections` | `id`, `title`, `feed`, `layout` (`row`, the default, `grid` or `list`), `shape` (`poster`, `thumb`, the default, or `square`), `refreshSeconds` (5 to 3600). `grid` and `list` load the next page near the end. |
 | `skipLabels` | At most 10. `id`, `title`, `default`: `auto` (skip, with Undo), `ask` (the default; a Skip button) or `off`. |
 
-Ids are unique in each list: pages, the sections of one page, the Home ids of
-one page, and skip labels. A Home id must name a section of its page.
+Ids are unique in each list: pages, the sections of one page, the tabs of one
+page, the section ids across all tabs of one page, the Home ids of one page,
+and skip labels. A Home id must name a section of its page (in `sections` or
+in a tab).
 
 ### Replies (schema version 2)
 
@@ -394,6 +433,22 @@ reply is read entry by entry: a bad entry is left out, and the others stay.
 
 `next` is a cursor, not a URL. No `next`, `null` or `""` means the last page,
 so a version 1 feed is one page. At most 100 entries per page.
+
+**Why a feed is empty.** A feed with no entries can say why, and offer a
+button that opens one of the extension's panels:
+
+```json
+{ "items": [], "message": "Sign in to see your list.", "action": { "title": "Sign in", "panel": "account" } }
+```
+
+- `message`: plain text, 200 characters at most. It shows only when the feed
+  has no entries, on a page in place of "Nothing here yet.". Home rows stay
+  hidden when they are empty.
+- `action`: optional, only with `message`. `title` is 40 characters at most;
+  `panel` must be the id of a panel in the manifest, else the button is left
+  out. TV has no panels, so it shows the message only.
+- When the panel closes, the app loads the feeds again (see "After a change in
+  a panel").
 
 **Feed entry.** The version 1 fields stay. Version 2 adds:
 
@@ -438,12 +493,75 @@ sections in order.
   `GET <search.feed>?query=<text>` (and `cursor` for more pages). The results
   replace the sections until the field is empty. A reply to an older text is
   never shown.
-- A section that fails shows "<name> is not available now." and the rest of
-  the page stays. On Home, a row that loads or is empty takes no room.
+- A section that fails shows its title, "<name> is not available now." and
+  "Try again"; the rest of the page stays. A section with no entries shows
+  its title, "Nothing here yet." (or the feed's `message`, see below) and
+  "Reload". A section never disappears from a page (or a page tab) without a
+  word. On Home, a row that loads or is empty takes no room. On an entry page,
+  an empty row takes no room either.
 - Pull to refresh (not on TV) loads every feed of the extension again.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are
   never read as templates.
+
+### Tabs
+
+A page can split its sections into tabs. The app shows a tab strip under the
+page title; on TV it is a row that the D-pad reaches.
+
+```json
+{
+  "id": "main",
+  "title": "Example",
+  "placement": { "tab": true, "home": ["latest"] },
+  "search": { "feed": "/api/search" },
+  "sections": [
+    { "id": "latest", "title": "Latest", "feed": "/api/feed/latest" },
+    { "id": "all", "title": "Everything", "layout": "grid", "feed": "/api/feed/all" }
+  ],
+  "tabs": [
+    {
+      "id": "films",
+      "title": "Films",
+      "sections": [
+        { "id": "latest", "title": "Latest", "feed": "/api/feed/latest" },
+        { "id": "all", "title": "Everything", "layout": "grid", "feed": "/api/feed/all" }
+      ]
+    },
+    {
+      "id": "shows",
+      "title": "Shows",
+      "search": { "feed": "/api/search/shows", "placeholder": "Search shows" },
+      "sections": [{ "id": "airing", "title": "Airing", "layout": "list", "feed": "/api/feed/airing" }]
+    }
+  ]
+}
+```
+
+- `tabs`: 2 to 6 tabs. A tab has `id`, `title`, 1 to 8 `sections` (the same
+  fields as page sections) and an optional `search` (the same fields as the
+  page `search`). Tab ids are unique on the page. Section ids are unique
+  across all tabs of the page.
+- Each tab is laid out like a page: rows, previews with "See all", and a last
+  `grid` or `list` that loads more.
+- A tab without its own `search` uses the page's `search`; with neither, it
+  has no search field.
+- The app loads a tab's feeds when the tab first shows, and keeps each tab's
+  feeds and scroll position while the user switches (on TV the feeds come
+  back from the cache; the scroll position starts at the top). The page opens
+  on the tab the user chose last on it, until the app quits.
+- `placement.home` can name a section inside any tab.
+- `tabs` and `sections`: `tabs` wins. `sections` is what an app version
+  without tabs shows. Such a version ignores `tabs`, but it refuses a page
+  with no `sections` and a Home id that is not in `sections`, and so the whole
+  manifest. Until every user has a version with tabs, keep `sections` on the
+  page and keep each Home id in it.
+- A `tabs` value that is not valid (fewer than 2 or more than 6 tabs, an id
+  used twice, a bad section) is left out when the page has `sections`: the
+  page shows them. A page with no `sections` and bad `tabs` is refused, as is
+  a page with neither.
+- An update that only adds `tabs` (and a new `version`) asks nothing: it
+  needs no new permission and places no new page.
 
 ### Where a page shows
 
@@ -482,6 +600,13 @@ it did before.
   the mini player go on.
 - **TV.** The side menu lists at most two extension pages, before Settings:
   the tab page first, then the pages with `tab` or `library` in install order.
+- **Tile artwork.** `image` is a path under `baseUrl` (or a URL on its
+  origin; another origin is left out) of a picture for the page's Library
+  tile, 16:9 like the Jellyfin library tiles. It loads like an entry image:
+  no Jellyfin token, no manifest headers. The tile shows the `icon` while the
+  picture loads and when it fails. With an `image`, the caption is the page
+  title alone, as on a Jellyfin library tile; put the name in the picture if
+  you want it on the artwork too. App versions without this field ignore it.
 - The tab and the side menu show the page `title` and `icon`. `icon` is an
   icon name of the app (`src/components/icon-names.ts`, for example `film`,
   `tv`, `music.note`, `play.fill`). Another name shows a grid icon.
@@ -745,6 +870,16 @@ Pages") or from the header of its "Latest samples" Home row:
   `options`; each answers with one file and its subtitles.
 - The page has `tab` and `library` in its `placement`: a tab on iPad, the web
   and the Mac app, a Library tile on phones, a side menu entry on TV.
+- Both pages have Library tile art (`/pages/art/<page>.png`, a colour ramp
+  that the server draws, so the repository holds no picture).
+- A second page, "Hello Tabs" (a Library tile), has three tabs: "Clips" (a
+  row and a grid), "Up next" (a list) and "My list" (a grid with its own
+  search). Its flat `sections` are the fallback for app versions without
+  tabs. "My list" is also a Home row (a Home id inside a tab).
+- "My list" is empty until you sign in: its feed answers with a `message` and
+  a "Sign in" `action` that opens the "Hello account" panel. The panel's
+  Sign in keeps the state on the sample server, shows a toast and calls
+  `openPage`; the page then shows the list. Sign out calls `refreshPage`.
 - Every third entry opens an entry page (`/pages/entries/<id>`): Play or
   Resume, a Save button with state that the server keeps in memory until it
   stops (`POST /pages/entries/<id>/save` with `{ "on": {{action.next}} }`; any

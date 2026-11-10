@@ -1,8 +1,8 @@
-import { handleBridgeRequest, readBridgeMessage, sameOrigin } from '../bridge';
+import { handleBridgeRequest, readBridgeMessage, readExternalUrl, sameOrigin } from '../bridge';
 
 const BASE = 'http://192.0.2.10:3000';
 
-const deps = (over: { refusal?: string | null } = {}) => ({
+const deps = (over: { refusal?: string | null; network?: boolean; opened?: boolean } = {}) => ({
   context: jest.fn(() => ({ a: 1 })),
   play: jest.fn(),
   openItem: jest.fn(),
@@ -13,8 +13,11 @@ const deps = (over: { refusal?: string | null } = {}) => ({
   playRefusal: jest.fn(() => over.refusal ?? null),
   playMedia: jest.fn(),
   openEntry: jest.fn(),
-  hasPage: jest.fn((id: string) => id === 'main'),
+  hasPage: jest.fn((id: string, tab?: string) => id === 'main' && (!tab || tab === 'mine')),
   openPage: jest.fn(),
+  refreshPage: jest.fn(),
+  hasNetwork: jest.fn(() => over.network ?? true),
+  openExternal: jest.fn(async () => over.opened ?? true),
 });
 
 describe('bridge', () => {
@@ -26,6 +29,42 @@ describe('bridge', () => {
     expect(readBridgeMessage({ id: 1, method: 'toast' })).toBeNull();
     expect(readBridgeMessage({ zoggyfin: 1, id: 1, method: 'eval' })).toBeNull();
     expect(readBridgeMessage('not json')).toBeNull();
+  });
+  it('opens a page, with an optional tab of that page', async () => {
+    const d = deps();
+    expect((await handleBridgeRequest({ id: 1, method: 'openPage', params: { page: 'main', tab: 'mine' } }, d)).result).toBe(true);
+    expect(d.openPage).toHaveBeenLastCalledWith('main', 'mine');
+    await handleBridgeRequest({ id: 2, method: 'openPage', params: { page: 'main' } }, d);
+    expect(d.openPage).toHaveBeenLastCalledWith('main');
+    expect((await handleBridgeRequest({ id: 3, method: 'openPage', params: { page: 'main', tab: 'nope' } }, d)).error).toBe('tab is not a tab of this page');
+    expect(d.openPage).toHaveBeenCalledTimes(2);
+  });
+  it('reloads only the extension feeds with refreshPage', async () => {
+    const d = deps();
+    expect(await handleBridgeRequest({ id: 1, method: 'refreshPage', params: {} }, d)).toEqual({ zoggyfin: 1, id: 1, result: true });
+    expect(d.refreshPage).toHaveBeenCalledTimes(1);
+    expect(d.refreshLibrary).not.toHaveBeenCalled();
+    expect(readBridgeMessage({ zoggyfin: 1, id: 2, method: 'refreshPage' })).toEqual({ id: 2, method: 'refreshPage', params: {} });
+  });
+  it('opens an https URL in the system browser and says whether it opened', async () => {
+    const d = deps();
+    expect(await handleBridgeRequest({ id: 1, method: 'openExternal', params: { url: 'https://example.org/sign-in?x=1' } }, d)).toEqual({ zoggyfin: 1, id: 1, result: { opened: true } });
+    expect(d.openExternal).toHaveBeenCalledWith('https://example.org/sign-in?x=1');
+    const no = deps({ opened: false });
+    expect(await handleBridgeRequest({ id: 2, method: 'openExternal', params: { url: 'https://example.org' } }, no)).toEqual({ zoggyfin: 1, id: 2, result: { opened: false } });
+  });
+  it('refuses openExternal for other schemes, credentials, bad values and without the network permission', async () => {
+    for (const url of ['http://example.org', 'javascript:alert(1)', 'file:///etc/hosts', 'zoggyfin://share', 'https://user:pw@example.org', 'https://user@example.org', 'not a url', '', 5, 'https://example.org/' + 'a'.repeat(2000)]) {
+      const d = deps();
+      const reply = await handleBridgeRequest({ id: 1, method: 'openExternal', params: { url } }, d);
+      expect(reply.error).toBeTruthy();
+      expect(reply.error).not.toContain('example.org');
+      expect(d.openExternal).not.toHaveBeenCalled();
+    }
+    const d = deps({ network: false });
+    expect((await handleBridgeRequest({ id: 1, method: 'openExternal', params: { url: 'https://example.org' } }, d)).error).toBe('The extension has no network permission');
+    expect(d.openExternal).not.toHaveBeenCalled();
+    expect(readExternalUrl({ url: ' https://Example.org/a b ' })).toBe('https://example.org/a%20b');
   });
   it('checks the origin', () => {
     expect(sameOrigin('http://192.0.2.10:3000/panel', 'http://192.0.2.10:3000')).toBe(true);

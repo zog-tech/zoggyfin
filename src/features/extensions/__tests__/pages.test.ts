@@ -2,7 +2,7 @@ import { readEntry, type FeedEntry } from '@/extensions/feeds';
 import { parseManifest, type Manifest } from '@/extensions/schema';
 
 import { firstParam, parseEntryRoute, resolveHomeRow, resolvePageRoute } from '../routes';
-import { entryTap, failedText, sectionBody, sectionMode, tileOfEntry } from '../section-view';
+import { emptyAction, emptyText, entryTap, failedText, sectionBody, sectionMode, tileOfEntry } from '../section-view';
 
 const base = 'https://media.example.org';
 
@@ -92,9 +92,28 @@ describe('section body', () => {
     expect(sectionBody({ status: 'loading', count: 0 }, 'infinite', 'page')).toBe('placeholder');
   });
 
-  it('hides an empty row or preview, and says so for the infinite section', () => {
-    expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'page')).toBe('hidden');
-    expect(sectionBody({ status: 'ready', count: 0 }, 'preview', 'page')).toBe('hidden');
+  it('says why a section is empty with the feed message, and offers its panel button only where panels exist', () => {
+    expect(emptyText(undefined)).toBe('Nothing here yet.');
+    expect(emptyText('Sign in to see your list.')).toBe('Sign in to see your list.');
+    const action = { title: 'Sign in', panel: 'account' };
+    expect(emptyAction(action, true)).toBe(action);
+    expect(emptyAction(action, false)).toBeNull();
+    expect(emptyAction(undefined, true)).toBeNull();
+  });
+
+  it('hides an empty row or preview on an entry page, as before, and keeps its loading and failed states', () => {
+    expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'entry')).toBe('hidden');
+    expect(sectionBody({ status: 'ready', count: 0 }, 'preview', 'entry')).toBe('hidden');
+    expect(sectionBody({ status: 'ready', count: 0 }, 'infinite', 'entry')).toBe('empty');
+    expect(sectionBody({ status: 'loading', count: 0 }, 'row', 'entry')).toBe('placeholder');
+    expect(sectionBody({ status: 'error', count: 0 }, 'row', 'entry')).toBe('failed');
+    expect(sectionBody({ status: 'ready', count: 2 }, 'row', 'entry')).toBe('entries');
+  });
+
+  it('keeps an empty section on a page with its title, for every mode', () => {
+    // A page never drops a section without a word: an empty row or preview keeps its title and says so.
+    expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'page')).toBe('empty');
+    expect(sectionBody({ status: 'ready', count: 0 }, 'preview', 'page')).toBe('empty');
     expect(sectionBody({ status: 'ready', count: 0 }, 'infinite', 'page')).toBe('empty');
   });
 });
@@ -215,6 +234,6 @@ describe('the Hello Pages sample', () => {
     expect(page.sections.map((s) => s.layout)).toEqual(['row', 'list', 'grid']);
     expect(page.sections.map((_, i) => sectionMode(page.sections, i))).toEqual(['row', 'preview', 'infinite']);
     expect(page.search?.feed).toBe('/pages/search');
-    expect(r.manifest.contributes.homeSections?.map((h) => h.id)).toEqual(['main:latest']);
+    expect(r.manifest.contributes.homeSections?.map((h) => h.id)).toEqual(['main:latest', 'tabs:mine']);
   });
 });

@@ -36,6 +36,7 @@
  * Pure, so it is unit-tested.
  */
 import type { IconName } from '@/components/icon-names';
+import { urlOnOrigin } from '@/extensions/match';
 import { pagesOf } from '@/extensions/schema';
 import type { InstalledExtension } from '@/extensions/types';
 import { isReplaceableTab, type ReplaceableTab } from '@/lib/tab-destination';
@@ -60,6 +61,8 @@ export interface PlacedPage {
   /** The extension's name (the line under a Library tile). */
   extensionName: string;
   icon: IconName;
+  /** The page's `image` as a full URL on the extension's origin, when it has one. */
+  image?: string;
 }
 
 export interface PagePlacement {
@@ -101,8 +104,11 @@ function candidates(exts: readonly PlacementExtension[]): Candidate[] {
   for (const e of ordered) {
     for (const p of pagesOf(e.manifest)) {
       if (!p.placement.tab && !p.placement.library) continue;
+      const page: PlacedPage = { extId: e.manifest.id, pageId: p.id, title: p.title, extensionName: e.manifest.name, icon: pageIconName(p.icon) };
+      const image = p.image ? urlOnOrigin(e.manifest.baseUrl, p.image) : undefined;
+      if (image) page.image = image;
       out.push({
-        page: { extId: e.manifest.id, pageId: p.id, title: p.title, extensionName: e.manifest.name, icon: pageIconName(p.icon) },
+        page,
         tab: p.placement.tab,
         library: p.placement.library,
         chosen: e.tab === p.id,

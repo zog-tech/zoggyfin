@@ -26,6 +26,19 @@ describe('parseFeedPage', () => {
     expect(() => parseFeedPage({ items: Array.from({ length: 101 }, () => ({ title: 'A' })) }, base)).toThrow();
   });
 
+  it('reads an optional message and a panel action, each left out on its own when bad', () => {
+    expect(parseFeedPage({ items: [], message: '  Sign in to see your list. ', action: { title: 'Sign in', panel: 'account' } }, base)).toEqual({
+      entries: [],
+      next: null,
+      message: 'Sign in to see your list.',
+      action: { title: 'Sign in', panel: 'account' },
+    });
+    expect(parseFeedPage({ items: [], message: 'x'.repeat(300) }, base).message).toHaveLength(200);
+    expect(parseFeedPage({ items: [], message: 'Why', action: { title: 'Go', panel: 'Bad Id' } }, base)).toEqual({ entries: [], next: null, message: 'Why' });
+    expect(parseFeedPage({ items: [], message: 5, action: { title: 'Go', panel: 'main' } }, base)).toEqual({ entries: [], next: null });
+    expect(parseFeedPage({ items: [], message: '' }, base)).toEqual({ entries: [], next: null });
+  });
+
   it('gives the same entries as the Home row parser', () => {
     const data = { items: [{ title: 'A', image: '/a.jpg' }, 7], next: 'n' };
     expect(parseFeed(data, base)).toEqual(parseFeedPage(data, base).entries);

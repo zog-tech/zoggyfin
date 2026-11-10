@@ -8,6 +8,9 @@
  * - Entries with a Jellyfin `itemId` are resolved to items in one request
  *   per page, as the Home row did. An item that does not load leaves the
  *   entry as a plain card when it has a title, else it is left out.
+ * - A feed's `message` and `action` (why it is empty, and a button that
+ *   opens a panel of the same extension) come from its first page. An
+ *   action whose panel the manifest does not have is left out.
  * - A search waits `SEARCH_DEBOUNCE_MS` after the last key press and runs
  *   under a latest-wins gate: a late reply of an older search is dropped
  *   and never shown.
@@ -21,7 +24,7 @@ import { useApi } from '@/api/use-api';
 import { createGate } from '@/lib/async-gate';
 import { useDebounced } from '@/lib/use-debounced';
 
-import { type FeedEntry, feedQueryKey, fetchFeedPage, flattenPages, isCapped, latestOnly, type LoadedPage, nextCursor, normalizeQuery, SEARCH_DEBOUNCE_MS, StaleSearchError } from '../feeds';
+import { type FeedAction, type FeedEntry, feedQueryKey, fetchFeedPage, flattenPages, isCapped, latestOnly, type LoadedPage, nextCursor, normalizeQuery, SEARCH_DEBOUNCE_MS, StaleSearchError } from '../feeds';
 import { buildRequest } from '../http';
 import { currentAccount, templateContext } from '../runtime';
 import { getExtension, useExtensions } from '../store';
@@ -32,7 +35,7 @@ export interface FeedRow {
   item?: BaseItemDto;
 }
 
-type RowsPage = LoadedPage<FeedRow>;
+type RowsPage = LoadedPage<FeedRow> & { message?: string; action?: FeedAction };
 
 export type FeedStatus = 'loading' | 'error' | 'ready';
 
@@ -50,6 +53,10 @@ export interface FeedState {
   /** Loads the feed again. */
   refresh: () => Promise<unknown>;
   refreshing: boolean;
+  /** The feed's own words for an empty feed (first page only). */
+  message?: string;
+  /** A button under `message` that opens a panel of the extension. */
+  action?: FeedAction;
 }
 
 function rowsOf(entries: FeedEntry[], items: BaseItemDto[]): FeedRow[] {
@@ -94,7 +101,10 @@ function useFeedQuery(source: FeedSource | undefined, query: string | undefined,
             items = [];
           }
         }
-        return { entries: rowsOf(page.entries, items), next: page.next, cursor: pageParam };
+        const out: RowsPage = { entries: rowsOf(page.entries, items), next: page.next, cursor: pageParam };
+        if (page.message) out.message = page.message;
+        if (page.action && (ext.manifest.contributes.panels ?? []).some((p) => p.id === page.action?.panel)) out.action = page.action;
+        return out;
       };
       return guard ? guard(load) : load();
     },
@@ -105,7 +115,10 @@ function stateOf(q: ReturnType<typeof useFeedQuery>, paged: boolean): FeedState 
   const pages = q.data?.pages ?? [];
   const rows = flattenPages(paged ? pages : pages.slice(0, 1));
   const hasMore = paged && !!q.hasNextPage;
+  const first = pages[0];
   return {
+    ...(first?.message && !rows.length ? { message: first.message } : null),
+    ...(first?.action && !rows.length ? { action: first.action } : null),
     rows,
     status: q.data ? 'ready' : q.error ? 'error' : 'loading',
     error: q.error,

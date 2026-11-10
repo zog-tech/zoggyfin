@@ -19,7 +19,7 @@ import { readJson, writeJson } from '@/storage/json';
 import { homeSections } from '@/registry/home-sections';
 import { type ItemActionContext, itemActions } from '@/registry/item-actions';
 
-import type { DetailAction } from './feeds';
+import { type DetailAction, isExtensionFeedKey, refreshExtensionFeeds } from './feeds';
 import { ExtensionError, FEED_TIMEOUT_MS, buildRequest, type Grants, type JellyfinAccount, parseOptions, send } from './http';
 import { type InstallSource, loadInstallRequest } from './install-request';
 import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match';
@@ -32,6 +32,7 @@ import { type AccountFacts, effectiveValues, extensionsState, getExtension, type
 import { plannedContributions, registrationSignature } from './registration';
 import { forgetSavedTask, readSavedTasks, rememberTask, TASKS_KEY, tasksToResume } from './saved-tasks';
 import { startTask, stopTasksExcept, useTasks } from './tasks';
+import { clearUpdatePending, startUpdateChecks } from './update-check';
 import { render, usesName, type TemplateContext } from './template';
 
 // ---------------------------------------------------------------------------
@@ -108,17 +109,33 @@ export async function fetchOptions(ext: InstalledExtension, path: string, ctx: T
 
 let refreshTimers: ReturnType<typeof setTimeout>[] = [];
 
-function refreshAll(): void {
+function refreshAll(exceptFeedsOf?: string): void {
   const s = session();
   if (!s) return;
-  void queryClient.invalidateQueries({ queryKey: scopeKey({ serverId: s.serverId, userId: s.userId }) });
+  const predicate = exceptFeedsOf ? (q: { queryKey: readonly unknown[] }) => !isExtensionFeedKey(q.queryKey, exceptFeedsOf) : undefined;
+  void queryClient.invalidateQueries({ queryKey: scopeKey({ serverId: s.serverId, userId: s.userId }), predicate });
 }
 
-/** Refreshes the app's data now and twice more, while the server scans its library. */
-export function refreshLibrary(): void {
+/**
+ * Loads every feed of one extension again, everywhere it shows (its pages,
+ * its Home rows, its search results). A panel's `refreshPage`, `openPage`
+ * and the close of a panel use it.
+ */
+export function refreshExtension(extId: string): void {
+  const s = session();
+  if (!s) return;
+  void refreshExtensionFeeds(queryClient, { serverId: s.serverId, userId: s.userId }, extId);
+}
+
+/**
+ * Refreshes the app's data now and twice more, while the server scans its
+ * library. The whole account scope is invalidated, so the feeds of every
+ * extension (`ext-feed` keys) and the entry pages (`ext-detail`) load again too.
+ */
+export function refreshLibrary(opts: { exceptFeedsOf?: string } = {}): void {
   refreshTimers.forEach(clearTimeout);
-  refreshAll();
-  refreshTimers = [8_000, 25_000].map((ms) => setTimeout(refreshAll, ms));
+  refreshAll(opts.exceptFeedsOf);
+  refreshTimers = [8_000, 25_000].map((ms) => setTimeout(() => refreshAll(opts.exceptFeedsOf), ms));
 }
 
 function effectsFor(ext: InstalledExtension): ResponseEffects {
@@ -355,7 +372,37 @@ export async function install(c: Candidate, grants: Grants): Promise<void> {
     ext = r.ext;
     useExtensions.setState((st) => ({ list: [...st.list.filter((e) => e.manifest.id !== id), r.ext], values: { ...st.values, [id]: r.values } }));
   } else upsertExtension(ext);
+  clearUpdatePending(extensionsState().account, ext.manifest.id);
   await prefill(ext);
+}
+
+/**
+ * Replaces the manifest of an installed extension with a newer one that
+ * needs no consent (`updatePlan`), keeping the user's choices.
+ */
+export async function applyManifestUpdate(extId: string, manifest: Manifest): Promise<void> {
+  const cur = getExtension(extId);
+  if (!cur || cur.manifest.id !== manifest.id) return;
+  const next = { ...cur, manifest };
+  upsertExtension(next);
+  clearUpdatePending(extensionsState().account, extId);
+  await prefill(next);
+}
+
+/** The quiet update check (`update-check.ts`): at start, per account, then at most every 6 hours. */
+export function startExtensionUpdateChecks(): () => void {
+  return startUpdateChecks({
+    account: () => extensionsState().account,
+    onAccountChange: (fn) => useExtensions.subscribe((st, prev) => {
+      if (st.account !== prev.account) fn();
+    }),
+    list: () => extensionsState().list.map((e) => ({ id: e.manifest.id, name: e.manifest.name, manifestUrl: e.manifestUrl, manifest: e.manifest })),
+    deps: {
+      load: loadManifest,
+      apply: applyManifestUpdate,
+      toast: (text) => toast(text, { icon: 'arrow.down.circle' }),
+    },
+  });
 }
 
 /**

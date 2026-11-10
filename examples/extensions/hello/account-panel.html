@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hello account</title>
+<style>
+  :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; background: transparent; }
+  button { font: inherit; padding: 10px 14px; margin: 4px 4px 4px 0; border-radius: 10px; border: 1px solid #8884; background: #8881; }
+  pre { white-space: pre-wrap; font-size: 12px; background: #8881; padding: 8px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h2>Hello account</h2>
+<p id="state">…</p>
+<button id="signin">Sign in</button>
+<button id="signout">Sign out</button>
+<button id="reload">refreshPage</button>
+<button id="help">openExternal</button>
+<button id="close">close</button>
+<pre id="out"></pre>
+<script>
+  // The bridge helper (see docs/extensions.md, "panels").
+  const pending = new Map();
+  let seq = 0;
+  window.addEventListener('message', (e) => {
+    const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (!d || d.zoggyfin !== 1 || !pending.has(d.id)) return;
+    const p = pending.get(d.id);
+    pending.delete(d.id);
+    d.error ? p.reject(new Error(d.error)) : p.resolve(d.result);
+  });
+  function zoggyfin(method, params = {}) {
+    return new Promise((resolve, reject) => {
+      const id = ++seq;
+      pending.set(id, { resolve, reject });
+      const msg = { zoggyfin: 1, id, method, params };
+      if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(msg));
+      else window.parent.postMessage(msg, '*');
+    });
+  }
+  const out = document.getElementById('out');
+  const state = document.getElementById('state');
+  // The sign-in lives on the sample server (not in a cookie of this page), so the app's feed requests see it.
+  async function account(body) {
+    const res = await fetch('/pages/account/state', body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+    const s = await res.json();
+    state.textContent = s.signedIn ? 'Signed in. "My list" shows your list.' : 'Signed out. "My list" is empty.';
+    return s;
+  }
+  void account();
+  const run = (fn) => async () => {
+    try {
+      await fn();
+    } catch (e) {
+      out.textContent = String(e.message || e);
+    }
+  };
+  // Sign in, say so, ask for a library refresh, then show the "My list" tab of the page.
+  // The app goes back to the page when it is under the panel, and loads each feed once.
+  document.getElementById('signin').onclick = run(async () => {
+    await account({ signedIn: true });
+    await zoggyfin('toast', { text: 'Signed in to Hello' });
+    await zoggyfin('refreshLibrary');
+    await zoggyfin('openPage', { page: 'tabs', tab: 'mine' });
+  });
+  document.getElementById('signout').onclick = run(async () => {
+    await account({ signedIn: false });
+    await zoggyfin('refreshPage');
+  });
+  document.getElementById('reload').onclick = run(() => zoggyfin('refreshPage'));
+  // A help page outside the app: the system browser, https only.
+  document.getElementById('help').onclick = run(async () => {
+    out.textContent = JSON.stringify(await zoggyfin('openExternal', { url: 'https://example.org/' }));
+  });
+  document.getElementById('close').onclick = run(() => zoggyfin('close'));
+</script>
+</body>
+</html>

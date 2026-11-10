@@ -17,6 +17,7 @@
 <button id="ctx">getContext</button>
 <button id="toast">toast</button>
 <button id="refresh">refreshLibrary</button>
+<button id="external">openExternal</button>
 <button id="close">close</button>
 <pre id="out">…</pre>
 <script>
@@ -46,6 +47,10 @@
   };
   document.getElementById('toast').onclick = () => zoggyfin('toast', { text: 'Hello from the panel' });
   document.getElementById('refresh').onclick = () => zoggyfin('refreshLibrary');
+  document.getElementById('external').onclick = async () => {
+    const r = await zoggyfin('openExternal', { url: 'https://example.org/' });
+    out.textContent = JSON.stringify(r);
+  };
   document.getElementById('close').onclick = () => zoggyfin('close');
 </script>
 </body>
