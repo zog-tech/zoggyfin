@@ -3,28 +3,47 @@
  * parsers, so the sample never drifts from the schema. The test starts the
  * sample server on a free local port and reads every endpoint the app reads.
  */
-import { type ChildProcess, spawn } from 'node:child_process';
-import http from 'node:http';
-import path from 'node:path';
-
 import { parseDetail, parseFeedPage } from '../feeds';
 import { parseDownloadDescription } from '../media/download';
 import { parseStreamDescription } from '../media/describe';
 import { parseManifest } from '../schema';
 
-const SERVER = path.join(__dirname, '../../../examples/extensions/hello/server.mjs');
+// Jest runs tests in Node as CommonJS. The app has no Node types, so the few
+// Node calls this test makes are typed here.
+declare const __dirname: string;
+interface Child {
+  stdout: { on(event: 'data', fn: (chunk: Uint8Array) => void): void } | null;
+  on(event: 'error', fn: (e: Error) => void): void;
+  kill(): void;
+}
+/** The part of a Node response this test reads. */
+interface Reply {
+  statusCode?: number;
+  headers: Record<string, string | string[] | undefined>;
+  on(event: string, fn: (chunk: Uint8Array) => void): void;
+}
+interface NodeHttp {
+  request(url: URL, opts: { method: string; headers?: Record<string, string> }, cb: (res: Reply) => void): { on(event: 'error', fn: (e: Error) => void): void; end(body?: string): void };
+}
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { spawn } = require('node:child_process') as { spawn(cmd: string, args: string[], opts: { env: Record<string, string | undefined>; stdio: string[] }): Child };
+const http = require('node:http') as NodeHttp;
+const nodeProcess = require('node:process') as { execPath: string; env: Record<string, string | undefined> };
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+const SERVER = `${__dirname}/../../../examples/extensions/hello/server.mjs`;
 const PORT = 18_000 + Math.floor(Math.random() * 2000);
 const BASE = `http://localhost:${PORT}`;
 
-let server: ChildProcess | null = null;
+let server: Child | null = null;
 const logs: string[] = [];
 
 beforeAll(async () => {
-  server = spawn(process.execPath, [SERVER], { env: { ...process.env, PORT: String(PORT), BASE_URL: BASE }, stdio: ['ignore', 'pipe', 'pipe'] });
+  server = spawn(nodeProcess.execPath, [SERVER], { env: { ...nodeProcess.env, PORT: String(PORT), BASE_URL: BASE }, stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise<void>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('The sample server did not start')), 10_000);
-    server!.stdout!.on('data', (d: Buffer) => {
-      logs.push(String(d));
+    server!.stdout!.on('data', (d: Uint8Array) => {
+      logs.push(new TextDecoder().decode(d));
       if (logs.join('').includes('Hello extension on')) {
         clearTimeout(t);
         resolve();
@@ -39,12 +58,20 @@ afterAll(() => {
 });
 
 /** One request with Node's own HTTP client (the test preset replaces `fetch`). */
-function call(p: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; body: Buffer; type: string }> {
+function call(p: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; text: string; bytes: number; type: string }> {
   return new Promise((resolve, reject) => {
-    const req = http.request(new URL(p, BASE), { method: init.method ?? 'GET', headers: init.headers }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (c: Buffer) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks), type: String(res.headers['content-type'] ?? '') }));
+    const req = http.request(new URL(p, BASE), { method: init.method ?? 'GET', headers: init.headers }, (res: Reply) => {
+      const chunks: Uint8Array[] = [];
+      res.on('data', (c: Uint8Array) => chunks.push(c));
+      res.on('end', () => {
+        const all = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+        let at = 0;
+        for (const c of chunks) {
+          all.set(c, at);
+          at += c.length;
+        }
+        resolve({ status: res.statusCode ?? 0, text: new TextDecoder().decode(all), bytes: all.length, type: String(res.headers['content-type'] ?? '') });
+      });
     });
     req.on('error', reject);
     req.end(init.body);
@@ -56,7 +83,7 @@ const post = (p: string, body: unknown) => call(p, { method: 'POST', headers: { 
 async function get(p: string): Promise<unknown> {
   const res = await call(p);
   expect(res.status).toBe(200);
-  return JSON.parse(res.body.toString('utf8'));
+  return JSON.parse(res.text);
 }
 
 describe('the Hello sample', () => {
@@ -98,7 +125,7 @@ describe('the Hello sample', () => {
     expect(d.sections.map((s) => s.id)).toEqual(['related']);
     expect(parseFeedPage(await get('/pages/entries/s3/related'), BASE).entries.length).toBeGreaterThan(0);
     const res = await post('/pages/entries/s3/save', { on: true });
-    expect(JSON.parse(res.body.toString('utf8'))).toMatchObject({ state: { on: true } });
+    expect(JSON.parse(res.text)).toMatchObject({ state: { on: true } });
     expect(parseDetail(await get('/pages/entries/s3'), BASE).actions[0]?.state?.on).toBe(true);
   });
 
@@ -117,10 +144,10 @@ describe('the Hello sample', () => {
   it('the subtitles are WebVTT, the file answers byte ranges, and the report endpoint takes an event', async () => {
     const vtt = await call('/pages/media/sample.en.vtt');
     expect(vtt.type).toMatch(/^text\/vtt/);
-    expect(vtt.body.toString('utf8').startsWith('WEBVTT')).toBe(true);
+    expect(vtt.text.startsWith('WEBVTT')).toBe(true);
     const part = await call('/pages/media/sample.mp4?q=low', { headers: { Range: 'bytes=0-99' } });
     expect(part.status).toBe(206);
-    expect(part.body.byteLength).toBe(100);
+    expect(part.bytes).toBe(100);
     const report = await post('/pages/entries/s3/report', { event: 'start', mediaId: 's3', position: 0, rate: 1, offline: false });
     expect(report.status).toBe(204);
     // The sample logs each report.
