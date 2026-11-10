@@ -6,7 +6,7 @@ import { create } from 'zustand';
 
 import { readJson, writeJson } from '@/storage/json';
 
-import { EMPTY_SNAPSHOT, migrateSnapshot } from './migrate';
+import { EMPTY_SNAPSHOT, legacySnapshot, loadSnapshots } from './migrate';
 import { fraction, isFileMissing } from './state-machine';
 import {
   DOWNLOAD_SCHEMA_VERSION,
@@ -16,8 +16,13 @@ import {
   type DownloadStatus,
 } from './types';
 
-/** v1 lived under the same key in the phase 1 stub; migrate.ts reads both shapes. */
+/**
+ * The old key: v1 and v2 snapshots, and now a v2 copy of the Jellyfin
+ * records on every save, so an older app version (a rollback) keeps them.
+ */
 export const STORE_KEY = 'downloads.records';
+/** The v3 snapshot with every record (Jellyfin and extension media). See `migrate.ts`. */
+export const STORE_KEY_V3 = 'downloads.records.v3';
 
 export interface DownloadsState {
   records: Record<string, DownloadRecord>;
@@ -28,7 +33,7 @@ export interface DownloadsState {
 
 function load(): DownloadsSnapshot {
   try {
-    return migrateSnapshot(readJson<unknown>(STORE_KEY, EMPTY_SNAPSHOT));
+    return loadSnapshots(readJson<unknown>(STORE_KEY, null), readJson<unknown>(STORE_KEY_V3, null));
   } catch {
     return EMPTY_SNAPSHOT;
   }
@@ -47,7 +52,9 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function saveNow() {
   saveTimer = null;
   const { records, collections } = useDownloadsStore.getState();
-  writeJson(STORE_KEY, { schemaVersion: DOWNLOAD_SCHEMA_VERSION, records, collections } satisfies DownloadsSnapshot);
+  writeJson(STORE_KEY_V3, { schemaVersion: DOWNLOAD_SCHEMA_VERSION, records, collections } satisfies DownloadsSnapshot);
+  // The copy an older app version reads (see `migrate.ts`).
+  writeJson(STORE_KEY, legacySnapshot({ records, collections }));
 }
 
 /** Saves at once for state changes, and at most every 2 s for progress. */

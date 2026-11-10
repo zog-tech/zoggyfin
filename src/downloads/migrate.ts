@@ -13,6 +13,14 @@
  *   extension source cannot be listed or played, so it is dropped (its folder
  *   is then an orphan and is removed); a missing source on a Jellyfin id is
  *   read as `jellyfin`.
+ *
+ * Downgrade safety (`store.ts`): an older app (v2) keeps nothing of a
+ * snapshot whose version it does not know. So the v3 snapshot is saved
+ * under its own key, and the old key keeps a v2 copy of the Jellyfin
+ * records (`legacySnapshot`) on every save. After a rollback the older app
+ * finds its Jellyfin downloads; when this version comes back, `loadSnapshots`
+ * takes the Jellyfin records from the old key (the older app may have
+ * changed them) and the extension records from the v3 key.
  */
 import type { BaseItemDto } from '@/api/types';
 
@@ -157,6 +165,59 @@ export function readSource(raw: unknown, itemId: string, version: unknown): Down
 
 function isCollection(v: unknown): v is DownloadCollection {
   return isObject(v) && typeof v.id === 'string' && Array.isArray(v.itemIds) && isObject(v.item);
+}
+
+/** The schema version an older app reads (`legacySnapshot`). */
+export const LEGACY_SCHEMA_VERSION = 2;
+
+/** A saved value that one of the known versions wrote (v1 list, v1, v2 or v3 snapshot). */
+function isKnownSnapshot(raw: unknown): boolean {
+  if (Array.isArray(raw)) return true;
+  return isObject(raw) && (raw.schemaVersion === 1 || raw.schemaVersion === 2 || raw.schemaVersion === DOWNLOAD_SCHEMA_VERSION);
+}
+
+const isJellyfin = (r: DownloadRecord) => r.source.kind === 'jellyfin';
+
+/**
+ * The v2 copy of a snapshot for the old key: the Jellyfin records with
+ * `schemaVersion: 2` and no `source`, as a v2 app reads them, and the
+ * collections (they hold Jellyfin items only). Pure.
+ */
+export function legacySnapshot(s: Pick<DownloadsSnapshot, 'records' | 'collections'>): { schemaVersion: typeof LEGACY_SCHEMA_VERSION; records: Record<string, unknown>; collections: Record<string, DownloadCollection> } {
+  const records: Record<string, unknown> = {};
+  for (const r of Object.values(s.records)) {
+    if (!isJellyfin(r)) continue;
+    const { source: _source, ...rest } = r;
+    records[r.itemId] = { ...rest, schemaVersion: LEGACY_SCHEMA_VERSION };
+  }
+  const collections: Record<string, DownloadCollection> = {};
+  for (const c of Object.values(s.collections)) {
+    const itemIds = c.itemIds.filter((id) => !!records[id] || !s.records[id]);
+    if (itemIds.length) collections[c.id] = itemIds.length === c.itemIds.length ? c : { ...c, itemIds };
+  }
+  return { schemaVersion: LEGACY_SCHEMA_VERSION, records, collections };
+}
+
+/**
+ * The snapshot from both keys (see the top of this file). `legacyRaw` is the
+ * old key, `currentRaw` the v3 key; either may be missing (null). The old
+ * key is the truth for Jellyfin records and collections whenever a known
+ * version wrote it; the v3 key adds the extension records. Never throws.
+ */
+export function loadSnapshots(legacyRaw: unknown, currentRaw: unknown): DownloadsSnapshot {
+  try {
+    const current = currentRaw == null ? null : migrateSnapshot(currentRaw);
+    const legacy = isKnownSnapshot(legacyRaw) ? migrateSnapshot(legacyRaw) : null;
+    if (!legacy) return current ?? EMPTY_SNAPSHOT;
+    // The first start of this version: the old key holds everything (v1, v2, or an early v3).
+    if (!current) return legacy;
+    const records: Record<string, DownloadRecord> = {};
+    for (const r of Object.values(legacy.records)) if (isJellyfin(r)) records[r.itemId] = r;
+    for (const r of Object.values(current.records)) if (!isJellyfin(r) && !records[r.itemId]) records[r.itemId] = r;
+    return { schemaVersion: DOWNLOAD_SCHEMA_VERSION, records, collections: legacy.collections };
+  } catch {
+    return EMPTY_SNAPSHOT;
+  }
 }
 
 /**
