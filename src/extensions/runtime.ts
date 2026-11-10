@@ -32,6 +32,7 @@ import { type AccountFacts, effectiveValues, extensionsState, getExtension, type
 import { plannedContributions, registrationSignature } from './registration';
 import { forgetSavedTask, readSavedTasks, rememberTask, TASKS_KEY, tasksToResume } from './saved-tasks';
 import { startTask, stopTasksExcept, useTasks } from './tasks';
+import { clearUpdatePending, startUpdateChecks } from './update-check';
 import { render, usesName, type TemplateContext } from './template';
 
 // ---------------------------------------------------------------------------
@@ -370,7 +371,37 @@ export async function install(c: Candidate, grants: Grants): Promise<void> {
     ext = r.ext;
     useExtensions.setState((st) => ({ list: [...st.list.filter((e) => e.manifest.id !== id), r.ext], values: { ...st.values, [id]: r.values } }));
   } else upsertExtension(ext);
+  clearUpdatePending(extensionsState().account, ext.manifest.id);
   await prefill(ext);
+}
+
+/**
+ * Replaces the manifest of an installed extension with a newer one that
+ * needs no consent (`updatePlan`), keeping the user's choices.
+ */
+export async function applyManifestUpdate(extId: string, manifest: Manifest): Promise<void> {
+  const cur = getExtension(extId);
+  if (!cur || cur.manifest.id !== manifest.id) return;
+  const next = { ...cur, manifest };
+  upsertExtension(next);
+  clearUpdatePending(extensionsState().account, extId);
+  await prefill(next);
+}
+
+/** The quiet update check (`update-check.ts`): at start, per account, then at most every 6 hours. */
+export function startExtensionUpdateChecks(): () => void {
+  return startUpdateChecks({
+    account: () => extensionsState().account,
+    onAccountChange: (fn) => useExtensions.subscribe((st, prev) => {
+      if (st.account !== prev.account) fn();
+    }),
+    list: () => extensionsState().list.map((e) => ({ id: e.manifest.id, name: e.manifest.name, manifestUrl: e.manifestUrl, manifest: e.manifest })),
+    deps: {
+      load: loadManifest,
+      apply: applyManifestUpdate,
+      toast: (text) => toast(text, { icon: 'arrow.down.circle' }),
+    },
+  });
 }
 
 /**

@@ -10,9 +10,10 @@ import { EmptyState } from '@/components/states';
 import { extensionDownloadCount, removeExtensionDownloads } from '@/downloads';
 import { OptionSheet } from '@/components/option-sheet';
 import { askText } from '@/extensions/prompts';
-import { currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
+import { applyManifestUpdate, currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
+import { pendingUpdatesOf, updatePlan, useExtensionUpdates } from '@/extensions/update-check';
 import { describePermission, pagesOf, safeHost, type SettingField } from '@/extensions/schema';
-import { extensionsState, getExtension, removeExtension, setEnabled, setGrant, setPhoneTab, setTabPage, setValue, upsertExtension, useExtensions } from '@/extensions/store';
+import { extensionsState, getExtension, removeExtension, setEnabled, setGrant, setPhoneTab, setTabPage, setValue, useExtensions } from '@/extensions/store';
 import { pageHref } from '@/features/extensions/nav';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
 import { ExtensionSkipSettings } from '@/features/settings/skip-section';
@@ -66,6 +67,8 @@ export default function ExtensionScreen() {
   const placement = usePagePlacement();
   const list = useExtensions((st) => st.list);
   const [checking, setChecking] = useState(false);
+  const storeAccount = useExtensions((st) => st.account);
+  const pendingVersion = useExtensionUpdates((st) => pendingUpdatesOf(st, storeAccount)[id]);
 
   // Fetch the choice lists again when the page opens.
   useEffect(() => {
@@ -93,14 +96,12 @@ export default function ExtensionScreen() {
     try {
       const cand = await loadManifest(ext.manifestUrl);
       if (cand.manifest.id !== m.id) throw new Error('The address now serves another extension.');
-      const newPerms = cand.manifest.permissions.filter((p) => !m.permissions.includes(p));
-      if (newPerms.length) {
-        // New permissions need a new confirm.
+      if (updatePlan(m, cand.manifest).kind === 'consent') {
+        // A new permission or a newly placed page needs a new confirm.
         void requestInstall([ext.manifestUrl]);
         return;
       }
-      upsertExtension({ ...ext, manifest: cand.manifest });
-      await prefill({ ...ext, manifest: cand.manifest });
+      await applyManifestUpdate(m.id, cand.manifest);
       toast(cand.manifest.version === m.version ? `${m.name} is up to date` : `${m.name} updated to ${cand.manifest.version}`, { icon: 'checkmark' });
     } catch (e) {
       toast(e instanceof Error ? e.message : 'The check failed.', { icon: 'exclamationmark.triangle' });
@@ -251,6 +252,9 @@ export default function ExtensionScreen() {
           ) : null}
 
           <Group footer={account ? undefined : 'Sign in to use this extension.'}>
+            {pendingVersion ? (
+              <SettingsRow icon="arrow.down.circle" label="Review the update" value={pendingVersion} onPress={() => void requestInstall([ext.manifestUrl])} />
+            ) : null}
             <SettingsRow icon="arrow.clockwise" label={checking ? 'Checking' : 'Check for an update'} onPress={() => void update()} last />
           </Group>
           <Group>

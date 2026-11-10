@@ -23,8 +23,25 @@ Extensions work on iPhone, iPad, Android, web and the Mac app.
    contributions. Tap **Add**. The app fills in the settings by itself.
 
 You can turn an extension off, change its permissions and settings, check for an
-update, or remove it on its page in Settings → Extensions. An update that asks
-for a new permission shows the confirm screen again.
+update, or remove it on its page in Settings → Extensions.
+
+### Updates
+
+The app loads the manifest of each installed extension again at start, when
+you sign in to another account, and then at most once every 6 hours while it
+is in use. "Check for an update" on the extension's page checks at once.
+
+- An update that needs no new permission and places no new page (a page that
+  asks for a tab or a Library tile it did not ask for before) applies by
+  itself, with no question. New `tabs`, sections, settings and a new
+  `version` are such updates.
+- An update that asks for a new permission or places a new page is not
+  applied. The extension shows "Update available" in Settings → Extensions,
+  its page has "Review the update" (the confirm screen), and the app shows
+  one toast per account, extension and version. "Check for an update" opens
+  the confirm screen for it at once.
+- A manifest that does not load, is not valid, or has another `id` changes
+  nothing.
 
 Other parts of the app use two functions from `src/extensions`:
 

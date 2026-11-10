@@ -11,6 +11,7 @@ import { TextField } from '@/components/text-field';
 import { requestInstall } from '@/extensions/runtime';
 import { safeHost } from '@/extensions/schema';
 import { useExtensions } from '@/extensions/store';
+import { pendingUpdatesOf, useExtensionUpdates } from '@/extensions/update-check';
 import { Group, makeSettingsStyles, SettingsRow } from '@/features/settings/rows';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { features } from '@/platform/tv';
@@ -24,6 +25,8 @@ export default function ExtensionsScreen() {
   const { c } = useTheme();
   const sidebar = useSidebarInset();
   const list = useExtensions((st) => st.list);
+  const account = useExtensions((st) => st.account);
+  const pending = useExtensionUpdates((st) => pendingUpdatesOf(st, account));
   const [address, setAddress] = useState('');
   // TV has no extension panels (web pages the remote cannot use).
   const panels = features.extensionPanels ? list.filter((e) => e.enabled).flatMap((e) => (e.manifest.contributes.panels ?? []).map((p) => ({ ext: e, panel: p }))) : [];
@@ -67,7 +70,7 @@ export default function ExtensionsScreen() {
                   key={e.manifest.id}
                   icon="square.grid.2x2"
                   label={e.manifest.name}
-                  value={e.enabled ? safeHost(e.manifest.baseUrl) : 'Off'}
+                  value={pending[e.manifest.id] ? 'Update available' : e.enabled ? safeHost(e.manifest.baseUrl) : 'Off'}
                   onPress={() => router.push({ pathname: '/(tabs)/(home)/extensions/[id]', params: { id: e.manifest.id } })}
                   last={i === list.length - 1}
                 />
