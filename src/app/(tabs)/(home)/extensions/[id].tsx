@@ -11,7 +11,7 @@ import { OptionSheet } from '@/components/option-sheet';
 import { askText } from '@/extensions/prompts';
 import { currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
 import { describePermission, pagesOf, safeHost, type SettingField } from '@/extensions/schema';
-import { getExtension, removeExtension, setEnabled, setGrant, setValue, upsertExtension, useExtensions } from '@/extensions/store';
+import { extensionsState, getExtension, removeExtension, setEnabled, setGrant, setTabPage, setValue, upsertExtension, useExtensions } from '@/extensions/store';
 import { pageHref } from '@/features/extensions/nav';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
 import { TvScrollView } from '@/features/tv/page-scroll';
@@ -22,11 +22,14 @@ import { features } from '@/platform/tv';
 import { mediaColors, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
-import { isIconName, type IconName } from '@/components/icon-names';
+import { pageIconName } from '@/features/extensions/icons';
+import { chooseTabPage, tabChoices, tabPagesOf, tabSlotPage } from '@/features/extensions/placement';
+import { PLACEMENT_PLATFORM } from '@/features/extensions/use-placement';
 
-/** A page's own icon when the app has it, else the default. */
-function pageIcon(name: string | undefined): IconName {
-  return name && isIconName(name) ? name : 'square.grid.2x2';
+/** Where the chosen tab page shows on this device (features/extensions/placement.ts). */
+function tabFooter(): string {
+  if (PLACEMENT_PLATFORM === 'tv') return 'One extension page can be a tab. On TV it comes first in the side menu. The choice follows your account.';
+  return 'One extension page can be a tab on iPad, the web and the Mac app. The choice follows your account to your other devices.';
 }
 
 const NO_OPTIONS: Record<string, { value: string; label: string }[]> = {};
@@ -43,6 +46,8 @@ export default function ExtensionScreen() {
   useExtensions((st) => st.auto[id]);
   const options = useExtensions((st) => st.options[id]) ?? NO_OPTIONS;
   const [picker, setPicker] = useState<SettingField | null>(null);
+  const [tabPicker, setTabPicker] = useState(false);
+  const list = useExtensions((st) => st.list);
   const [checking, setChecking] = useState(false);
 
   // Fetch the choice lists again when the page opens.
@@ -103,6 +108,14 @@ export default function ExtensionScreen() {
   const panels = features.extensionPanels ? (m.contributes.panels ?? []) : [];
   const pickerOptions = picker?.type === 'choice' ? (picker.options?.length ? picker.options : (options[picker.key] ?? [])) : [];
   const account = currentAccount();
+  // "Show as tab": only when the account has more than one page that may fill the one tab slot.
+  const ownTabPages = ext.enabled ? tabPagesOf(ext) : [];
+  const tabChoice = ownTabPages.length && tabChoices(list).length > 1 ? ownTabPages : [];
+  const slot = tabSlotPage(list);
+  const slotHere = slot?.extId === m.id ? slot : null;
+  const chooseTab = (pageId: string) => {
+    for (const u of chooseTabPage(extensionsState().list, m.id, pageId)) setTabPage(u.extId, u.page);
+  };
 
   return (
     <>
@@ -157,12 +170,18 @@ export default function ExtensionScreen() {
             </Group>
           ) : null}
 
+          {tabChoice.length ? (
+            <Group footer={tabFooter()}>
+              <SettingsRow icon="square.stack" label="Show as tab" value={slotHere?.title ?? 'Another extension'} onPress={() => setTabPicker(true)} last />
+            </Group>
+          ) : null}
+
           {pageRows.length || panels.length ? (
             <Group title="Pages">
               {pageRows.map((p, i) => (
                 <SettingsRow
                   key={`page:${p.id}`}
-                  icon={pageIcon(p.icon)}
+                  icon={pageIconName(p.icon)}
                   label={`Open ${p.title}`}
                   onPress={() => router.push(pageHref('(home)', m.id, p.id))}
                   last={i === pageRows.length - 1 && !panels.length}
@@ -189,6 +208,17 @@ export default function ExtensionScreen() {
         selected={picker ? [String(values[picker.key] ?? '')] : []}
         onSelect={(v) => picker && setValue(m.id, picker, v)}
         onClose={() => setPicker(null)}
+      />
+      <OptionSheet
+        visible={tabPicker}
+        title="Show as tab"
+        options={tabChoice.map((p) => ({ value: p.id, label: p.title }))}
+        selected={slotHere ? [slotHere.pageId] : []}
+        onSelect={(v) => {
+          chooseTab(v);
+          setTabPicker(false);
+        }}
+        onClose={() => setTabPicker(false)}
       />
     </>
   );

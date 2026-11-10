@@ -324,10 +324,10 @@ is now a page section named in `placement.home`.
 manifest, shows the sections in `placement.home` as Home rows, and shows each
 page with its sections and its search (see "Pages" below). A page opens from
 the extension in Settings → Extensions ("Open <page>") and from the header of
-its Home rows. Tabs, Library tiles, the entry detail page (an entry with
-`detail` opens a page that says "Coming soon"), playback (an entry with
-`media` says that playback arrives in a later update), downloads and skip
-settings follow.
+its Home rows, and in the places its `placement` asks for (see "Where a page
+shows" below). The entry detail page (an entry with `detail` opens a page that
+says "Coming soon"), playback (an entry with `media` says that playback
+arrives in a later update), downloads and skip settings follow.
 
 A version 1 manifest is read as version 2 with one page per Home row: the page
 has one `row` section, no tab, no Library tile, and the section on Home.
@@ -439,6 +439,31 @@ sections in order.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are
   never read as templates.
+
+### Where a page shows
+
+`placement` asks for places; the app decides per platform. Only the pages of
+extensions that are on count. With no extension that asks, the app looks as
+it did before.
+
+| Place | iPhone, Android phone and tablet | iPad | Web, Mac app | TV |
+|---|---|---|---|---|
+| The tab (`tab`) | Not shown (see below) | A tab (the sidebar in regular width) | A tab, an item in the sidebar | An item in the side menu |
+| A Library tile (`library`) | A tile after the libraries | A tile after the libraries | A tile, unless the page is the tab | An item in the side menu |
+| Home rows (`home`) | Yes | Yes | Yes | Yes |
+
+- **One tab.** The app has one tab slot for all extensions. When more than one
+  page has `tab: true`, the page chosen in Settings → Extensions → the
+  extension → "Show as tab" fills it (the choice follows the account to other
+  devices). With no choice, the page of the extension installed first fills it.
+- **Phones.** Phones already have five tabs, so a page does not become a tab
+  there for now. It shows as a Library tile (with `library: true`) and its
+  Home rows.
+- **TV.** The side menu lists at most two extension pages, before Settings:
+  the tab page first, then the pages with `tab` or `library` in install order.
+- The tab and the side menu show the page `title` and `icon`. `icon` is an
+  icon name of the app (`src/components/icon-names.ts`, for example `film`,
+  `tv`, `music.note`, `play.fill`). Another name shows a grid icon.
 
 **Stream description.** `GET media.playback`:
 
