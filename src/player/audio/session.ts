@@ -26,7 +26,7 @@ import { bitrateFor, usePlaybackSettings } from '@/settings/playback';
 import { readJson, writeJson } from '@/storage/json';
 import { storage } from '@/storage/kv';
 
-import { mediaCapabilities } from '../capabilities';
+import { audioCapabilities } from '../capabilities';
 import { controlGate, queueGate, togglePauses, type UserControl } from '../control-gate';
 import { buildDeviceProfile } from '../device-profile';
 import { isForeignDownload, outboxOnly, withOutbox } from '../outbox-transport';
@@ -65,7 +65,7 @@ import {
 import { isCatalogSong } from './catalog';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
 import { audioState, initialAudioState, setAudioState } from './store';
-import { formatLine, predictPlayMethod, universalAudioUrl } from './stream-url';
+import { formatLine, hasCodecInfo, predictPlayMethod, universalAudioUrl } from './stream-url';
 
 /**
  * A listen-together guest: where each track comes from (its own download, or
@@ -362,7 +362,7 @@ class AudioSession {
 
   private trackFor(entry: QueueEntry<AudioItem> | null): EngineTrack | null {
     if (!entry) return null;
-    const profile = buildDeviceProfile(mediaCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
+    const profile = buildDeviceProfile(audioCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
     const playSessionId = randomId().replace(/-/g, '');
     const sharedUri = this.shared?.(entry.item) ?? null;
     if (sharedUri) {
@@ -577,6 +577,27 @@ class AudioSession {
       // Not signed in.
     }
     void this.loadLyrics(entry.item);
+    void this.fillMediaInfo(entry);
+  }
+
+  /**
+   * A song played from a tile has only its container ("mov,mp4,m4a,…"), not
+   * the codec, so the format line and the play-method guess are weak. Fetch
+   * the full item once, in the background. This never reloads the track.
+   */
+  private async fillMediaInfo(entry: QueueEntry<AudioItem>) {
+    const item = entry.item;
+    if (hasCodecInfo(item) || foreignRecord(item.Id) || isOffline()) return;
+    try {
+      const { api, userId } = context();
+      const full = await jf.getItem(api, userId, item.Id);
+      if (currentEntry(audioState().queue)?.key !== entry.key) return;
+      const slim = slimItem(full);
+      if (!hasCodecInfo(slim)) return;
+      setAudioState({ format: formatLine(slim) });
+    } catch {
+      // Not signed in or the server is away: keep the container line.
+    }
   }
 
   private async loadLyrics(item: AudioItem) {

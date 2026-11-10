@@ -1,11 +1,11 @@
 import type { DeviceProfile } from '@/api/types';
 
-import { appleCapabilities, buildDeviceProfile, webCapabilities } from '../../device-profile';
+import { appleCapabilities, buildDeviceProfile, exoCapabilities, mpvCapabilities, webCapabilities } from '../../device-profile';
 import { isLongFormItem, isLongFormLibrary, isLongFormList } from '../long-form';
 import { activeLine, fromLyricDto, mayHaveLyrics, parseLrc } from '../lyrics';
 import { FINISHED_TAIL_SECONDS, PositionStore, resumeSeconds } from '../positions';
 import { formatRemaining, sleepAtEnd, sleepDue, sleepFadeVolume, sleepFor, sleepOff, sleepRemaining } from '../sleep-timer';
-import { formatLine, predictPlayMethod, universalAudioUrl, universalContainers } from '../stream-url';
+import { ANY_AUDIO_CONTAINERS, formatLine, hasCodecInfo, predictPlayMethod, universalAudioUrl, universalContainers } from '../stream-url';
 
 const min = (m: number) => m * 60 * 10_000_000;
 
@@ -204,5 +204,52 @@ describe('audio stream URL', () => {
 
   it('profile without audio entries gives an empty container list', () => {
     expect(universalContainers({ DirectPlayProfiles: [] } as DeviceProfile)).toBe('');
+  });
+
+  describe('an audio entry with no container (libmpv: any container)', () => {
+    const mpv = buildDeviceProfile(mpvCapabilities(), { maxBitrate: 200_000_000 });
+    const m4a = { MediaSources: [{ Container: 'mov,mp4,m4a,3gp,3g2,mj2', MediaStreams: [{ Type: 'Audio', Codec: 'aac' }] }] };
+
+    it('sends an explicit broad container list, never an empty one', () => {
+      const list = universalContainers(mpv).split(',');
+      expect(list).toEqual([...ANY_AUDIO_CONTAINERS]);
+      for (const c of ['mp3', 'm4a', 'mov', 'mp4', 'flac', 'ogg', 'opus', 'wav', 'wma', 'ape', 'dsf']) expect(list).toContain(c);
+      const url = universalAudioUrl(server, 'item1', mpv, { userId: 'u1', maxBitrate: 200_000_000, playSessionId: 'ps1' });
+      expect(new URLSearchParams(url.split('?')[1]).get('Container')).toBe(ANY_AUDIO_CONTAINERS.join(','));
+    });
+
+    it('predicts direct play for any file', () => {
+      expect(predictPlayMethod(m4a, mpv, 200_000_000)).toBe('DirectPlay');
+      const ogg = { MediaSources: [{ Container: 'ogg', MediaStreams: [{ Type: 'Audio', Codec: 'vorbis' }] }] };
+      expect(predictPlayMethod(ogg, mpv, 200_000_000)).toBe('DirectPlay');
+      expect(predictPlayMethod({ Container: 'dsf' }, mpv, 200_000_000)).toBe('DirectPlay');
+      // The bitrate limit still applies.
+      expect(predictPlayMethod({ MediaSources: [{ Container: 'flac', Bitrate: 900_000 }] }, mpv, 320_000)).toBe('Transcode');
+    });
+  });
+
+  it('keeps the apple and exo container lists as they were', () => {
+    expect(universalContainers(apple)).toBe('aac,m4a|aac,m4b|aac,mp3,flac,m4a|alac,m4b|alac');
+    const exo = buildDeviceProfile(exoCapabilities(null), { maxBitrate: 200_000_000 });
+    expect(universalContainers(exo)).toBe('aac,m4a|aac,m4b|aac,mp3,flac,ogg|opus,opus,webm|opus');
+  });
+
+  it('matches a file container list on any of its names, like the server', () => {
+    // Jellyfin reports an .m4a file as "mov,mp4,m4a,3gp,3g2,mj2"; the apple profile lists m4a.
+    const m4a = { MediaSources: [{ Container: 'mov,mp4,m4a,3gp,3g2,mj2', MediaStreams: [{ Type: 'Audio', Codec: 'aac' }] }] };
+    expect(predictPlayMethod(m4a, apple, 200_000_000)).toBe('DirectPlay');
+    const alac = { MediaSources: [{ Container: 'mov,mp4,m4a,3gp,3g2,mj2', MediaStreams: [{ Type: 'Audio', Codec: 'alac' }] }] };
+    expect(predictPlayMethod(alac, apple, 200_000_000)).toBe('DirectPlay');
+    const exo = buildDeviceProfile(exoCapabilities(null), { maxBitrate: 200_000_000 });
+    expect(predictPlayMethod(alac, exo, 200_000_000)).toBe('Transcode');
+  });
+
+  it('shows the codec, and M4A rather than MOV when only the container is known', () => {
+    const m4a = { MediaSources: [{ Container: 'mov,mp4,m4a,3gp,3g2,mj2', Bitrate: 256_000, MediaStreams: [{ Type: 'Audio', Codec: 'aac', BitRate: 256_000 }] }] };
+    expect(formatLine(m4a)).toBe('AAC · 256 kbps');
+    expect(formatLine({ Container: 'mov,mp4,m4a,3gp,3g2,mj2' })).toBe('M4A');
+    expect(formatLine({ Container: 'flac' })).toBe('FLAC');
+    expect(hasCodecInfo(m4a)).toBe(true);
+    expect(hasCodecInfo({ Container: 'mov,mp4,m4a,3gp,3g2,mj2' })).toBe(false);
   });
 });

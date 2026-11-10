@@ -65,7 +65,7 @@ jest.mock('@/auth/session-store', () => ({
   },
   tokenFor: () => 't',
 }));
-jest.mock('@/player/capabilities', () => ({ mediaCapabilities: () => ({}) }));
+jest.mock('@/player/capabilities', () => ({ mediaCapabilities: () => ({}), audioCapabilities: () => ({}) }));
 jest.mock('@/player/device-profile', () => ({ buildDeviceProfile: () => ({ MaxStreamingBitrate: 1_000_000 }) }));
 jest.mock('@/native/zoggyfin-native', () => ({ makeSeekableMp4: async () => 'skipped' }));
 jest.mock('@/lib/toast', () => ({ toast: () => undefined }));
