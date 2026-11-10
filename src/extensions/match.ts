@@ -90,6 +90,20 @@ export function resolveOnOrigin(baseUrl: string, pathOrUrl: string): URL {
 }
 
 /**
+ * The full URL of a path or URL from an extension's reply, or undefined when
+ * it is empty or not on the extension's origin. Replies use it for every
+ * URL, so a value on another origin is left out, never followed.
+ */
+export function urlOnOrigin(baseUrl: string, pathOrUrl: string | null | undefined): string | undefined {
+  if (!pathOrUrl) return undefined;
+  try {
+    return resolveOnOrigin(baseUrl, pathOrUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The manifest URLs to try for what the user typed. A full manifest URL is
  * used as it is. A site address ("host:port" or "http://host/") also gets
  * `/zoggyfin-extension.json` at its end.
