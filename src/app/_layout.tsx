@@ -32,6 +32,8 @@ import { audioSession } from '@/player/audio/session';
 import '@/invite/wiring';
 import { useInviteLinks } from '@/invite/use-invite-links';
 import { startIptvSync } from '@/iptv';
+import { installAppContextMenu } from '@/components/context-menu';
+import { isDesktop } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
 import { mediaColors, useTheme } from '@/theme';
 import { nearby } from '@/together/nearby';
@@ -108,6 +110,8 @@ function Root({ session }: { session: boolean }) {
   useEffect(() => startOtaChecks(), []);
   // A nearby session from before a restart: the session sheet offers to rejoin it.
   useEffect(() => nearby().loadSaved(), []);
+  // Mac app: no browser menu (save image, reload) on a right click that no control took.
+  useEffect(() => (isDesktop ? installAppContextMenu(document) : undefined), []);
   // Bring back the last audio queue (paused) after a restart.
   useEffect(() => {
     if (!session) return;

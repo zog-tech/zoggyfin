@@ -19,7 +19,18 @@ first commit to today. All of it was built in the first weeks of the project.
   on a song row no longer turns the Music page or goes back from an album. Search results now
   open the song's actions with a long press too. Catalog songs (" ☁") are fetched when they play,
   not when they go into the queue.
-
+- **Item actions on tiles.** A long press on a tile in a Home row or a grid opens the item actions
+  (play, mark as played, favourite, download and more). On the web and in the Mac app a right click
+  does the same, and the browser's own image menu no longer shows. TV is unchanged.
+- **Right click everywhere in the Mac app.** Episode rows, artist rows, the search top result,
+  extension rows and download items also open their actions on a right click (and on a long press).
+  The Mac app no longer shows the browser menu (save image, reload) anywhere; text fields and
+  selected text keep cut, copy and paste.
+- **A Home tab for music.** Music libraries open on a Home tab: recently played, mixes from your
+  top artists and genres, recently added, your top songs, new releases, favourites, playlists,
+  albums to rediscover and genres. The played rows moved there from Albums.
+- **Catalog rows on music Home.** When the server has a plugin that offers a music catalog, music
+  Home shows the rows it sends, such as trending songs and top albums. Other servers show no change.
 - **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
   mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
   sections mount as you reach them, the side menu slides over the page, screens change at once, and
@@ -170,6 +181,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Invite links open in full from Messages.** iPhone Messages linked only `…/join`, because it stops a
+  link before a long run of letters. The link now has a dot every 200 characters; the app and the
+  /join page remove them. Old links still work.
+- **Sheets fill the screen.** A sheet opened from a tab page (the profile menu, item actions) had a blank
+  band at the bottom and cut its list short. It now uses the whole height and scrolls.
 - **Seeking with the remote or a double tap no longer opens the full controls.** On Android TV
   and Fire TV with the controls hidden, a double Left or Right starts a seek run: each further press
   seeks 10 s at once, and rewind and fast forward do the same. On phones, tablets and touch screens,

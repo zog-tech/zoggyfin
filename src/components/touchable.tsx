@@ -1,5 +1,7 @@
 import { type ComponentRef, createContext, type ReactNode, type Ref, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
+  type GestureResponderEvent,
+  Platform,
   Pressable,
   type PressableProps,
   type StyleProp,
@@ -13,6 +15,8 @@ import { forgetContentFocus, noteControlFocus, noteControlMounted, notePreferred
 import { focusFromKeyboard } from '@/lib/input-modality';
 import { isTV } from '@/platform/tv';
 import { mediaColors, motion, tv, useTheme, webPressable } from '@/theme';
+
+import { type MenuEvent, takesContextMenu } from './context-menu';
 
 export type TouchKind = 'tile' | 'button' | 'icon' | 'row' | 'plain';
 
@@ -48,6 +52,9 @@ export interface TouchableProps extends Omit<PressableProps, 'style' | 'children
 
 const STANDARD = Easing.bezier(...motion.easing.standard);
 
+/** Web and the Mac app (not the TV preview): a right click runs the long press (context-menu.ts). */
+const rightClickIsLongPress = Platform.OS === 'web' && !isTV;
+
 /**
  * TV: the focus mark of the nearest Touchable (1 focused, 0 not), for content
  * that changes its look on focus on the UI thread with no React render (the
@@ -81,6 +88,8 @@ function pressScale(kind: TouchKind): number {
  * open one) gives the focus to the visible page at once, and a control that
  * mounts on the visible page takes a focus that was lost (features/tv/focus).
  * Reduce Motion keeps the overlays and drops the scale.
+ * Web and the Mac app: a right click on a control with `onLongPress` runs it
+ * and hides the browser menu (context-menu.ts).
  * TV: a focus move does no React work. The ring (or the row fill) is always
  * mounted and shows by opacity, and the scale runs, both from shared values
  * on the UI thread. Only a control whose `children` or `style` is a function
@@ -100,6 +109,7 @@ export function Touchable({
   onHoverOut,
   onFocus,
   onBlur,
+  onLongPress,
   disabled,
   ref,
   ...rest
@@ -166,10 +176,24 @@ export function Touchable({
 
   const inner = typeof style === 'function' ? style(state) : style;
 
+  // react-native-web passes `onContextMenu` to the element; the prop is not in the native types.
+  const contextMenu =
+    rightClickIsLongPress && onLongPress
+      ? {
+          onContextMenu: (e: MenuEvent & { preventDefault: () => void }) => {
+            if (!takesContextMenu(e, { longPress: true, disabled: !!disabled })) return;
+            e.preventDefault();
+            onLongPress(e as unknown as GestureResponderEvent);
+          },
+        }
+      : null;
+
   return (
     <Pressable
       ref={setRef}
       disabled={disabled}
+      onLongPress={onLongPress}
+      {...contextMenu}
       onPressIn={(e) => {
         setPressed(true);
         if (!reduced) scale.set(withTiming(pressScale(kind), { duration: motion.duration.press, easing: STANDARD }));

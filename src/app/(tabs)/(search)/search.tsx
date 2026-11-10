@@ -5,7 +5,7 @@ import type { SearchBarCommands } from 'react-native-screens';
 
 import { useSearch, useVideoGenres } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
-import { ItemActionSheet } from '@/components/action-sheet';
+import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { Button } from '@/components/button';
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon } from '@/components/icon';
@@ -364,6 +364,8 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
   const s = useStyles(makeStyles);
   const l = useLayout();
   const open = useOpenItem();
+  // Long press, and right click on the web and the Mac app: the item actions. Not on TV.
+  const menu = useItemMenu();
   const shape = shapeFor(item);
   const artWidth = scaled(shape === 'thumb' ? 112 : 64);
   const aspect = shape === 'poster' ? 2 / 3 : shape === 'thumb' ? 16 / 9 : 1;
@@ -382,6 +384,7 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
           kind="plain"
           radius={radius.lg}
           onPress={() => open(item)}
+          onLongPress={l.tv ? undefined : () => menu.open(item)}
           accessibilityRole="button"
           accessibilityLabel={[item.Name, facts].filter(Boolean).join(', ')}
           containerStyle={StyleSheet.absoluteFill}
@@ -404,6 +407,7 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
           </View>
         </View>
       </View>
+      {menu.sheet}
     </View>
   );
 }

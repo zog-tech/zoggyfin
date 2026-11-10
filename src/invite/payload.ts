@@ -230,7 +230,8 @@ export function encodeInvite(invite: Invite): string {
   return base64UrlEncode(JSON.stringify(wire));
 }
 
-export function decodeInvite(payload: string): DecodeResult {
+export function decodeInvite(link: string): DecodeResult {
+  const payload = link.replace(/\./g, '');
   if (!payload || payload.length > LIMITS.encoded) return { ok: false, error: 'format' };
   const json = base64UrlDecode(payload);
   if (json === null) return { ok: false, error: 'format' };
@@ -245,8 +246,24 @@ export function decodeInvite(payload: string): DecodeResult {
 
 // ---- Links ------------------------------------------------------------------------
 
+/**
+ * Characters of the payload between two dots in a link. Apple's link finder
+ * (Messages, Notes, Mail) stops a link before a run of more than about 300
+ * letters and digits, so the person gets only `…/join` as a link. A dot
+ * breaks the run. The readers remove the dots (`payloadFromText`,
+ * `decodeInvite`, the /join page).
+ */
+export const LINK_CHUNK = 200;
+
+/** The payload with a dot after every `LINK_CHUNK` characters, never at the end. */
+export function linkPayload(payload: string): string {
+  const parts: string[] = [];
+  for (let i = 0; i < payload.length; i += LINK_CHUNK) parts.push(payload.slice(i, i + LINK_CHUNK));
+  return parts.join('.');
+}
+
 export function inviteLink(invite: Invite): string {
-  return `${INVITE_SITE}#${encodeInvite(invite)}`;
+  return `${INVITE_SITE}#${linkPayload(encodeInvite(invite))}`;
 }
 
 /**
@@ -254,7 +271,7 @@ export function inviteLink(invite: Invite): string {
  * `zoggyfin://join/P` (Android intent links keep the invite in the path,
  * because the fragment of an intent link holds the intent fields).
  */
-const LINK_RE = /(?:https:\/\/zoggyfin\.zog-tech\.com\/join\/?#|zoggyfin:\/\/join(?:\/?#|\/))([A-Za-z0-9_-]+)/i;
+const LINK_RE = /(?:https:\/\/zoggyfin\.zog-tech\.com\/join\/?#|zoggyfin:\/\/join(?:\/?#|\/))([A-Za-z0-9_.-]+)/i;
 
 /**
  * The payload of an invite link in a text: the link alone, or the whole
@@ -262,7 +279,9 @@ const LINK_RE = /(?:https:\/\/zoggyfin\.zog-tech\.com\/join\/?#|zoggyfin:\/\/joi
  */
 export function payloadFromText(input: string): string | null {
   const m = LINK_RE.exec(input);
-  return m ? m[1] : null;
+  // The dots of `linkPayload` go; a dot at the end is the end of the sentence.
+  const payload = m ? m[1].replace(/\./g, '') : '';
+  return payload || null;
 }
 
 /** A day for the invite texts, such as "October 27, 2026". */
