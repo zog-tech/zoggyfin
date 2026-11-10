@@ -1,6 +1,7 @@
 /**
  * Templates in extension requests: `{{item.id}}`, `{{input.folder}}`,
- * `{{settings.format}}`, `{{share.url}}`, `{{jellyfin.userId}}`. A template
+ * `{{settings.format}}`, `{{share.url}}`, `{{jellyfin.userId}}`,
+ * `{{action.next}}` (the state an on/off detail button asks for). A template
  * only reads values; there are no expressions. An unknown name gives "".
  */
 
@@ -12,6 +13,8 @@ export interface TemplateContext {
   settings?: Record<string, TemplateValue>;
   share?: Record<string, TemplateValue>;
   jellyfin?: Record<string, TemplateValue>;
+  /** A detail action: `next` is the on/off state the press asks for (a boolean). */
+  action?: Record<string, TemplateValue>;
 }
 
 const TOKEN = /\{\{\s*([a-zA-Z]+)\.([a-zA-Z0-9_.-]+)\s*\}\}/g;
@@ -38,7 +41,7 @@ export function namesIn(template: string): string[] {
 
 /**
  * Fills every string in a JSON value. A string that is exactly one token of a
- * toggle setting keeps its true/false type.
+ * boolean or a number (a toggle setting, `{{action.next}}`) keeps its type.
  */
 export function renderJson(value: unknown, ctx: TemplateContext): unknown {
   if (typeof value === 'string') {
