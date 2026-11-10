@@ -623,6 +623,53 @@ Extensions." With downloads off, Download does not show.
 - `options` (10 at most) let the user pick first. Each `download` answers with
   another download description. A reply can have only `options`.
 - A reply with no file and no option is refused.
+- Every URL (the file, the subtitles, the image and each option) must be on the
+  extension's origin. A URL on another origin is left out.
+- The file request gets the manifest `headers`, and the Jellyfin token headers
+  only when the user allowed `jellyfinToken`. It never gets the header that the
+  app sends to Jellyfin for its own downloads. Use `Range` support on the file
+  if you can: a paused or stopped download then continues where it stopped.
+- `bytes` is the size the app shows before the transfer starts; the real size
+  comes from the response.
+
+**Downloads: how it works.**
+
+- The app asks `media.download` when the user taps Download. When the reply has
+  `options` and no `url`, the app shows the options and asks
+  the chosen option's `download` for the file.
+- The app asks the description again each time a transfer starts (a resume
+  after a restart, Retry). A file URL can therefore expire: when the transfer
+  answers 401, 403, 404 or 410, the app asks the description once more and
+  continues from the saved bytes when the server allows ranges, else it starts
+  again. Keep the chosen option's `download` valid.
+- After the file, the app saves each subtitle (`subtitle-<n>.vtt`) and the
+  image next to it, with the same headers. When the entry has
+  `media.playback`, the app also reads the stream description once to learn
+  `report.path`, so play with no connection can report.
+- The download needs the `downloads` permission and its switch. With the switch
+  off, the app says "Downloads are off for this extension". The web app in a
+  browser and TV have no downloads; they say so. iPhone, iPad, Android phones
+  and the Mac app download.
+
+**What the user sees.**
+
+- The Downloads tab has a section per extension (the extension's name), below
+  the server sections. A row shows the title, the line under it, the quality
+  label and the size. Tap plays the file; swipe left deletes it. Downloads in
+  progress show with the others, with pause, resume, retry and cancel.
+- A download belongs to the Jellyfin account that made it. Another account on
+  the same device does not see it; its file stays on the device until that
+  account signs in again. Removing the extension asks whether to delete its
+  downloads too. Downloads that the user keeps stay in the Downloads tab and
+  still play.
+- A downloaded entry plays from the device, also with a connection, with its
+  saved subtitles, title and image. The position is kept on the device, so the
+  next play resumes there. Reports carry `"offline": true`. A `stop` or
+  `finished` report that cannot go waits on the device (100 per account at
+  most, 30 days at most) and is sent, oldest first, when the extension answers
+  again. Other reports from offline play are not kept.
+- Quality choices, `next`, segments and chapters come only from a stream
+  description, so a downloaded entry plays without them.
 
 ## Sample: Hello
 

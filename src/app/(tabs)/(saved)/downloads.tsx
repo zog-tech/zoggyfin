@@ -17,17 +17,22 @@ import {
   downloads,
   downloadsSupported,
   etaSeconds,
+  type ExtensionSection,
+  extensionLocalPlay,
   fraction,
+  isExtensionRecord,
   isFileMissing,
   useDiskSpace,
   removeServerDownloads,
   type ServerSection,
   useDownloadLists,
 } from '@/downloads';
+import { useExtensions } from '@/extensions/store';
 import { useServerNames } from '@/features/servers/use-server-names';
 import { OfflineBanner } from '@/features/offline/offline-banner';
 import { confirmDestructive } from '@/lib/confirm';
 import { formatBytes, formatEta, formatSpeed } from '@/lib/format';
+import { toast } from '@/lib/toast';
 import { useOpenItem } from '@/lib/navigation';
 import { useRootScreenOptions } from '@/lib/stack-options';
 import { usePlayer } from '@/player';
@@ -37,15 +42,16 @@ import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 /**
  * The Downloads tab (design system §7.11): the storage bar, "In progress"
  * with live progress and controls, and "On this device" grouped by show or
- * album. Everything that is on the phone is here; nothing is hidden.
+ * album. Extension downloads have a section per extension, for the account
+ * that made them only (another account's stay on the device, hidden).
  */
 export default function DownloadsScreen() {
   const s = useStyles(makeStyles);
   const bottomPad = useTabBottomPadding();
   const { c } = useTheme();
   const l = useLayout();
-  const { inProgress, sections, appBytes } = useDownloadLists();
-  const empty = inProgress.length === 0 && sections.length === 0;
+  const { inProgress, sections, extensions, appBytes } = useDownloadLists();
+  const empty = inProgress.length === 0 && sections.length === 0 && extensions.length === 0;
   const allPaused = inProgress.length > 0 && inProgress.every((r) => r.state === 'paused' || r.state === 'failed');
   // Opened from the sign-in screen with no account (route /offline): a way back, no library links.
   const signedIn = useSessionStore((st) => !!st.session);
@@ -116,7 +122,10 @@ export default function DownloadsScreen() {
             {sections.map((sec) => (
               <ServerDownloads key={sec.serverId} section={sec} titled={sections.length > 1 || !sec.active} />
             ))}
-            {sections.length ? <Text style={s.footer}>Swipe left on a row to delete it. Downloads of every server play with no connection.</Text> : null}
+            {extensions.map((sec) => (
+              <ExtensionDownloads key={sec.extId} section={sec} />
+            ))}
+            {sections.length || extensions.length ? <Text style={s.footer}>Swipe left on a row to delete it. Downloads of every server play with no connection.</Text> : null}
           </View>
         )}
       </ScrollView>
@@ -217,7 +226,7 @@ function ProgressRow({ record: r, last }: { record: DownloadRecord; last: boolea
     <SwipeRow onSwipe={cancel} label="Cancel">
       <Touchable
         kind="row"
-        onPress={open ? () => open(r.item) : undefined}
+        onPress={open && !isExtensionRecord(r) ? () => open(r.item) : undefined}
         accessibilityRole="button"
         accessibilityLabel={`${r.item.Name ?? 'Download'}. ${statusLine(r)}`}
         accessibilityActions={[{ name: 'cancel', label: 'Cancel download' }]}
@@ -391,6 +400,79 @@ function GroupRow({ group: g, last }: { group: DownloadGroupView; last: boolean 
         ? g.records.map((r, i) => <ChildRow key={r.itemId} record={r} group={g} index={i} last={last && i === g.records.length - 1} />)
         : null}
     </View>
+  );
+}
+
+/**
+ * The completed downloads one extension made for the signed-in account. A
+ * row plays the file from the device, with no connection; swipe deletes.
+ */
+function ExtensionDownloads({ section }: { section: ExtensionSection }) {
+  const s = useStyles(makeStyles);
+  const name = useExtensions((st) => st.list.find((e) => e.manifest.id === section.extId)?.manifest.name) ?? 'Removed extension';
+  return (
+    <Animated.View layout={LinearTransition.duration(motion.duration.base)} style={s.section}>
+      <View style={s.sectionHead}>
+        <Text style={s.sectionTitle} accessibilityRole="header" numberOfLines={1}>
+          {`${name.toUpperCase()} · ${section.count}`}
+        </Text>
+      </View>
+      <View style={s.card}>
+        {section.records.map((r, i) => (
+          <Animated.View key={r.itemId} entering={FadeIn.duration(motion.duration.base)} exiting={FadeOut.duration(motion.duration.fast)}>
+            <ExtensionRow record={r} last={i === section.records.length - 1} />
+          </Animated.View>
+        ))}
+      </View>
+    </Animated.View>
+  );
+}
+
+function ExtensionRow({ record: r, last }: { record: DownloadRecord; last: boolean }) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const player = usePlayer();
+  const source = isExtensionRecord(r) ? r.source : null;
+  const title = source?.title ?? r.item.Name ?? 'Download';
+  const meta = [source?.subtitle, source?.label, formatBytes(r.bytesDone)].filter(Boolean).join(' · ');
+  const play = () => {
+    const request = source ? extensionLocalPlay({ extension: source.extId, mediaId: source.mediaId }) : null;
+    if (request) player.playVod(request);
+    else toast('This download cannot play here.', { icon: 'exclamationmark.triangle' });
+  };
+  const remove = async () => {
+    const ok = await confirmDestructive(`Delete ${title}?`, `This frees ${formatBytes(r.bytesDone)} on this device. Nothing changes on the extension's server.`, 'Delete');
+    if (ok) await downloads.remove(r.itemId);
+    return ok;
+  };
+  return (
+    <SwipeRow onSwipe={remove}>
+      <Touchable
+        kind="row"
+        onPress={play}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}. ${meta}. Downloaded`}
+        accessibilityHint="Plays it"
+        accessibilityActions={[{ name: 'delete', label: 'Delete download' }]}
+        onAccessibilityAction={() => void remove()}
+        style={({ pressed, hovered }) => [s.row, (pressed || hovered) && s.rowActive]}>
+        <Thumb item={r.item} video={r.kind === 'video'} />
+        <View style={[s.rowBody, !last && s.line]}>
+          <View style={s.flex}>
+            <Text style={[s.title, scriptStyle(title, s.title)]} numberOfLines={1}>
+              {title}
+            </Text>
+            <View style={s.statusRow}>
+              <Icon name="arrow.down.circle.fill" size={scaled(12)} color={c.success} />
+              <Text style={s.status} numberOfLines={1}>
+                {meta}
+              </Text>
+            </View>
+          </View>
+          <RoundControl icon="play.fill" label={`Play ${title}`} onPress={play} />
+        </View>
+      </Touchable>
+    </SwipeRow>
   );
 }
 

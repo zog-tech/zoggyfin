@@ -7,6 +7,13 @@
  * Files: <documents>/downloads/<itemId>/media.<ext>, primary.jpg,
  * backdrop.jpg, subtitle-<index>.vtt, lyrics.json, item.json.
  * Collections (albums, playlists, seasons): <documents>/downloads/collections/<id>/.
+ *
+ * Two record sources (`source.kind`): Jellyfin items, and an extension's
+ * media (`extension-media.ts`). An extension download asks the extension's
+ * download description for the file, sends the extension's headers (never
+ * the Jellyfin `Authorization` header), and runs only while its account is
+ * the signed-in one. Files: <documents>/downloads/ext-<id>/media.<ext>,
+ * primary.jpg, subtitle-<n>.vtt.
  */
 import type { Api } from '@jellyfin/sdk';
 
@@ -20,6 +27,7 @@ import { findServer, startUrl } from '@/auth/accounts';
 import { tokenFor, useSessionStore } from '@/auth/session-store';
 import { type ImageVariant, resolveImage } from '@/images/resolve-image';
 import { randomId } from '@/lib/id';
+import { safeText } from '@/extensions/media/source';
 import { toast } from '@/lib/toast';
 import { makeSeekableMp4 } from '@/native/zoggyfin-native';
 import { audioCapabilities, mediaCapabilities } from '@/player/capabilities';
@@ -32,6 +40,21 @@ import { engine } from './engine';
 import { files } from './files';
 import { audioPlan, groupFor, isContainer, mediaKindOf, type MediaPlan, slimForDownload, sortFor, subtitleFiles, videoPlan } from './plan';
 import { askForDownloadNotifications } from './notification-permission';
+import {
+  type ExtensionDownloadDeps,
+  type ExtensionDownloadInput,
+  extensionPlan,
+  extensionRecordId,
+  isExpiredStatus,
+  isExtensionRecord,
+  learnReport,
+  newExtensionRecord,
+  type ResolvedFile,
+  resolveFile,
+  downloadOptions,
+  subtitleTargets,
+  withResolvedFile,
+} from './extension-media';
 import { canResume, isWholeFile, resumeHint } from './resume';
 import { type DownloadEvent, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
 import { downloadsState, dropCollection, dropRecord, patchRecord, putCollection, putRecord, rekeyRecord, useDownloadsStore } from './store';
@@ -80,6 +103,12 @@ function context(owner?: Pick<DownloadRecord, 'serverId' | 'userId'>): Ctx {
   };
 }
 
+/** The signed-in account as `serverId.userId`, or null. */
+function activeAccount(): string | null {
+  const s = useSessionStore.getState().session;
+  return s ? `${s.serverId}.${s.userId}` : null;
+}
+
 /** The accounts signed in on this device, as `serverId.userId`. */
 function signedInOwners(): Set<string> {
   const out = new Set<string>();
@@ -122,6 +151,23 @@ class DownloadManager {
   /** Ids whose file is in place and whose extras are being saved. */
   private finishing = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Extension downloads whose expired file URL was asked again; once per failure. */
+  private refreshed = new Set<string>();
+  /** The file the extension named at the last start, for the extras at the end. */
+  private extFiles = new Map<string, ResolvedFile>();
+  private extDeps: ExtensionDownloadDeps | null = null;
+
+  /** The extension dependencies; loaded on first use, so Jellyfin downloads do not load the extension runtime. */
+  private extensionDeps(): ExtensionDownloadDeps {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    this.extDeps ??= (require('@/extensions/media/play') as typeof import('@/extensions/media/play')).appMediaDeps;
+    return this.extDeps;
+  }
+
+  /** For tests: fake extensions and requests. */
+  useExtensionDeps(deps: ExtensionDownloadDeps | null): void {
+    this.extDeps = deps;
+  }
 
   get supported(): boolean {
     return engine.supported;
@@ -135,6 +181,8 @@ class DownloadManager {
     engine.configure(
       {
         onBegin: (id, expected, validator) => {
+          // The URL answered: a later expiry may ask the description again.
+          this.refreshed.delete(id);
           patchRecord(
             id,
             (r) => {
@@ -160,6 +208,13 @@ class DownloadManager {
           // Cancel in the Android download notification: the same as Cancel in the app.
           if (code === -1 && /cancel/i.test(message)) {
             void this.cancel(id);
+            return;
+          }
+          // An extension's file URL that expired (a resume after a while): ask the description again, once.
+          if (isExtensionRecord(r) && isExpiredStatus(code) && !this.refreshed.has(id)) {
+            this.refreshed.add(id);
+            patchRecord(id, (x) => ({ ...x, state: 'queued', speed: 0 }));
+            void this.begin(id);
             return;
           }
           apply(id, { type: 'fail', error: errorText(message, code), now: Date.now() });
@@ -315,10 +370,11 @@ class DownloadManager {
     for (const r of dueForRetry(list, now)) apply(r.itemId, { type: 'autoRetry', now });
     // A queued download of a user who signed out waits; it starts when that user signs in again.
     const owners = signedInOwners();
+    // An extension download needs its extension list and headers: only its own account, while signed in.
+    const active = activeAccount();
+    const mayStart = (r: DownloadRecord) => (isExtensionRecord(r) ? r.source.account === active : owners.has(`${r.serverId}.${r.userId}`));
     // A record still in its last preparation or finishing waits too (see `preparing`).
-    const ready = Object.values(downloadsState().records).filter(
-      (r) => r.state !== 'queued' || (owners.has(`${r.serverId}.${r.userId}`) && !this.busy(r.itemId)),
-    );
+    const ready = Object.values(downloadsState().records).filter((r) => r.state !== 'queued' || (mayStart(r) && !this.busy(r.itemId)));
     for (const r of pickToStart(ready, MAX_PARALLEL)) void this.begin(r.itemId);
   }
 
@@ -342,12 +398,25 @@ class DownloadManager {
     let id = itemId;
     let stale = false;
     try {
-      const ctx = context(r);
-      const plan = await this.prepare(r, ctx, (to) => {
-        id = to;
-        // Busy under the new id too, so a pause and a resume meanwhile do not begin it twice.
-        this.preparing.add(to);
-      });
+      let plan: MediaPlan | null;
+      let headers: Record<string, string>;
+      if (isExtensionRecord(r)) {
+        // The extension's headers, never the Jellyfin Authorization header.
+        const file = await resolveFile(r.source, this.extensionDeps(), engine.supported);
+        plan = extensionPlan(itemId, file);
+        headers = file.headers;
+        this.extFiles.set(itemId, file);
+        const done = plan;
+        patchRecord(itemId, (x) => withResolvedFile(x, file, done));
+      } else {
+        const ctx = context(r);
+        headers = { Authorization: ctx.authHeader };
+        plan = await this.prepare(r, ctx, (to) => {
+          id = to;
+          // Busy under the new id too, so a pause and a resume meanwhile do not begin it twice.
+          this.preparing.add(to);
+        });
+      }
       const cur = downloadsState().records[id];
       // Paused, cancelled or deleted meanwhile, or moved onto a download that is there
       // already. A resume in that time waits for this preparation to end; the tick
@@ -368,12 +437,13 @@ class DownloadManager {
         id,
         url: plan.url,
         destination: files.absolutePath(`${cur.dir}/${plan.file}`),
-        headers: { Authorization: ctx.authHeader },
+        headers,
         resume: resume ? resumeHint(cur) : undefined,
       });
       this.native.add(id);
     } catch (e) {
-      apply(id, { type: 'fail', error: describeError(e).title, now: Date.now() });
+      // Extension errors are checked for URLs and tokens (`safeText`) before they reach a row.
+      apply(id, { type: 'fail', error: isExtensionRecord(r) ? safeText(e, 'The download failed') : describeError(e).title, now: Date.now() });
       this.tick();
     } finally {
       this.preparing.delete(itemId);
@@ -484,13 +554,15 @@ class DownloadManager {
       }
       let extras: Partial<DownloadRecord> = {};
       try {
-        extras = await this.saveExtras(r, context(r));
+        extras = isExtensionRecord(r) ? await this.saveExtensionExtras(r) : await this.saveExtras(r, context(r));
       } catch (e) {
         // Extras are best effort: the media plays without them.
         console.warn('[downloads] extras failed', describeError(e).title);
       }
       patchRecord(itemId, (x) => ({ ...transition({ ...x, state: x.state === 'failed' ? 'downloading' : x.state }, { type: 'complete', bytes: size, now: Date.now() }), ...extras }));
       engine.finish(itemId);
+      this.extFiles.delete(itemId);
+      this.refreshed.delete(itemId);
     } finally {
       this.finishing.delete(itemId);
       this.tick();
@@ -528,7 +600,107 @@ class DownloadManager {
     return out;
   }
 
+  /**
+   * The extras of an extension download: the image (for offline rows), the
+   * subtitles of the description, and the report URL of the stream
+   * description. All on the extension's origin, with its headers.
+   */
+  private async saveExtensionExtras(r: DownloadRecord): Promise<Partial<DownloadRecord>> {
+    if (!isExtensionRecord(r)) return {};
+    const deps = this.extensionDeps();
+    const ext = deps.extension(r.source.extId);
+    if (!ext) return {};
+    const file = this.extFiles.get(r.itemId) ?? (await resolveFile(r.source, deps, engine.supported).catch(() => null));
+    const headers = file?.headers ?? {};
+    const out: Partial<DownloadRecord> = {};
+    const image = file?.description.imageUrl ?? r.source.imageUrl;
+    if (image) {
+      try {
+        if ((await files.fetchFile(image, `${r.dir}/primary.jpg`, headers)) > 0) out.images = { primary: 'primary.jpg' };
+      } catch {
+        // The row shows generated art.
+      }
+    }
+    if (file) {
+      const saved = [];
+      for (const t of subtitleTargets(file.description)) {
+        try {
+          if ((await files.fetchFile(t.url, `${r.dir}/${t.sub.file}`, headers)) > 0) saved.push(t.sub);
+        } catch {
+          // One subtitle failing does not stop the others.
+        }
+      }
+      out.subtitles = saved;
+    }
+    const report = r.source.playback ? await learnReport(ext, r.source.playback, deps) : null;
+    if (report) out.source = { ...r.source, report };
+    return out;
+  }
+
   // ---- Public actions ---------------------------------------------------------------
+
+  /**
+   * Downloads an extension's media entry for the signed-in account. Throws
+   * (with no URL) when the extension may not download, when the description
+   * offers options and none was chosen, or when nothing can be saved here.
+   * A second call for the same entry resumes or retries it.
+   */
+  async downloadExtension(input: ExtensionDownloadInput, supported: boolean): Promise<void> {
+    const deps = this.extensionDeps();
+    const account = deps.account();
+    if (!account) throw new Error('Sign in to download.');
+    const ext = deps.extension(input.extension);
+    // Checks the grant, the platform and the origin, and that a file can be named, before a record exists.
+    const file = await resolveFile({ extId: input.extension, download: input.download, option: input.option }, deps, supported && engine.supported);
+    void askForDownloadNotifications();
+    await this.init();
+    const id = extensionRecordId(input.extension, input.mediaId);
+    const existing = downloadsState().records[id];
+    if (existing && existing.state !== 'cancelled') {
+      if (existing.state === 'failed') apply(id, { type: 'retry' });
+      if (existing.state === 'paused') apply(id, { type: 'resume' });
+      this.tick();
+      return;
+    }
+    const orders = Object.values(downloadsState().records).map((r) => r.order);
+    const kind = input.kind ?? 'video';
+    const record = newExtensionRecord(input, {
+      serverId: account.serverId,
+      userId: account.userId,
+      baseUrl: ext?.manifest.baseUrl ?? '',
+      kind,
+      order: orders.length ? Math.max(...orders) + 1 : 0,
+      now: Date.now(),
+    });
+    putRecord(withResolvedFile(record, file, extensionPlan(id, file)));
+    this.extFiles.set(id, file);
+    this.tick();
+  }
+
+  /** The choices of an extension's download description (empty: one file, no choice). */
+  extensionOptions(extId: string, download: string, supported: boolean) {
+    return downloadOptions(extId, download, this.extensionDeps(), supported && engine.supported);
+  }
+
+  /** Deletes the downloads an extension made for an account. */
+  async removeExtensionDownloads(extId: string, account: string): Promise<void> {
+    for (const r of Object.values(downloadsState().records)) {
+      if (isExtensionRecord(r) && r.source.extId === extId && r.source.account === account) await this.remove(r.itemId);
+    }
+  }
+
+  /** Saves where the user stopped in an extension download (null: played to the end). */
+  saveExtensionPosition(itemId: string, position: number | null): void {
+    patchRecord(
+      itemId,
+      (r) => {
+        if (!isExtensionRecord(r)) return r;
+        const { position: _old, ...rest } = r.source;
+        return { ...r, source: position && position > 0 ? { ...rest, position } : rest };
+      },
+      false,
+    );
+  }
 
   /** Downloads an item, or every item of a container (album, playlist, season, show). */
   async download(item: BaseItemDto): Promise<void> {
@@ -592,6 +764,7 @@ class DownloadManager {
     const record: DownloadRecord = {
       schemaVersion: DOWNLOAD_SCHEMA_VERSION,
       itemId: id,
+      source: { kind: 'jellyfin' },
       serverId: ctx.serverId,
       userId: ctx.userId,
       kind,
@@ -672,6 +845,8 @@ class DownloadManager {
     const r = downloadsState().records[itemId];
     if (!r) return;
     apply(itemId, { type: 'cancel' });
+    this.extFiles.delete(itemId);
+    this.refreshed.delete(itemId);
     if (this.native.has(itemId)) {
       this.native.delete(itemId);
       await engine.stop(itemId);

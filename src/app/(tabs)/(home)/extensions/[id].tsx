@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { EmptyState } from '@/components/states';
+import { extensionDownloadCount, removeExtensionDownloads } from '@/downloads';
 import { OptionSheet } from '@/components/option-sheet';
 import { askText } from '@/extensions/prompts';
 import { currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
@@ -95,6 +96,14 @@ export default function ExtensionScreen() {
 
   const remove = async () => {
     if (!(await confirmDestructive(`Remove ${m.name}?`, 'Its buttons, Home rows and pages go away. Nothing changes on its server.', 'Remove'))) return;
+    // Its downloads are the user's files: ask before they go. Kept ones stay in Downloads and still play.
+    const saved = extensionDownloadCount(m.id);
+    if (saved > 0) {
+      const words = saved === 1 ? 'download' : 'downloads';
+      if (await confirmDestructive(`Delete its ${saved} ${words} too?`, `The ${words} of ${m.name} on this device are removed. Keep them to watch them later.`, 'Delete')) {
+        await removeExtensionDownloads(m.id);
+      }
+    }
     removeExtension(m.id);
     router.back();
   };
