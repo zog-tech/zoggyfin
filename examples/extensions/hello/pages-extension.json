@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "id": "org.example.hello.pages",
+  "name": "Hello Pages",
+  "version": "2.0.0",
+  "description": "A sample of a version 2 page: a row, a list, a grid that pages through `next`, and search.",
+  "baseUrl": "http://localhost:8787",
+  "permissions": ["network"],
+  "contributes": {
+    "pages": [
+      {
+        "id": "main",
+        "title": "Hello Pages",
+        "icon": "play.rectangle",
+        "placement": { "home": ["latest"] },
+        "search": { "feed": "/pages/search", "placeholder": "Search the samples" },
+        "sections": [
+          { "id": "latest", "title": "Latest samples", "layout": "row", "shape": "thumb", "feed": "/pages/latest", "refreshSeconds": 60 },
+          { "id": "queue", "title": "Up next", "layout": "list", "feed": "/pages/queue" },
+          { "id": "all", "title": "All samples", "layout": "grid", "shape": "poster", "feed": "/pages/all" }
+        ]
+      }
+    ]
+  }
+}

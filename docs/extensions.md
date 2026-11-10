@@ -294,10 +294,13 @@ Version 2 adds native pages, playable media, downloads and skip labels. It
 keeps every version 1 field and contribution except `homeSections`: a Home row
 is now a page section named in `placement.home`.
 
-**The app reads these; screens that use them arrive in later releases.** Today
-the app checks a version 2 manifest, installs it and shows the sections in
-`placement.home` as Home rows, the same as version 1 rows. Pages, tabs,
-Library tiles, search, the entry detail page, playback, downloads and skip
+**Some screens arrive in later releases.** Today the app installs a version 2
+manifest, shows the sections in `placement.home` as Home rows, and shows each
+page with its sections and its search (see "Pages" below). A page opens from
+the extension in Settings → Extensions ("Open <page>") and from the header of
+its Home rows. Tabs, Library tiles, the entry detail page (an entry with
+`detail` opens a page that says "Coming soon"), playback (an entry with
+`media` says that playback arrives in a later update), downloads and skip
 settings follow.
 
 A version 1 manifest is read as version 2 with one page per Home row: the page
@@ -383,7 +386,33 @@ so a version 1 feed is one page. At most 100 entries per page.
   description. Media with neither URL on the origin is left out.
 - A bad `badge`, `detail` or `media` is left out on its own; the entry stays.
 - A card opens, in this order: `detail`, else plays `media`, else `panel`,
-  else `link`.
+  else `link`. An entry with an `itemId` that the server knows shows and
+  opens as that Jellyfin item. TV has no panels: a card that only opens a
+  panel says so there.
+
+### Pages
+
+A page shows its title, a search field when it has `search`, and its
+sections in order.
+
+- `row`: one horizontal row with the first page of the feed.
+- The last section of a page, when it is a `grid` or a `list`, fills the rest
+  of the screen and asks for the next page (`?cursor=<next>`) when the user
+  nears its end. It stops when `next` is empty, when a cursor comes back a
+  second time, or after 20 pages (2000 entries), with a note.
+- A `grid` or `list` that is not last shows its first entries (a row for a
+  grid, five lines for a list) and "See all", which opens that section on
+  its own screen, where it pages.
+- While the user types in the search field, the app waits 0.3 s, then sends
+  `GET <search.feed>?query=<text>` (and `cursor` for more pages). The results
+  replace the sections until the field is empty. A reply to an older text is
+  never shown.
+- A section that fails shows "<name> is not available now." and the rest of
+  the page stays. On Home, a row that loads or is empty takes no room.
+- Pull to refresh (not on TV) loads every feed of the extension again.
+  `refreshSeconds` loads a feed again on that interval.
+- The cursor and the search text are added to the URL as they are: they are
+  never read as templates.
 
 **Stream description.** `GET media.playback`:
 
@@ -501,6 +530,19 @@ Then add `http://localhost:8787` in Settings → Extensions. Hello adds:
 - A "Hello cards" Home row with a progress card, a panel card and a link card.
 - "Send to Hello" for any shared link.
 - A "Hello" panel with buttons for the bridge methods.
+
+A second sample, Hello Pages (schema version 2), runs on the same server. Add
+`http://localhost:8787/pages/zoggyfin-extension.json` in Settings →
+Extensions. It has one page, opened from its settings page ("Open Hello
+Pages") or from the header of its "Latest samples" Home row:
+
+- "Latest samples": a row of 12 entries, also on Home.
+- "Up next": a list with progress bars that pages 5 entries at a time; its
+  "See all" opens the full list.
+- "All samples": a poster grid of 95 entries that pages 20 at a time through
+  `next`.
+- A search field: `/pages/search` matches titles and topics, 20 per page.
+- Every third entry has a `detail` page; the others carry `media`.
 
 On a phone, start the server with `BASE_URL=http://<your computer's LAN
 address>:8787` and add that address.
