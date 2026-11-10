@@ -54,7 +54,9 @@ export default function ExtensionInstallScreen() {
   };
 
   const fromAccount = source === 'account';
-  const title = fromAccount ? 'From your account' : entries.length > 1 ? 'Add extensions' : 'Add extension';
+  // An extension that is here already: the screen is a review of its update.
+  const update = entries.length === 1 && !!entries[0].candidate?.installed;
+  const title = fromAccount ? 'From your account' : update ? 'Update extension' : entries.length > 1 ? 'Add extensions' : 'Add extension';
   return (
     <View style={s.page}>
       <ModalHeader title={title} onClose={close} closeLabel={fromAccount ? 'Not now' : 'Cancel'} />
