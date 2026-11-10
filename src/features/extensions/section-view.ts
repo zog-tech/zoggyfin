@@ -42,11 +42,19 @@ export type SectionBody = 'placeholder' | 'failed' | 'hidden' | 'empty' | 'entri
  * What a section draws for its feed state. `where`: a page, or Home (where a
  * row that loads or is empty takes no room).
  */
-export function sectionBody(state: { status: 'loading' | 'error' | 'ready'; count: number }, mode: SectionMode, where: 'page' | 'home'): SectionBody {
+export type SectionPlace = 'page' | 'entry' | 'home';
+
+/**
+ * `entry`: an entry (detail) page. It shows loading and failed sections as a
+ * page does, but an empty row or preview takes no room there (the "keep the
+ * title, show the message" rule is for pages and page tabs only).
+ */
+export function sectionBody(state: { status: 'loading' | 'error' | 'ready'; count: number }, mode: SectionMode, where: SectionPlace): SectionBody {
   if (state.count > 0) return 'entries';
   if (state.status === 'error') return 'failed';
   if (state.status === 'loading') return where === 'home' ? 'hidden' : 'placeholder';
-  return where === 'page' ? 'empty' : 'hidden';
+  if (where === 'page') return 'empty';
+  return where === 'entry' && mode === 'infinite' ? 'empty' : 'hidden';
 }
 
 /** The text of an empty section: the feed's own message, else a plain note. */

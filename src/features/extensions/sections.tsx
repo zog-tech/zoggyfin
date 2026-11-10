@@ -37,7 +37,7 @@ import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scale
 
 import { entryHasMenu, useEntryMenu } from './entry-menu';
 import { entryIsPressable, useOpenEntry } from './open-entry';
-import { emptyAction, emptyText, failedText, LIST_PREVIEW, sectionBody, type SectionMode, tileOfEntry } from './section-view';
+import { emptyAction, emptyText, failedText, LIST_PREVIEW, sectionBody, type SectionMode, type SectionPlace, tileOfEntry } from './section-view';
 
 /** A plain tile that carries its feed row. */
 export interface EntryTileData extends PlainTileData {
@@ -339,7 +339,7 @@ export function SectionBlock({
   extensionName: string;
   section: SectionSpec;
   mode: Exclude<SectionMode, 'infinite'>;
-  where: 'page' | 'home';
+  where: SectionPlace;
   onSeeAll?: () => void;
   firstFocus?: boolean;
 }) {

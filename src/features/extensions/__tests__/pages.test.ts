@@ -101,6 +101,15 @@ describe('section body', () => {
     expect(emptyAction(undefined, true)).toBeNull();
   });
 
+  it('hides an empty row or preview on an entry page, as before, and keeps its loading and failed states', () => {
+    expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'entry')).toBe('hidden');
+    expect(sectionBody({ status: 'ready', count: 0 }, 'preview', 'entry')).toBe('hidden');
+    expect(sectionBody({ status: 'ready', count: 0 }, 'infinite', 'entry')).toBe('empty');
+    expect(sectionBody({ status: 'loading', count: 0 }, 'row', 'entry')).toBe('placeholder');
+    expect(sectionBody({ status: 'error', count: 0 }, 'row', 'entry')).toBe('failed');
+    expect(sectionBody({ status: 'ready', count: 2 }, 'row', 'entry')).toBe('entries');
+  });
+
   it('keeps an empty section on a page with its title, for every mode', () => {
     // A page never drops a section without a word: an empty row or preview keeps its title and says so.
     expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'page')).toBe('empty');

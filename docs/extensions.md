@@ -496,8 +496,9 @@ sections in order.
 - A section that fails shows its title, "<name> is not available now." and
   "Try again"; the rest of the page stays. A section with no entries shows
   its title, "Nothing here yet." (or the feed's `message`, see below) and
-  "Reload". A section never disappears from a page without a word. On Home,
-  a row that loads or is empty takes no room.
+  "Reload". A section never disappears from a page (or a page tab) without a
+  word. On Home, a row that loads or is empty takes no room. On an entry page,
+  an empty row takes no room either.
 - Pull to refresh (not on TV) loads every feed of the extension again.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are

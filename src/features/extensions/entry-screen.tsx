@@ -208,7 +208,7 @@ function DetailBody({
   const blocks: ReactNode[] = sections.map((sec, i) => {
     const mode = sectionMode(sections, i);
     if (mode === 'infinite') return null;
-    return <SectionBlock key={sec.id} extId={extId} extensionName={ext.manifest.name} section={sec} mode={mode} where="page" />;
+    return <SectionBlock key={sec.id} extId={extId} extensionName={ext.manifest.name} section={sec} mode={mode} where="entry" />;
   });
 
   if (lastSection && (lastSection.layout === 'grid' || lastSection.layout === 'list')) {
