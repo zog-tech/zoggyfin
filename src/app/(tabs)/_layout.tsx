@@ -1,8 +1,12 @@
 import { NativeTabs } from 'expo-router/native-tabs';
+import type { SFSymbol } from 'expo-symbols';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useDownloadsStore } from '@/downloads/store';
+import { useDownloadsBadge } from '@/downloads/use-badge';
+import { pageTabIcon } from '@/features/extensions/icons';
+import { hiddenTriggers } from '@/features/extensions/placement';
+import { usePagePlacement } from '@/features/extensions/use-placement';
 import { liveTvTab } from '@/features/iptv/nav';
 import { GlobalPlayerKeys } from '@/features/player/global-keys';
 import { MiniPlayer, useMiniPlayerVisible } from '@/features/player/mini-player';
@@ -42,19 +46,6 @@ function FloatingMiniPlayer() {
  * The five native tabs. On iPad and Mac the bar can turn into a sidebar
  * (sidebarAdaptable). Each tab has its own stack.
  */
-/** The Downloads tab badge: active downloads, or "!" when one has failed. */
-function useDownloadsBadge(): string | null {
-  return useDownloadsStore((s) => {
-    let active = 0;
-    let failed = 0;
-    for (const r of Object.values(s.records)) {
-      if (r.state === 'downloading' || r.state === 'queued') active++;
-      else if (r.state === 'failed') failed++;
-    }
-    return active ? String(active) : failed ? '!' : null;
-  });
-}
-
 /** TV: the side menu instead of the tab bar; the mini player floats at the bottom of the content. */
 function TvLayout() {
   const mini = useMiniPlayerVisible();
@@ -80,6 +71,13 @@ function PhoneTabsLayout() {
   const mini = useMiniPlayerVisible();
   const { c, scheme } = useTheme();
   const badge = useDownloadsBadge();
+  // The extension tab slot (features/extensions/placement.ts): on phones only in place of the tab the user chose
+  // ("On this phone"), so the bar keeps five; hidden when no page fills it. A change of `hidden` remounts the tab
+  // navigator, so it changes only on install, removal, the on/off switch, the phone choice or an account switch.
+  // Playback and the mini player live outside the navigator's state and survive it.
+  const ext = usePagePlacement();
+  const extIcon = pageTabIcon(ext.tab?.icon);
+  const hidden = hiddenTriggers(ext, { downloads: features.downloads, liveTab: liveTvTab });
   const tabs = (
     <NativeTabs
       tintColor={c.accent}
@@ -113,25 +111,30 @@ function PhoneTabsLayout() {
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'house', selected: 'house.fill' }} md="home" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(library)" disableAutomaticContentInsets={NO_AUTO_INSETS}>
+      <NativeTabs.Trigger name="(library)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={hidden['(library)']}>
         <NativeTabs.Trigger.Label>Library</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'square.stack', selected: 'square.stack.fill' }} md="stacks" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(music)" disableAutomaticContentInsets={NO_AUTO_INSETS}>
+      <NativeTabs.Trigger name="(music)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={hidden['(music)']}>
         <NativeTabs.Trigger.Label>Music</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="music.note" md="music_note" />
       </NativeTabs.Trigger>
+      {/* One fixed slot for an extension page; its label and icon come from the page. */}
+      <NativeTabs.Trigger name="(ext)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={hidden['(ext)']}>
+        <NativeTabs.Trigger.Label>{ext.tab?.title ?? 'Extension'}</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={extIcon.sf as SFSymbol} md={extIcon.md} />
+      </NativeTabs.Trigger>
       {/* Live TV is a tab only where a sixth tab fits (web, the Mac app): see features/iptv/nav.ts. */}
-      <NativeTabs.Trigger name="(live)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={!liveTvTab}>
+      <NativeTabs.Trigger name="(live)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={hidden['(live)']}>
         <NativeTabs.Trigger.Label>Live TV</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="tv" md="live_tv" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(saved)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={!features.downloads}>
+      <NativeTabs.Trigger name="(saved)" disableAutomaticContentInsets={NO_AUTO_INSETS} hidden={hidden['(saved)']}>
         <NativeTabs.Trigger.Label>Downloads</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'arrow.down.circle', selected: 'arrow.down.circle.fill' }} md="download" />
         <NativeTabs.Trigger.Badge hidden={!badge}>{badge ?? undefined}</NativeTabs.Trigger.Badge>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(search)" disableAutomaticContentInsets={NO_AUTO_INSETS} role="search">
+      <NativeTabs.Trigger name="(search)" disableAutomaticContentInsets={NO_AUTO_INSETS} role="search" hidden={hidden['(search)']}>
         <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
       </NativeTabs.Trigger>

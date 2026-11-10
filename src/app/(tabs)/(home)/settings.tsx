@@ -16,6 +16,7 @@ import { openAddServer, signOutUser } from '@/features/servers/actions';
 import { providersHref } from '@/features/iptv/nav';
 import { ConnectionStatus } from '@/features/servers/connection-status';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
+import { SkipSection } from '@/features/settings/skip-section';
 import { SubtitlesSection } from '@/features/settings/subtitles-section';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { UpdateSettingsRow } from '@/features/updates/update-row';
@@ -34,6 +35,7 @@ import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
+import { openTabRoot } from '@/features/extensions/tab-nav';
 
 export default function SettingsScreen() {
   const styles = useStyles(makeSettingsStyles);
@@ -98,6 +100,8 @@ export default function SettingsScreen() {
           {isTV ? null : <AppearanceSection />}
 
           <PlaybackSection />
+
+          <SkipSection />
 
           <SubtitlesSection />
 
@@ -265,7 +269,7 @@ function DownloadsSection() {
         icon="internaldrive"
         label="On this device"
         value={`${count} ${count === 1 ? 'item' : 'items'} · ${formatBytes(appBytes)}`}
-        onPress={() => router.navigate('/(tabs)/(saved)/downloads')}
+        onPress={() => openTabRoot('downloads')}
         last
       />
       <OptionSheet

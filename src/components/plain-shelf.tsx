@@ -1,9 +1,9 @@
 /**
- * A titled row of IPTV tiles (Continue watching, Favourites). TV uses the
- * TV shelf (the focus keeps its place and the row scrolls); other platforms
- * a plain horizontal list.
+ * A titled row of plain tiles (IPTV Continue watching and Favourites).
+ * TV uses the TV shelf (the focus keeps its place and the row scrolls, only
+ * the tiles near the focus are mounted); other platforms a plain
+ * horizontal list.
  */
-import { router } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 
 import { tileHeight } from '@/components/tile';
@@ -11,11 +11,9 @@ import { TvShelf } from '@/features/tv/shelf';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, gridLayout, spacing, tvFocusBleed, type, useLayout, useStyles } from '@/theme';
 
-import type { LiveGroup } from '../nav';
-import { vodDetailHref } from './vod-nav';
-import { VodTile, type VodTileData } from './vod-tile';
+import { PlainTile, type PlainTileData } from './plain-tile';
 
-export function VodShelf({
+export function PlainShelf<T extends PlainTileData>({
   title,
   items,
   onPress,
@@ -23,9 +21,9 @@ export function VodShelf({
   firstFocus,
 }: {
   title: string;
-  items: VodTileData[];
-  onPress: (d: VodTileData) => void;
-  onLongPress?: (d: VodTileData) => void;
+  items: T[];
+  onPress: (d: T) => void;
+  onLongPress?: (d: T) => void;
   /** TV: the first tile takes the first focus of the page. */
   firstFocus?: boolean;
 }) {
@@ -36,6 +34,9 @@ export function VodShelf({
   // A row shows a little more than the grid's column count, so it reads as a row that scrolls.
   const tileWidth = Math.round(g.tileWidth * (l.tv ? 0.85 : 0.9));
   const bleed = l.tv ? tvFocusBleed(tileHeight('poster', tileWidth)) : 0;
+  // The tile is a memo over plain data: the callbacks take the base type.
+  const press = onPress as (d: PlainTileData) => void;
+  const longPress = onLongPress as ((d: PlainTileData) => void) | undefined;
   return (
     <View style={s.block}>
       <Text style={[s.title, { paddingHorizontal: g.gutter }]} accessibilityRole="header">
@@ -50,27 +51,19 @@ export function VodShelf({
           gutter={g.gutter}
           bleed={bleed}
           padV={bleed}
-          renderTile={(d, i, onFocus) => <VodTile data={d} width={tileWidth} onPress={onPress} firstFocus={firstFocus && i === 0} index={i} onFocus={onFocus} />}
+          renderTile={(d, i, onFocus) => (
+            <PlainTile data={d} width={tileWidth} onPress={press} firstFocus={firstFocus && i === 0} index={i} onFocus={onFocus as (d: PlainTileData, i: number) => void} />
+          )}
         />
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: g.gutter, gap: g.gap, paddingVertical: spacing.xs }}>
           {items.map((d) => (
-            <VodTile key={d.key} data={d} width={tileWidth} onPress={onPress} onLongPress={onLongPress} />
+            <PlainTile key={d.key} data={d} width={tileWidth} onPress={press} onLongPress={longPress} />
           ))}
         </ScrollView>
       )}
     </View>
   );
-}
-
-/** Opens the page of a tile: a film, a series, or the series of an episode. */
-export function openTile(group: LiveGroup, providerId: string, d: VodTileData, seriesOf?: (episodeId: string) => string | undefined): void {
-  if (d.kind === 'film') router.push(vodDetailHref(group, 'film', providerId, d.id));
-  else if (d.kind === 'series') router.push(vodDetailHref(group, 'series', providerId, d.id));
-  else {
-    const seriesId = seriesOf?.(d.id);
-    if (seriesId) router.push(vodDetailHref(group, 'series', providerId, seriesId));
-  }
 }
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({

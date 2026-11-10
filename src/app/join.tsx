@@ -32,10 +32,14 @@ export default function JoinRoute() {
   useEffect(() => {
     if (done.current) return;
     done.current = true;
-    const ok = nearbySupported && nearby().joinWithCode(linkFrom(params));
+    // A bare /join is no join link. The router also lands here when the web
+    // app opens at "/" with no account (the first screen it may show), so
+    // it only goes on, with no message.
+    const isLink = Object.values(params).some((v) => typeof v === 'string');
+    const ok = isLink && nearbySupported && nearby().joinWithCode(linkFrom(params));
     router.replace(signedIn ? '/' : '/sign-in');
     if (ok) openTogetherSheet('join', null);
-    else toast('This code is not correct.');
+    else if (isLink) toast('This code is not correct.');
   }, [params, signedIn]);
 
   return <View style={{ flex: 1, backgroundColor: c.bg }} />;

@@ -11,7 +11,7 @@ import { hasMpv, mpv, showVideoThrough } from '@/platform/desktop';
 
 import { MpvEngine } from './engine-mpv';
 import { type ElementTrackLike, fromHls, fromMediaElement } from './embedded-tracks';
-import type { EngineListener, EngineSource, VideoEngine, VideoFit } from './engine-types';
+import { type EngineListener, type EngineSource, headersForRequest, sourceHeaders, type VideoEngine, type VideoFit } from './engine-types';
 
 type MediaSessionAction = 'play' | 'pause' | 'seekbackward' | 'seekforward' | 'seekto' | 'nexttrack' | 'previoustrack';
 
@@ -179,14 +179,32 @@ class WebEngine implements VideoEngine {
     // Chromium also plays HLS itself now, but lists no audio or subtitle renditions
     // (no AudioTrackList): it keeps hls.js. Safari has both and plays HLS natively.
     const nativeHls = v.canPlayType('application/vnd.apple.mpegurl') !== '' && 'audioTracks' in v;
-    if (source.isHls && !nativeHls) {
+    // A page cannot set the User-Agent. Other headers (an extension's) go on every
+    // hls.js request, so a stream with headers uses hls.js even where Safari plays HLS.
+    const headers = webHeaders(source);
+    const withHeaders = Object.keys(headers).length > 0;
+    if (source.isHls && (!nativeHls || withHeaders)) {
       void import('hls.js').then(({ default: HlsClass }) => {
         if (token !== this.loadToken) return;
         if (!HlsClass.isSupported()) {
           this.emit({ type: 'status', status: 'error', error: 'This browser cannot play streamed video.' });
           return;
         }
-        const hls = new HlsClass({ startPosition: start || -1, enableWorker: true, lowLatencyMode: false });
+        const hls = new HlsClass({
+          startPosition: start || -1,
+          enableWorker: true,
+          lowLatencyMode: false,
+          ...(withHeaders
+            ? {
+                // Only to the stream's origin: segments on another server get no headers.
+                xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+                  for (const [k, value] of Object.entries(headersForRequest(headers, source.uri, url))) xhr.setRequestHeader(k, value);
+                },
+                fetchSetup: (context: { url: string }, init: RequestInit) =>
+                  new Request(context.url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...headersForRequest(headers, source.uri, context.url) } }),
+              }
+            : null),
+        });
         this.hls = hls;
         hls.on(HlsClass.Events.ERROR, (_e, data) => {
           if (data.fatal) this.emit({ type: 'status', status: 'error', error: `Stream error: ${data.details}` });
@@ -385,4 +403,11 @@ export function VideoSurface({ fit, style }: { fit: VideoFit; style?: StyleProp<
   }, []);
   useEffect(() => setFit(fit), [fit]);
   return <View ref={host} style={style} />;
+}
+
+/** The headers a page may set on a stream request: all but the User-Agent (the browser owns it). */
+export function webHeaders(source: Pick<EngineSource, 'headers' | 'userAgent'>): Record<string, string> {
+  const out = sourceHeaders(source);
+  for (const k of Object.keys(out)) if (k.toLowerCase() === 'user-agent') delete out[k];
+  return out;
 }

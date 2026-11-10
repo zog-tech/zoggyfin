@@ -1,11 +1,14 @@
 /**
- * Playback settings: streaming quality per network and skip lengths.
+ * Playback settings: streaming quality per network, skip lengths, and what
+ * the player does with each kind of skippable range (`skip-modes.ts`).
  * Saved on the device (MMKV on native, localStorage on web).
  */
 import { create } from 'zustand';
 
 import type { DownloadQuality } from '@/downloads/types';
 import { readJson, writeJson } from '@/storage/json';
+
+import { migrateSkipSettings, type SkipChoice, type SkipMode, type SkipSettings, withSkipMode } from './skip-modes';
 
 /** Bitrate choices in bits per second. `0` = no limit beyond the server's own. */
 export const QUALITY_OPTIONS: readonly { value: number; label: string }[] = [
@@ -77,4 +80,39 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
 export function bitrateFor(settings: PlaybackSettings, cellular: boolean): number {
   const value = cellular ? settings.cellularBitrate : settings.wifiBitrate;
   return value > 0 ? value : MAX_BITRATE;
+}
+
+// ---------------------------------------------------------------------------
+// Skip modes per label (`skip-modes.ts` has the rules)
+// ---------------------------------------------------------------------------
+
+const SKIP_KEY = 'settings.skip';
+
+/** The skip choices, by key `<scope>:<label>`. Saved versioned under `settings.skip`. */
+export const useSkipSettings = create<SkipSettings>(() => migrateSkipSettings(readJson<unknown>(SKIP_KEY, null)));
+
+useSkipSettings.subscribe((s) => writeJson(SKIP_KEY, { version: s.version, modes: s.modes }));
+
+/** The user's skip choices now (for account sync and the player). */
+export function skipChoices(): Record<string, SkipChoice> {
+  return useSkipSettings.getState().modes;
+}
+
+/** Sets one choice (null: back to the default). `at` is when it was made, for account sync. */
+export function setSkipMode(key: string, mode: SkipMode | null, at = Date.now()): void {
+  const cur = useSkipSettings.getState();
+  const next = withSkipMode(cur, key, mode, at);
+  if (next !== cur) useSkipSettings.setState(next, true);
+}
+
+/** Replaces every choice (account sync, after a merge). Bad entries are left out. */
+export function replaceSkipChoices(modes: Record<string, SkipChoice>): void {
+  useSkipSettings.setState(migrateSkipSettings({ version: 1, modes }), true);
+}
+
+/** Calls `listener` after the choices change (account sync pushes then). Returns the unsubscribe. */
+export function onSkipChoicesChange(listener: (modes: Record<string, SkipChoice>) => void): () => void {
+  return useSkipSettings.subscribe((s, prev) => {
+    if (s.modes !== prev.modes) listener(s.modes);
+  });
 }

@@ -517,11 +517,14 @@ export function RoundAction({
   download,
   tint,
   a11y,
+  firstFocus,
 }: {
   icon: IconName;
   label: string;
   active?: boolean;
   onPress: () => void;
+  /** TV: this button takes the first focus of the page. */
+  firstFocus?: boolean;
   /** A progress ring around the button (a running download), 0..1. */
   ring?: number;
   /** The download button's state: its icon arrives when the download completes on this page. */
@@ -544,6 +547,7 @@ export function RoundAction({
     <Touchable
       kind="plain"
       ring={false}
+      firstFocus={firstFocus}
       onPress={() => {
         // The toggle shows at once (see `toggle`), so the haptic lands with the pop.
         // haptics.light (theme): a small confirmation of the user's own action.

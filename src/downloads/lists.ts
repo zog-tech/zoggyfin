@@ -1,4 +1,13 @@
-/** The Downloads tab lists and the offline search. Pure, so they are unit-tested. */
+/**
+ * The Downloads tab lists and the offline search. Pure, so they are unit-tested.
+ *
+ * Extension downloads (`source.kind === 'extension'`) follow the account
+ * that made them: only that account sees them in progress and in its own
+ * section per extension (`buildExtensionSections`). For another account they
+ * are hidden, and their files stay on the device until that account comes
+ * back (or removes the extension and agrees to delete them). They are never
+ * in the server sections or the offline search, which open Jellyfin items.
+ */
 import type { BaseItemDto } from '@/api/types';
 
 import type { DownloadCollection, DownloadRecord } from './types';
@@ -107,7 +116,7 @@ export function searchDownloads(records: Record<string, DownloadRecord>, term: s
   const t = term.trim().toLowerCase();
   if (t.length < 2) return [];
   return Object.values(records)
-    .filter((r) => r.state === 'completed')
+    .filter((r) => r.state === 'completed' && isJellyfinRecord(r))
     .filter((r) =>
       [r.item.Name, r.item.Album, r.item.AlbumArtist, r.item.SeriesName, ...(r.item.Artists ?? [])]
         .filter(Boolean)
@@ -116,3 +125,55 @@ export function searchDownloads(records: Record<string, DownloadRecord>, term: s
     .map((r) => r.item);
 }
 
+
+/** True for a Jellyfin item's download (every record before schema version 3). */
+export function isJellyfinRecord(r: Pick<DownloadRecord, 'source'>): boolean {
+  return r.source?.kind !== 'extension';
+}
+
+/** The records an account sees: every Jellyfin download, and the extension downloads it made. Pure. */
+export function visibleTo(records: Record<string, DownloadRecord>, account: string | null | undefined): Record<string, DownloadRecord> {
+  const out: Record<string, DownloadRecord> = {};
+  for (const [k, r] of Object.entries(records)) {
+    if (r.source?.kind !== 'extension' || (!!account && r.source.account === account)) out[k] = r;
+  }
+  return out;
+}
+
+/** Only the Jellyfin downloads. Pure. */
+export function jellyfinOnly(records: Record<string, DownloadRecord>): Record<string, DownloadRecord> {
+  const out: Record<string, DownloadRecord> = {};
+  for (const [k, r] of Object.entries(records)) if (isJellyfinRecord(r)) out[k] = r;
+  return out;
+}
+
+/** The completed downloads of one extension for the signed-in account. */
+export interface ExtensionSection {
+  extId: string;
+  /** Newest first. */
+  records: DownloadRecord[];
+  count: number;
+  bytes: number;
+}
+
+/**
+ * The completed extension downloads of an account, one section per
+ * extension, the most recent download first. Pure.
+ */
+export function buildExtensionSections(records: Record<string, DownloadRecord>, account: string | null | undefined): ExtensionSection[] {
+  if (!account) return [];
+  const by = new Map<string, ExtensionSection>();
+  for (const r of Object.values(records)) {
+    if (r.state !== 'completed' || r.source?.kind !== 'extension' || r.source.account !== account) continue;
+    const id = r.source.extId;
+    const sec = by.get(id) ?? { extId: id, records: [], count: 0, bytes: 0 };
+    sec.records.push(r);
+    sec.count++;
+    sec.bytes += r.bytesDone;
+    by.set(id, sec);
+  }
+  const newest = (sec: ExtensionSection) => Math.max(...sec.records.map((r) => r.completedAt ?? 0));
+  return [...by.values()]
+    .map((sec) => ({ ...sec, records: sec.records.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0)) }))
+    .sort((a, b) => newest(b) - newest(a));
+}

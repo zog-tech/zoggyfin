@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "id": "org.example.hello.pages",
+  "name": "Hello Pages",
+  "version": "2.0.0",
+  "description": "A sample of schema version 2: a page with a row, a list, a grid and search; entry pages with a Save button and a related row; a short test video with two qualities, subtitles, chapters, skip segments, a next entry and progress reports; and downloads with two choices.",
+  "baseUrl": "http://localhost:8787",
+  "permissions": ["network", "playback", "downloads"],
+  "contributes": {
+    "pages": [
+      {
+        "id": "main",
+        "title": "Hello Pages",
+        "icon": "play.rectangle",
+        "placement": { "tab": true, "library": true, "home": ["latest"] },
+        "search": { "feed": "/pages/search", "placeholder": "Search the samples" },
+        "sections": [
+          { "id": "latest", "title": "Latest samples", "layout": "row", "shape": "thumb", "feed": "/pages/latest", "refreshSeconds": 60 },
+          { "id": "queue", "title": "Up next", "layout": "list", "feed": "/pages/queue" },
+          { "id": "all", "title": "All samples", "layout": "grid", "shape": "poster", "feed": "/pages/all" }
+        ]
+      }
+    ],
+    "skipLabels": [
+      { "id": "intro", "title": "Intro", "default": "ask" },
+      { "id": "credits", "title": "Credits", "default": "auto" }
+    ]
+  }
+}

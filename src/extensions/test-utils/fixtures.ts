@@ -32,6 +32,36 @@ export const raw = {
   },
 };
 
+/** The schema version 2 sample of the plan (docs/extensions.md). */
+export const rawV2 = {
+  schemaVersion: 2,
+  id: 'org.example.media',
+  name: 'Example Media',
+  version: '2.0.0',
+  baseUrl: 'https://media.example.org',
+  permissions: ['network', 'playback', 'downloads'],
+  contributes: {
+    pages: [
+      {
+        id: 'main',
+        title: 'Example',
+        icon: 'play.rectangle',
+        placement: { tab: true, library: true, home: ['latest'] },
+        search: { feed: '/api/search', placeholder: 'Search Example' },
+        sections: [
+          { id: 'latest', title: 'Latest', layout: 'row', shape: 'thumb', feed: '/api/feed/latest', refreshSeconds: 300 },
+          { id: 'all', title: 'Everything', layout: 'grid', shape: 'poster', feed: '/api/feed/all' },
+          { id: 'queue', title: 'Queue', layout: 'list', feed: '/api/feed/queue' },
+        ],
+      },
+    ],
+    skipLabels: [
+      { id: 'intro', title: 'Intro', default: 'ask' },
+      { id: 'promo', title: 'Promotion', default: 'auto' },
+    ],
+  },
+};
+
 export function manifest(over: Partial<typeof raw> = {}): Manifest {
   const r = parseManifest({ ...raw, ...over });
   if (!r.ok) throw new Error(r.error);

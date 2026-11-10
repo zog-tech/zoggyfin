@@ -1,29 +1,30 @@
 /**
- * The extension manifest (schema version 1). An extension is data only: the
- * app reads this file and draws its contributions. No code from an extension
- * runs in the app (App Store guideline 2.5.2). See docs/extensions.md.
+ * The manifest parts that schema version 1 and schema version 2 share:
+ * ids, settings, requests, inputs and the v1 contributions. Pure, so it is
+ * unit-tested through `parseManifest`.
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 1;
-
-const id = z
+export const id = z
   .string()
   .min(1)
   .max(64)
   .regex(/^[a-z0-9][a-z0-9._-]*$/, 'Use lower-case letters, digits, ".", "_" and "-"');
 /** A setting or input key, as used in templates (`{{settings.apiKey}}`). */
-const keyName = z
+export const keyName = z
   .string()
   .min(1)
   .max(40)
   .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, 'Use letters, digits and "_", starting with a letter');
-const label = z.string().min(1).max(80);
-const text = z.string().max(500);
+export const label = z.string().min(1).max(80);
+export const text = z.string().max(500);
 /** A path under `baseUrl` ("/api/x") or a full URL on the same origin. */
-const path = z.string().min(1).max(500);
+export const path = z.string().min(1).max(500);
 
-export const PERMISSIONS = ['network', 'itemPath', 'jellyfinToken'] as const;
+/** The permissions of schema version 1. */
+export const PERMISSIONS_V1 = ['network', 'itemPath', 'jellyfinToken'] as const;
+/** Every permission. Schema version 2 adds `playback` and `downloads`. */
+export const PERMISSIONS = [...PERMISSIONS_V1, 'playback', 'downloads'] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 /**
@@ -57,7 +58,7 @@ export const settingSchema = z.discriminatedUnion('type', [
 ]);
 export type SettingField = z.infer<typeof settingSchema>;
 
-const requestSchema = z.object({
+export const requestSchema = z.object({
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('POST'),
   path,
   /** Query values. Each string is a template. */
@@ -81,7 +82,7 @@ export const inputSchema = z.discriminatedUnion('type', [
 ]);
 export type InputSpec = z.infer<typeof inputSchema>;
 
-const confirmSchema = z.object({ title: label, message: text.optional(), action: z.string().min(1).max(40).default('Continue') });
+export const confirmSchema = z.object({ title: label, message: text.optional(), action: z.string().min(1).max(40).default('Continue') });
 
 /** Which items an action shows on. Every given field must match; an empty filter matches all items. */
 export const whenSchema = z.object({
@@ -94,7 +95,7 @@ export const whenSchema = z.object({
 });
 export type When = z.infer<typeof whenSchema>;
 
-const itemActionSchema = z.object({
+export const itemActionSchema = z.object({
   id,
   title: label,
   icon: z.string().max(60).optional(),
@@ -106,18 +107,21 @@ const itemActionSchema = z.object({
 });
 export type ItemActionSpec = z.infer<typeof itemActionSchema>;
 
-const homeSectionSchema = z.object({
+export const SHAPES = ['poster', 'thumb', 'square'] as const;
+export type Shape = (typeof SHAPES)[number];
+
+export const homeSectionSchema = z.object({
   id,
   title: label,
   /** A JSON feed: `{ "items": [...] }` (see docs/extensions.md). */
   feed: path,
   /** Fetch the feed again after this many seconds (5 or more). */
   refreshSeconds: z.number().int().min(5).max(3600).optional(),
-  shape: z.enum(['poster', 'thumb', 'square']).default('thumb'),
+  shape: z.enum(SHAPES).default('thumb'),
 });
 export type HomeSectionSpec = z.infer<typeof homeSectionSchema>;
 
-const shareTargetSchema = z.object({
+export const shareTargetSchema = z.object({
   id,
   title: label,
   /** Host names the link must have ("youtube.com" also matches "www.youtube.com"). Empty: any http(s) link. */
@@ -127,7 +131,7 @@ const shareTargetSchema = z.object({
 });
 export type ShareTargetSpec = z.infer<typeof shareTargetSchema>;
 
-const panelSchema = z.object({
+export const panelSchema = z.object({
   id,
   title: label,
   icon: z.string().max(60).optional(),
@@ -136,8 +140,12 @@ const panelSchema = z.object({
 });
 export type PanelSpec = z.infer<typeof panelSchema>;
 
-export const manifestSchema = z.object({
-  schemaVersion: z.literal(SCHEMA_VERSION),
+/**
+ * The manifest fields outside `contributes`, except `schemaVersion` and
+ * `permissions` (each version has its own list). The order matters: the
+ * error names the first wrong field.
+ */
+export const headFields = {
   id,
   name: label,
   version: z.string().min(1).max(40),
@@ -147,66 +155,16 @@ export const manifestSchema = z.object({
     .url()
     .refine((u) => /^https?:\/\//i.test(u), 'The base URL must use http or https'),
   icon: z.string().max(60).optional(),
-  permissions: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length).default(['network']),
-  /** Headers sent with every request. Values are templates (for example `Bearer {{settings.apiKey}}`). */
-  headers: z.record(z.string(), z.string().max(500)).optional(),
-  contributes: z
-    .object({
-      settings: z.array(settingSchema).max(20).optional(),
-      itemActions: z.array(itemActionSchema).max(20).optional(),
-      homeSections: z.array(homeSectionSchema).max(5).optional(),
-      shareTargets: z.array(shareTargetSchema).max(10).optional(),
-      panels: z.array(panelSchema).max(5).optional(),
-    })
-    .default({}),
-});
-export type Manifest = z.infer<typeof manifestSchema>;
+};
 
-export type ParseResult = { ok: true; manifest: Manifest } | { ok: false; error: string };
+/** Headers sent with every request. Values are templates (for example `Bearer {{settings.apiKey}}`). */
+export const headersSchema = z.record(z.string(), z.string().max(500)).optional();
 
-/** Validates a manifest. The error names the first field that is wrong. */
-export function parseManifest(data: unknown): ParseResult {
-  if (data && typeof data === 'object' && 'schemaVersion' in data && (data as { schemaVersion: unknown }).schemaVersion !== SCHEMA_VERSION) {
-    return { ok: false, error: `This app reads manifest schema version ${SCHEMA_VERSION}. The manifest has version ${String((data as { schemaVersion: unknown }).schemaVersion)}.` };
-  }
-  const r = manifestSchema.safeParse(data);
-  if (!r.success) {
-    const issue = r.error.issues[0];
-    const where = issue?.path.length ? issue.path.join('.') : 'manifest';
-    return { ok: false, error: `${where}: ${issue?.message ?? 'not valid'}` };
-  }
-  const m = r.data;
-  // Ids must be unique inside each list, so a contribution has one stable key.
-  for (const [name, list] of Object.entries(m.contributes) as [string, { id?: string; key?: string }[] | undefined][]) {
-    const keys = (list ?? []).map((e) => e.id ?? e.key);
-    const dup = keys.find((k, i) => keys.indexOf(k) !== i);
-    if (dup) return { ok: false, error: `contributes.${name}: the id "${dup}" is used twice` };
-  }
-  if (!m.permissions.includes('network')) m.permissions = ['network', ...m.permissions];
-  return { ok: true, manifest: m };
-}
-
-/** Permissions in the words the install screen shows. */
-export function describePermission(p: Permission, m: Pick<Manifest, 'name' | 'baseUrl'>): { title: string; detail: string; sensitive: boolean } {
-  const host = safeHost(m.baseUrl);
-  switch (p) {
-    case 'network':
-      return { title: `Connect to ${host}`, detail: `${m.name} receives the requests of its own buttons and rows. The app sends nothing to other addresses.`, sensitive: false };
-    case 'itemPath':
-      return { title: 'Read file paths', detail: `${m.name} receives the file path on the server of the items you use it on.`, sensitive: false };
-    case 'jellyfinToken':
-      return {
-        title: `${m.name} can act as you on your Jellyfin server`,
-        detail: `The app sends your sign-in token and the server address with each request to ${host}. With the token, ${m.name} can do all that you can do on the server. Allow this only for an extension that you trust.`,
-        sensitive: true,
-      };
-  }
-}
-
-export function safeHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
+/** The v1 contribution lists. Schema version 2 keeps all of them except `homeSections`. */
+export const v1Contributions = {
+  settings: z.array(settingSchema).max(20).optional(),
+  itemActions: z.array(itemActionSchema).max(20).optional(),
+  homeSections: z.array(homeSectionSchema).max(5).optional(),
+  shareTargets: z.array(shareTargetSchema).max(10).optional(),
+  panels: z.array(panelSchema).max(5).optional(),
+};

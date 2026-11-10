@@ -22,6 +22,10 @@ export class ExtensionError extends Error {
 export interface Grants {
   itemPath: boolean;
   jellyfinToken: boolean;
+  /** Schema version 2: the app may play the extension's media. */
+  playback: boolean;
+  /** Schema version 2: the app may save the extension's files on the device. */
+  downloads: boolean;
 }
 
 /** The signed-in account, for the token headers. */

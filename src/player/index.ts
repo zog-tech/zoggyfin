@@ -3,6 +3,26 @@
  * never talk to an engine. Video plays through expo-video (native) or an
  * HTML video element (web), behind `session.ts`; audio plays through
  * expo-audio behind `audio/session.ts`. One of them plays at a time.
+ *
+ * Extension media (a feed entry's or a detail reply's `media` reference):
+ *
+ *   playMedia(request: MediaPlayRequest): void
+ *   usePlayer().playMedia(request)
+ *
+ *   interface MediaPlayRequest {
+ *     extension: string;     // the manifest id
+ *     mediaId: string;       // media.id
+ *     playback: string;      // media.playback (a full URL on the extension's origin)
+ *     title?: string; subtitle?: string; image?: string;  // what the card showed
+ *     duration?: number;     // media.duration, seconds
+ *     startSeconds?: number; // left out: the description's resume; 0 starts over
+ *   }
+ *
+ * From a feed entry: `playMedia({ extension: ext.manifest.id, mediaId:
+ * entry.media.id, playback: entry.media.playback, title: entry.title,
+ * subtitle: entry.subtitle, image: entry.imageUrl, duration:
+ * entry.media.duration })`. It refuses in a watch-together session and says
+ * why in a toast, like IPTV films. It opens the video player.
  */
 import { router } from 'expo-router';
 
@@ -15,9 +35,33 @@ import { controlGate } from './control-gate';
 import { playRouter } from './play-router';
 import { videoSession } from './session';
 import { playerState, setPlayerState } from './store';
-import type { LivePlayRequest, PlayerController, PlayRequest, VodPlayRequest } from './types';
+import type { ExternalPlayRequest, LivePlayRequest, MediaPlayRequest, PlayerController, PlayRequest } from './types';
 
-export type { LiveChannelRef, LiveNowNext, LivePlayRequest, LiveProgramme, LiveSource, LiveStreamChoice, PlayerController, PlayRequest, VodPlayRequest, VodRef, VodSource } from './types';
+export type {
+  ExternalPlayRequest,
+  ExternalProgress,
+  ExternalQuality,
+  ExternalRef,
+  ExternalReportEvent,
+  ExternalReportSnapshot,
+  ExternalSegment,
+  ExternalSource,
+  ExternalStream,
+  ExternalSubtitle,
+  LiveChannelRef,
+  LiveNowNext,
+  LivePlayRequest,
+  LiveProgramme,
+  LiveSource,
+  LiveStreamChoice,
+  MediaPlayRequest,
+  PlayerController,
+  PlayRequest,
+  SkipMode,
+  VodPlayRequest,
+  VodRef,
+  VodSource,
+} from './types';
 export { usePlayerStore } from './store';
 export { playRouter } from './play-router';
 
@@ -111,20 +155,51 @@ function playLiveHere(request: LivePlayRequest): void {
   router.navigate('/player');
 }
 
+/** True while a watch-together session runs: external titles do not play then. */
+function inTogether(): boolean {
+  return playRouter.active || controlGate.active;
+}
+
+/** Plays an external title (IPTV, extension media) here in the video player. */
+function playExternalHere(request: ExternalPlayRequest): void {
+  void (async () => {
+    if (playerState().now?.kind === 'audio') await audioSession().stopForVideo();
+    await videoSession().playExternal(request);
+  })();
+  router.navigate('/player');
+}
+
 /**
  * Plays an IPTV film or episode here. Not shared in a together session: the
  * other members have no access to this device's provider.
  */
-function playVodHere(request: VodPlayRequest): void {
-  if (playRouter.active || controlGate.active) {
+function playVodHere(request: ExternalPlayRequest): void {
+  if (inTogether()) {
     toast('IPTV films and series do not play in a watch-together session. Leave the session first.', { icon: 'person.2.slash' });
     return;
   }
-  void (async () => {
-    if (playerState().now?.kind === 'audio') await audioSession().stopForVideo();
-    await videoSession().playVod(request);
-  })();
-  router.navigate('/player');
+  playExternalHere(request);
+}
+
+/**
+ * Plays an extension's media here (see the top of this file). Not shared in
+ * a together session: the other members may not have the extension.
+ * `kind: "audio"` plays here too, with no picture.
+ */
+export function playMedia(request: MediaPlayRequest): void {
+  if (inTogether()) {
+    toast('Extension media does not play in a watch-together session. Leave the session first.', { icon: 'person.2.slash' });
+    return;
+  }
+  // Loaded on first use: the player does not load the extension runtime (and its storage) before.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { extensionPlayRequest } = require('@/extensions/media/play') as typeof import('@/extensions/media/play');
+  const r = extensionPlayRequest(request);
+  if ('error' in r) {
+    toast(r.error, { icon: 'exclamationmark.triangle' });
+    return;
+  }
+  playExternalHere(r.request);
 }
 
 /** True when a together session lets this device change its queue; else says why. */
@@ -146,6 +221,9 @@ const controller: PlayerController = {
   },
   playVod(request) {
     playVodHere(request);
+  },
+  playMedia(request) {
+    playMedia(request);
   },
   playNext(item) {
     if (queueAllowed()) void audioSession().playNext(item);

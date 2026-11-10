@@ -1,6 +1,21 @@
 import { handleBridgeRequest, readBridgeMessage, sameOrigin } from '../bridge';
 
-const deps = () => ({ context: jest.fn(() => ({ a: 1 })), play: jest.fn(), openItem: jest.fn(), refreshLibrary: jest.fn(), toast: jest.fn(), close: jest.fn() });
+const BASE = 'http://192.0.2.10:3000';
+
+const deps = (over: { refusal?: string | null } = {}) => ({
+  context: jest.fn(() => ({ a: 1 })),
+  play: jest.fn(),
+  openItem: jest.fn(),
+  refreshLibrary: jest.fn(),
+  toast: jest.fn(),
+  close: jest.fn(),
+  baseUrl: BASE,
+  playRefusal: jest.fn(() => over.refusal ?? null),
+  playMedia: jest.fn(),
+  openEntry: jest.fn(),
+  hasPage: jest.fn((id: string) => id === 'main'),
+  openPage: jest.fn(),
+});
 
 describe('bridge', () => {
   it('reads a request from an object or JSON text', () => {
@@ -32,5 +47,50 @@ describe('bridge', () => {
   it('answers an error for bad params', async () => {
     const r = await handleBridgeRequest({ id: 6, method: 'openItem', params: { itemId: '../x' } }, deps());
     expect(r.error).toMatch(/itemId/);
+  });
+
+  it('reads the version 2 methods', () => {
+    for (const method of ['playMedia', 'openEntry', 'openPage']) expect(readBridgeMessage({ zoggyfin: 1, id: 1, method, params: {} })?.method).toBe(method);
+  });
+
+  it('plays media on the origin with the grant', async () => {
+    const d = deps();
+    const r = await handleBridgeRequest({ id: 7, method: 'playMedia', params: { mediaId: 'm1', playback: '/api/m1/play', title: 'A clip', image: 'https://other.example.net/x.jpg' } }, d);
+    expect(r.error).toBeUndefined();
+    // A picture on another origin is left out.
+    expect(d.playMedia).toHaveBeenCalledWith({ mediaId: 'm1', playback: `${BASE}/api/m1/play`, title: 'A clip' });
+  });
+
+  it('refuses playback on another origin, and says why without the URL', async () => {
+    const d = deps();
+    const r = await handleBridgeRequest({ id: 8, method: 'playMedia', params: { mediaId: 'm1', playback: 'https://other.example.net/m1' } }, d);
+    expect(r.error).toBe("playback must be on the extension's origin");
+    expect(d.playMedia).not.toHaveBeenCalled();
+    expect((await handleBridgeRequest({ id: 9, method: 'playMedia', params: { playback: '/api/m1/play' } }, d)).error).toMatch(/mediaId/);
+  });
+
+  it('refuses playback when the grant is off', async () => {
+    const d = deps({ refusal: 'Playback is turned off for Hello. Turn it on in Settings → Extensions.' });
+    const r = await handleBridgeRequest({ id: 10, method: 'playMedia', params: { mediaId: 'm1', playback: '/api/m1/play' } }, d);
+    expect(r.error).toMatch(/^Playback is turned off for Hello/);
+    expect(d.playMedia).not.toHaveBeenCalled();
+  });
+
+  it('opens an entry page on the origin only', async () => {
+    const d = deps();
+    await handleBridgeRequest({ id: 11, method: 'openEntry', params: { detail: '/api/e1', title: 'An entry' } }, d);
+    expect(d.openEntry).toHaveBeenCalledWith({ detail: `${BASE}/api/e1`, title: 'An entry' });
+    const r = await handleBridgeRequest({ id: 12, method: 'openEntry', params: { detail: '//other.example.net/e1' } }, d);
+    expect(r.error).toMatch(/^detail must be/);
+    expect(d.openEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens one of the manifest's pages only", async () => {
+    const d = deps();
+    await handleBridgeRequest({ id: 13, method: 'openPage', params: { page: 'main' } }, d);
+    expect(d.openPage).toHaveBeenCalledWith('main');
+    const r = await handleBridgeRequest({ id: 14, method: 'openPage', params: { page: 'other' } }, d);
+    expect(r.error).toMatch(/page/);
+    expect(d.openPage).toHaveBeenCalledTimes(1);
   });
 });

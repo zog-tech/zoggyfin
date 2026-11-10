@@ -10,6 +10,9 @@
  *   marked done. When one fails, the screen keeps only the ones not added yet
  *   and says which were added and which failed. Confirm again adds the rest.
  * - Cancel during a confirm stops before the next extension.
+ * - `source` says where the request came from: the user (an address or an
+ *   invite) or the Jellyfin account (account sync offers extensions that
+ *   another device added). The screen words its title and Cancel from it.
  *
  * The load and install steps come in as parameters, so this file is
  * unit-tested with no network and no router.
@@ -18,6 +21,7 @@ import { create } from 'zustand';
 
 import { createGate } from '@/lib/async-gate';
 
+import type { Grants } from './http';
 import type { Candidate } from './runtime';
 
 export interface InstallEntry {
@@ -28,7 +32,11 @@ export interface InstallEntry {
   done?: boolean;
 }
 
+/** Who asked: the user (an address, an invite, an update) or account sync. */
+export type InstallSource = 'user' | 'account';
+
 export interface InstallRequest {
+  source: InstallSource;
   /** Addresses still loading or loaded. */
   entries: InstallEntry[];
   loading: boolean;
@@ -37,11 +45,40 @@ export interface InstallRequest {
   notice: string | null;
 }
 
-const EMPTY: InstallRequest = { entries: [], loading: false, installing: false, notice: null };
+const EMPTY: InstallRequest = { source: 'user', entries: [], loading: false, installing: false, notice: null };
 const gate = createGate();
 let token = gate.begin();
 
 export const useInstallRequest = create<InstallRequest>(() => EMPTY);
+
+/**
+ * The grants the confirm screen starts with. An update keeps the installed
+ * choices (the file path grant has no switch there and turns on again, as
+ * before); an extension from the account starts from the account's grants;
+ * a new one is on for every permission the manifest names, so the install
+ * needs no other step. A grant is never on without its permission.
+ */
+export function initialGrants(c: Pick<Candidate, 'manifest' | 'installed' | 'fromAccount'>): Grants {
+  const perms = c.manifest.permissions;
+  const account = c.installed ? undefined : c.fromAccount?.grants;
+  const kept = (k: 'jellyfinToken' | 'playback' | 'downloads') => perms.includes(k) && (c.installed?.grants[k] ?? account?.[k] ?? true);
+  return {
+    itemPath: perms.includes('itemPath') && (account?.itemPath ?? true),
+    jellyfinToken: kept('jellyfinToken'),
+    playback: kept('playback'),
+    downloads: kept('downloads'),
+  };
+}
+
+/** The grants that have a switch on the confirm screen. */
+export const SWITCHED_GRANTS = ['jellyfinToken', 'playback', 'downloads'] as const;
+
+/** The grants to install with: the screen's switches over the start values, never one without its permission. */
+export function chosenGrants(c: Pick<Candidate, 'manifest' | 'installed' | 'fromAccount'>, choice: Partial<Grants> | undefined): Grants {
+  const g = initialGrants(c);
+  for (const k of SWITCHED_GRANTS) if (choice?.[k] !== undefined) g[k] = !!choice[k] && c.manifest.permissions.includes(k);
+  return g;
+}
 
 /** The extensions the screen still offers: loaded and not added yet. */
 export function pendingCandidates(entries: readonly InstallEntry[]): Candidate[] {
@@ -49,9 +86,9 @@ export function pendingCandidates(entries: readonly InstallEntry[]): Candidate[]
 }
 
 /** Starts a request: shows the addresses at once, then each loaded manifest or its error. */
-export async function loadInstallRequest(inputs: readonly string[], load: (input: string) => Promise<Candidate>): Promise<void> {
+export async function loadInstallRequest(inputs: readonly string[], load: (input: string) => Promise<Candidate>, source: InstallSource = 'user'): Promise<void> {
   const t = (token = gate.begin());
-  useInstallRequest.setState({ ...EMPTY, entries: inputs.map((input) => ({ input })), loading: true });
+  useInstallRequest.setState({ ...EMPTY, source, entries: inputs.map((input) => ({ input })), loading: true });
   const entries = await Promise.all(
     inputs.map(async (input): Promise<InstallEntry> => {
       try {

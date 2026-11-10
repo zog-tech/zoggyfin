@@ -1,15 +1,17 @@
 /**
  * Starts the extension runtime once the user is signed in: it registers the
- * contributions, shows the questions of extension actions and takes links
- * that other apps share.
+ * contributions of the signed-in account (again on an account switch),
+ * syncs the extension list with the account, shows the questions of
+ * extension actions and takes links that other apps share.
  */
 import { router } from 'expo-router';
 import { type ComponentType, useEffect } from 'react';
 
 import { homeSections } from '@/registry/home-sections';
 
-import { startExtensions } from '../runtime';
+import { installFromAccount, startExtensions } from '../runtime';
 import { listenForShares } from '../share-intake';
+import { startExtensionSync } from '../sync/io';
 import { ExtensionHomeSection, ExtensionTasksSection } from './home-section';
 import { ExtensionPromptHost } from './prompt-host';
 
@@ -36,7 +38,10 @@ export function ExtensionsHost() {
       tasksRegistered = true;
       homeSections.register({ id: 'ext.tasks', order: 3, component: ExtensionTasksSection });
     }
-    return startExtensions(sectionComponent);
+    const stop = startExtensions(sectionComponent);
+    // The extension list follows the Jellyfin account across devices.
+    startExtensionSync(installFromAccount);
+    return stop;
   }, []);
   useEffect(() => listenForShares((text) => router.push({ pathname: '/share', params: { text } })), []);
   return <ExtensionPromptHost />;

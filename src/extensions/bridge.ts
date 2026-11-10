@@ -1,11 +1,22 @@
 /**
  * The panel bridge. A panel page sends
  * `{ zoggyfin: 1, id, method, params }` with postMessage; the app answers
- * `{ zoggyfin: 1, id, result }` or `{ zoggyfin: 1, id, error }`. These six
+ * `{ zoggyfin: 1, id, result }` or `{ zoggyfin: 1, id, error }`. These nine
  * methods are all a panel can do in the app.
+ *
+ * The schema version 2 methods keep the rules of the native paths:
+ * - `playMedia`: the `playback` URL must be on the extension's origin, and
+ *   the extension needs the `playback` permission and the user's grant
+ *   (`playRefusal`). A picture on another origin is left out.
+ * - `openEntry`: the `detail` URL must be on the extension's origin.
+ * - `openPage`: the page must be one of the manifest's pages.
+ * Panels are not on TV, so these methods are never the only way to content.
+ *
+ * Pure, so it is unit-tested.
  */
+import { urlOnOrigin } from './match';
 
-export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close'] as const;
+export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage'] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
 export interface BridgeRequest {
@@ -28,6 +39,24 @@ export interface BridgeDeps {
   refreshLibrary(): void;
   toast(text: string): void;
   close(): void;
+  /** The extension's `baseUrl`: the origin rule of `playMedia` and `openEntry`. */
+  baseUrl: string;
+  /** Why the extension cannot play media now (no permission, grant off), or null. */
+  playRefusal(): string | null;
+  /** Plays a media reference; `playback` and `image` are full URLs on the origin. */
+  playMedia(media: BridgeMedia): Promise<void> | void;
+  /** Opens an entry page; `detail` is a full URL on the origin. */
+  openEntry(entry: { detail: string; title?: string }): void;
+  /** True when the manifest has this page. */
+  hasPage(pageId: string): boolean;
+  openPage(pageId: string): void;
+}
+
+export interface BridgeMedia {
+  mediaId: string;
+  playback: string;
+  title?: string;
+  image?: string;
 }
 
 /** Reads a message (an object or a JSON string). Returns null for anything that is not a bridge request. */
@@ -66,6 +95,30 @@ const idParam = (p: Record<string, unknown>) => {
   return v;
 };
 
+const textParam = (p: Record<string, unknown>, key: string, max: number): string | undefined => {
+  const v = p[key];
+  return typeof v === 'string' && v.trim() ? v.slice(0, max) : undefined;
+};
+
+/** A URL param on the extension's origin; the error names the param, never the URL. */
+const onOrigin = (p: Record<string, unknown>, key: string, baseUrl: string): string => {
+  const url = urlOnOrigin(baseUrl, textParam(p, key, 1000));
+  if (!url) throw new Error(`${key} must be on the extension's origin`);
+  return url;
+};
+
+/** Reads `playMedia` params. Throws for a bad id or a playback URL on another origin. */
+export function readMediaParams(p: Record<string, unknown>, baseUrl: string): BridgeMedia {
+  const mediaId = textParam(p, 'mediaId', 200);
+  if (!mediaId) throw new Error('mediaId is required');
+  const out: BridgeMedia = { mediaId, playback: onOrigin(p, 'playback', baseUrl) };
+  const title = textParam(p, 'title', 200);
+  if (title) out.title = title;
+  const image = urlOnOrigin(baseUrl, textParam(p, 'image', 1000));
+  if (image) out.image = image;
+  return out;
+}
+
 /** Runs one request and builds the reply. */
 export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps): Promise<BridgeReply> {
   try {
@@ -92,6 +145,25 @@ export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps):
       case 'close':
         deps.close();
         break;
+      case 'playMedia': {
+        const media = readMediaParams(req.params, deps.baseUrl);
+        const why = deps.playRefusal();
+        if (why) throw new Error(why);
+        await deps.playMedia(media);
+        break;
+      }
+      case 'openEntry': {
+        const detail = onOrigin(req.params, 'detail', deps.baseUrl);
+        const title = textParam(req.params, 'title', 200);
+        deps.openEntry(title ? { detail, title } : { detail });
+        break;
+      }
+      case 'openPage': {
+        const page = textParam(req.params, 'page', 64);
+        if (!page || !deps.hasPage(page)) throw new Error('page is not a page of this extension');
+        deps.openPage(page);
+        break;
+      }
     }
     return { zoggyfin: 1, id: req.id, result };
   } catch (e) {

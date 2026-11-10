@@ -23,9 +23,9 @@ describe('parseManifest', () => {
   });
 
   it('rejects another schema version with a clear message', () => {
-    const r = parseManifest({ ...raw, schemaVersion: 2 });
+    const r = parseManifest({ ...raw, schemaVersion: 3 });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/version 1.*version 2/);
+    if (!r.ok) expect(r.error).toMatch(/versions 1 and 2.*version 3/);
   });
 
   it('rejects a base URL that is not http(s)', () => {

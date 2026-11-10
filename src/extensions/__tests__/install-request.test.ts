@@ -1,4 +1,4 @@
-import { cancelInstallRequest, confirmInstallRequest, loadInstallRequest, pendingCandidates, useInstallRequest } from '../install-request';
+import { cancelInstallRequest, chosenGrants, confirmInstallRequest, initialGrants, loadInstallRequest, pendingCandidates, useInstallRequest } from '../install-request';
 import type { Candidate } from '../runtime';
 import { manifest } from '../test-utils/fixtures';
 
@@ -27,6 +27,42 @@ describe('install request', () => {
     expect(state().loading).toBe(false);
     expect(state().entries[1].error).toBe('Not an extension.');
     expect(pendingCandidates(state().entries).map((c) => c.manifest.id)).toEqual(['a']);
+  });
+
+  it('the screen starts from the account grants for an extension from the account', () => {
+    const c = cand('a');
+    expect(initialGrants(c)).toEqual({ itemPath: true, jellyfinToken: true, playback: false, downloads: false });
+    const fromAccount = { manifestUrl: c.manifestUrl, enabled: true, grants: { itemPath: false, jellyfinToken: false, playback: false, downloads: false }, settings: {}, addedAt: 1 };
+    expect(initialGrants({ ...c, fromAccount })).toEqual({ itemPath: false, jellyfinToken: false, playback: false, downloads: false });
+    expect(initialGrants({ ...c, fromAccount: { ...fromAccount, grants: { itemPath: true, jellyfinToken: true, playback: false, downloads: false } } })).toEqual({ itemPath: true, jellyfinToken: true, playback: false, downloads: false });
+    // No grant without its permission, whatever the account says.
+    const noToken = { ...c, manifest: { ...c.manifest, permissions: ['network' as const] } };
+    expect(initialGrants({ ...noToken, fromAccount: { ...fromAccount, grants: { itemPath: true, jellyfinToken: true, playback: false, downloads: false } } })).toEqual({ itemPath: false, jellyfinToken: false, playback: false, downloads: false });
+    // An update keeps the installed token choice.
+    const installed = { manifestUrl: c.manifestUrl, manifest: c.manifest, enabled: true, grants: { itemPath: true, jellyfinToken: false, playback: false, downloads: false }, installedAt: 1 };
+    expect(initialGrants({ ...c, installed }).jellyfinToken).toBe(false);
+  });
+
+  it('gives playback and downloads their own switch, on by default, apart from the token', () => {
+    const v2 = { ...cand('m'), manifest: { ...cand('m').manifest, permissions: ['network' as const, 'jellyfinToken' as const, 'playback' as const, 'downloads' as const] } };
+    expect(initialGrants(v2)).toEqual({ itemPath: false, jellyfinToken: true, playback: true, downloads: true });
+    expect(chosenGrants(v2, { playback: false })).toEqual({ itemPath: false, jellyfinToken: true, playback: false, downloads: true });
+    expect(chosenGrants(v2, { jellyfinToken: false })).toEqual({ itemPath: false, jellyfinToken: false, playback: true, downloads: true });
+    expect(chosenGrants(v2, { downloads: false, jellyfinToken: false })).toEqual({ itemPath: false, jellyfinToken: false, playback: true, downloads: false });
+    // A switch never turns on a grant the manifest does not ask for.
+    expect(chosenGrants(cand('a'), { playback: true })).toMatchObject({ playback: false, downloads: false });
+    // From the account: each switch starts from the account's value.
+    const fromAccount = { manifestUrl: v2.manifestUrl, enabled: true, grants: { itemPath: false, jellyfinToken: true, playback: false, downloads: true }, settings: {}, addedAt: 1 };
+    expect(initialGrants({ ...v2, fromAccount })).toEqual({ itemPath: false, jellyfinToken: true, playback: false, downloads: true });
+  });
+
+  it('remembers who asked: the user or account sync', async () => {
+    await loadInstallRequest(['a'], async (i) => cand(i), 'account');
+    expect(state().source).toBe('account');
+    cancelInstallRequest();
+    expect(state().source).toBe('user');
+    await loadInstallRequest(['b'], async (i) => cand(i));
+    expect(state().source).toBe('user');
   });
 
   it('a late load after Cancel does not bring the list back', async () => {

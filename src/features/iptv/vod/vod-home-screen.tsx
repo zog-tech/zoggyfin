@@ -9,6 +9,8 @@ import { type ComponentRef, useCallback, useMemo, useRef, useState } from 'react
 import { ActivityIndicator, FlatList, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/button';
+import { PlainGrid } from '@/components/plain-grid';
+import { PlainShelf } from '@/components/plain-shelf';
 import { EmptyState, LoadingState } from '@/components/states';
 import { Icon } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
@@ -33,11 +35,8 @@ import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme, webInput } from '@/theme';
 
 import { providerFormHref, useLiveGroup } from '../nav';
-import { VodGrid } from './vod-grid';
-import { vodCategoryHref } from './vod-nav';
-import { openTile, VodShelf } from './vod-shelf';
-import type { VodTileData } from './vod-tile';
-import { tileOfFavourite, tileOfItem, tileOfPosition } from './vod-view';
+import { openTile, vodCategoryHref } from './vod-nav';
+import { tileOfFavourite, tileOfItem, tileOfPosition, type VodTileData } from './vod-view';
 
 const LABELS: Record<VodKind, { title: string; all: string; search: string; none: string; icon: 'film' | 'tv' }> = {
   film: { title: 'Films', all: 'All films', search: 'Search films', none: 'This provider has no films.', icon: 'film' },
@@ -138,7 +137,7 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
   if (query) {
     const loadingAll = search.status === 'loading' || search.status === 'idle';
     body = (
-      <VodGrid
+      <PlainGrid
         items={results}
         onPress={open}
         focusFirstTile={false}
@@ -186,8 +185,8 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
         ListHeaderComponent={
           <>
             {banner}
-            <VodShelf title="Continue watching" items={resume} onPress={open} onLongPress={forget} firstFocus />
-            <VodShelf title="Favourites" items={favourites} onPress={open} firstFocus={!resume.length} />
+            <PlainShelf title="Continue watching" items={resume} onPress={open} onLongPress={forget} firstFocus />
+            <PlainShelf title="Favourites" items={favourites} onPress={open} firstFocus={!resume.length} />
             <Text style={[s.section, { paddingHorizontal: l.gutter }]} accessibilityRole="header">
               Categories
             </Text>

@@ -7,19 +7,45 @@ import { useEffect, useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { EmptyState } from '@/components/states';
+import { extensionDownloadCount, removeExtensionDownloads } from '@/downloads';
 import { OptionSheet } from '@/components/option-sheet';
 import { askText } from '@/extensions/prompts';
 import { currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
-import { describePermission, safeHost, type SettingField } from '@/extensions/schema';
-import { getExtension, removeExtension, setEnabled, setGrant, setValue, upsertExtension, useExtensions } from '@/extensions/store';
+import { describePermission, pagesOf, safeHost, type SettingField } from '@/extensions/schema';
+import { extensionsState, getExtension, removeExtension, setEnabled, setGrant, setPhoneTab, setTabPage, setValue, upsertExtension, useExtensions } from '@/extensions/store';
+import { pageHref } from '@/features/extensions/nav';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
+import { ExtensionSkipSettings } from '@/features/settings/skip-section';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { confirmDestructive } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
+import { grantKeyOf } from '@/extensions/grants';
 import { features } from '@/platform/tv';
 import { mediaColors, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
+import { pageIconName } from '@/features/extensions/icons';
+import { choosePhoneTab, chooseTabPage, type PhoneTab, phoneTabChoices, phoneTabValue, tabChoices, tabPagesOf, tabSlotPage } from '@/features/extensions/placement';
+import { PLACEMENT_PLATFORM, usePagePlacement } from '@/features/extensions/use-placement';
+import { TAB_INFO } from '@/lib/tab-destination';
+
+const PHONE_CHOICES = phoneTabChoices({ downloads: features.downloads });
+
+/** The footer of the "On this phone" row: what each choice keeps reachable. */
+function phoneFooter(value: PhoneTab): string {
+  const base = 'A tab takes the place of one tab, so the bar keeps five. Your other phones get this choice; iPad, the web, the Mac app and TV keep their own layout.';
+  if (value === 'none') return `The page is a tile in Library. ${base}`;
+  const tab = value.slice('replace:'.length) as keyof typeof TAB_INFO;
+  const where = tab === '(library)' ? 'Library stays one tap away from the button at the top of Home.' : `${TAB_INFO[tab].title} stays one tap away from its tile in Library.`;
+  return `${where} ${base}`;
+}
+
+/** Where the chosen tab page shows on this device (features/extensions/placement.ts). */
+function tabFooter(): string {
+  if (PLACEMENT_PLATFORM === 'tv') return 'One extension page can be a tab. On TV it comes first in the side menu. The choice follows your account.';
+  if (PLACEMENT_PLATFORM === 'phone') return 'The page that is a tab on iPad, the web and the Mac app. On this phone, "On this phone" decides.';
+  return 'One extension page can be a tab on iPad, the web and the Mac app. The choice follows your account to your other devices.';
+}
 
 const NO_OPTIONS: Record<string, { value: string; label: string }[]> = {};
 
@@ -35,6 +61,10 @@ export default function ExtensionScreen() {
   useExtensions((st) => st.auto[id]);
   const options = useExtensions((st) => st.options[id]) ?? NO_OPTIONS;
   const [picker, setPicker] = useState<SettingField | null>(null);
+  const [tabPicker, setTabPicker] = useState(false);
+  const [phonePicker, setPhonePicker] = useState(false);
+  const placement = usePagePlacement();
+  const list = useExtensions((st) => st.list);
   const [checking, setChecking] = useState(false);
 
   // Fetch the choice lists again when the page opens.
@@ -81,6 +111,14 @@ export default function ExtensionScreen() {
 
   const remove = async () => {
     if (!(await confirmDestructive(`Remove ${m.name}?`, 'Its buttons, Home rows and pages go away. Nothing changes on its server.', 'Remove'))) return;
+    // Its downloads are the user's files: ask before they go. Kept ones stay in Downloads and still play.
+    const saved = extensionDownloadCount(m.id);
+    if (saved > 0) {
+      const words = saved === 1 ? 'download' : 'downloads';
+      if (await confirmDestructive(`Delete its ${saved} ${words} too?`, `The ${words} of ${m.name} on this device are removed. Keep them to watch them later.`, 'Delete')) {
+        await removeExtensionDownloads(m.id);
+      }
+    }
     removeExtension(m.id);
     router.back();
   };
@@ -90,8 +128,33 @@ export default function ExtensionScreen() {
     if (v !== null) setValue(m.id, f, v);
   };
 
+  // Native pages of a v2 manifest (a v1 Home row is a page too, but it has no page of its own to open).
+  const pageRows = m.schemaVersion === 2 && ext.enabled ? pagesOf(m) : [];
+  const panels = features.extensionPanels ? (m.contributes.panels ?? []) : [];
   const pickerOptions = picker?.type === 'choice' ? (picker.options?.length ? picker.options : (options[picker.key] ?? [])) : [];
   const account = currentAccount();
+  // "Show as tab": only when the account has more than one page that may fill the one tab slot.
+  const ownTabPages = ext.enabled ? tabPagesOf(ext) : [];
+  const tabChoice = ownTabPages.length && tabChoices(list).length > 1 ? ownTabPages : [];
+  const slot = tabSlotPage(list);
+  const slotHere = slot?.extId === m.id ? slot : null;
+  const chooseTab = (pageId: string) => {
+    for (const u of chooseTabPage(extensionsState().list, m.id, pageId)) setTabPage(u.extId, u.page);
+  };
+  // "On this phone": phones only (Android tablets count as phones), for an extension with a tab-capable page.
+  const phoneRow = PLACEMENT_PLATFORM === 'phone' && ownTabPages.length > 0;
+  const phoneValue = phoneTabValue(placement, m.id);
+  const choosePhone = (v: PhoneTab) => {
+    const updates = choosePhoneTab(extensionsState().list, m.id, v);
+    if (!updates.length) return;
+    // The tab bar changes at once (the tab navigator remounts and opens Home); playback goes on.
+    for (const u of updates) setPhoneTab(u.extId, u.tab);
+    const tab = v === 'none' ? null : (v.slice('replace:'.length) as keyof typeof TAB_INFO);
+    toast(
+      !tab ? `${m.name} is a tile in Library again.` : tab === '(library)' ? `${m.name} is a tab now. Library is at the top of Home.` : `${m.name} is a tab now. ${TAB_INFO[tab].title} is in Library.`,
+      { icon: 'iphone' },
+    );
+  };
 
   return (
     <>
@@ -108,13 +171,14 @@ export default function ExtensionScreen() {
             {m.permissions.map((p, i) => {
               const d = describePermission(p, m);
               const last = i === m.permissions.length - 1;
-              if (p === 'network') return <InfoRow key={p} icon="globe" label={d.title} value="" last={last} />;
-              const key = p === 'itemPath' ? 'itemPath' : 'jellyfinToken';
+              // Each permission has its own grant; one with no grant (network) is a plain row.
+              const key = grantKeyOf(p);
+              if (!key) return <InfoRow key={p} icon="globe" label={d.title} value="" last={last} />;
               const on = ext.grants[key];
               return (
                 <SettingsRow
                   key={p}
-                  icon={p === 'itemPath' ? 'folder' : 'lock.fill'}
+                  icon={p === 'itemPath' ? 'folder' : p === 'playback' ? 'play.fill' : p === 'downloads' ? 'arrow.down.circle' : 'lock.fill'}
                   label={d.title}
                   onPress={() => setGrant(m.id, key, !on)}
                   role="switch"
@@ -145,9 +209,38 @@ export default function ExtensionScreen() {
             </Group>
           ) : null}
 
-          {features.extensionPanels && m.contributes.panels?.length ? (
+          <ExtensionSkipSettings extensionId={m.id} />
+
+          {phoneRow ? (
+            <Group footer={phoneFooter(phoneValue)}>
+              <SettingsRow
+                icon="iphone"
+                label="On this phone"
+                value={PHONE_CHOICES.find((o) => o.value === phoneValue)?.label ?? 'Library tile'}
+                onPress={() => setPhonePicker(true)}
+                last
+              />
+            </Group>
+          ) : null}
+
+          {tabChoice.length ? (
+            <Group footer={tabFooter()}>
+              <SettingsRow icon="square.stack" label="Show as tab" value={slotHere?.title ?? 'Another extension'} onPress={() => setTabPicker(true)} last />
+            </Group>
+          ) : null}
+
+          {pageRows.length || panels.length ? (
             <Group title="Pages">
-              {m.contributes.panels.map((p, i, all) => (
+              {pageRows.map((p, i) => (
+                <SettingsRow
+                  key={`page:${p.id}`}
+                  icon={pageIconName(p.icon)}
+                  label={`Open ${p.title}`}
+                  onPress={() => router.push(pageHref('(home)', m.id, p.id))}
+                  last={i === pageRows.length - 1 && !panels.length}
+                />
+              ))}
+              {panels.map((p, i, all) => (
                 <SettingsRow key={p.id} icon="square.grid.2x2" label={p.title} onPress={() => router.push({ pathname: '/extension-panel', params: { ext: m.id, panel: p.id } })} last={i === all.length - 1} />
               ))}
             </Group>
@@ -168,6 +261,28 @@ export default function ExtensionScreen() {
         selected={picker ? [String(values[picker.key] ?? '')] : []}
         onSelect={(v) => picker && setValue(m.id, picker, v)}
         onClose={() => setPicker(null)}
+      />
+      <OptionSheet
+        visible={tabPicker}
+        title="Show as tab"
+        options={tabChoice.map((p) => ({ value: p.id, label: p.title }))}
+        selected={slotHere ? [slotHere.pageId] : []}
+        onSelect={(v) => {
+          chooseTab(v);
+          setTabPicker(false);
+        }}
+        onClose={() => setTabPicker(false)}
+      />
+      <OptionSheet
+        visible={phonePicker}
+        title="On this phone"
+        options={PHONE_CHOICES}
+        selected={[phoneValue]}
+        onSelect={(v) => {
+          setPhonePicker(false);
+          choosePhone(v as PhoneTab);
+        }}
+        onClose={() => setPhonePicker(false)}
       />
     </>
   );

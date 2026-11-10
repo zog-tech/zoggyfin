@@ -7,7 +7,7 @@ buttons on items, Home rows and a page.
 An extension is **data only**. The app reads a JSON manifest from your server and
 draws the contributions. No code from an extension runs in the app (App Store
 guideline 2.5.2): there is no `eval`, and the app downloads no scripts. A panel is
-a normal web page in a WebView or an iframe. It can only use the six bridge
+a normal web page in a WebView or an iframe. It can only use the nine bridge
 methods below.
 
 Extensions work on iPhone, iPad, Android, web and the Mac app.
@@ -32,14 +32,42 @@ Other parts of the app use two functions from `src/extensions`:
 - `installFromInvite(urls)` shows one confirm screen for all the extensions in
   the list that are not installed yet.
 
+### Your extensions follow your account
+
+The installed extensions belong to the Jellyfin account (server and user), not
+to the device. Each account on a device has its own list, and a switch to
+another account shows that account's extensions.
+
+The list also syncs through the account, like Live TV. It is kept in the
+user's display preferences (id `zoggyfin-extensions`, client `zoggyfin`).
+
+- What syncs: the manifest URL, on or off, the permissions you allowed, the
+  settings that are not secret, the page you chose as a tab, and the skip
+  choices per segment label. The manifest itself does not: each device loads
+  it from its URL.
+- Secret settings (`"secret": true`) never leave the device. Enter them again
+  on each device.
+- An extension that you added on another device shows the confirm screen once,
+  with the title "From your account". **Not now** keeps it off this device; it
+  does not ask again until the extension is removed and added again.
+- An extension that you remove on one device goes from your other devices,
+  with no question.
+- The first sync of a device only adds to the account. When the same extension
+  is already in the account, the account's settings win.
+
+The first start of this version copies the list that was on the device to
+every account saved on it.
+
 ## Manifest (schema version 1)
 
-The schema is in `src/extensions/schema.ts` (zod). A manifest that is not valid
-is refused, and the error names the first wrong field.
+The schema is in `src/extensions/schema/` (zod). The app reads schema versions 1
+and 2 (see [Schema version 2](#schema-version-2)). A manifest that is not valid
+is refused, and the error names the first wrong field. A version 1 manifest
+stays valid.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `schemaVersion` | `1` | Required. |
+| `schemaVersion` | `1` or `2` | Required. This section describes version 1. |
 | `id` | string | Lower-case letters, digits, `.`, `_`, `-`. One install per id. |
 | `name`, `version` | string | Shown on the confirm screen. |
 | `description` | string | Optional. |
@@ -71,7 +99,7 @@ Strings in `path`, `query`, `body`, `headers`, `confirm` and a panel `url` can
 contain `{{scope.key}}`. A template only reads a value; there are no
 expressions. An unknown name gives an empty string. Values in a `path` are URL
 encoded. In a `body`, a string that is exactly one token of a toggle setting
-keeps its `true`/`false` type.
+or of `action.next` keeps its `true`/`false` type.
 
 | Scope | Keys |
 | --- | --- |
@@ -80,10 +108,11 @@ keeps its `true`/`false` type.
 | `settings` | the keys of `contributes.settings` |
 | `share` | `url` |
 | `jellyfin` | `serverUrl`, `serverId`, `userId`, `userName`, `isAdmin` |
+| `action` | `next`: the state an on/off button of an entry page asks for, `true` or `false` (schema version 2) |
 
 ### `settings`
 
-Simple fields, kept on the device per extension. Secret text goes to the
+Simple fields, kept per account and extension (they sync, see above). Secret text goes to the
 keychain (secure store on web). The user never has to type a value: each field
 gets one by itself.
 
@@ -265,6 +294,9 @@ function zoggyfin(method, params = {}) {
 | `refreshLibrary` | – | Loads the app's data again. |
 | `toast` | `{ text }` | Shows a toast. |
 | `close` | – | Closes the panel. |
+| `playMedia` | `{ mediaId, playback, title?, image? }` | Plays the media, as a card with `media` does. `playback` (and `image`) must be on the extension's origin. Needs the `playback` permission, and the user's switch must be on; otherwise the answer is an error that says so. Schema version 2. |
+| `openEntry` | `{ detail, title? }` | Closes the panel and opens the entry page of `detail` (on the extension's origin). Schema version 2. |
+| `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. Schema version 2. |
 
 The app answers only messages from the extension's origin, and sends answers
 only to that origin.
@@ -286,6 +318,394 @@ A panel must allow framing by those origins (no `X-Frame-Options: DENY`, and no
 Actions have 15 s. Feeds, choice lists and task polls have 8 s. A slow or broken
 extension shows an error toast or a small note; it never blocks a screen.
 
+## Schema version 2
+
+Version 2 adds native pages, playable media, downloads and skip labels. It
+keeps every version 1 field and contribution except `homeSections`: a Home row
+is now a page section named in `placement.home`.
+
+The app shows each page with its sections and its search (see "Pages"
+below), the sections in `placement.home` as Home rows, an entry page for an
+entry with `detail`, plays an entry's `media` in the video player (with
+qualities, subtitles, chapters, labelled skip segments and progress reports),
+and saves it on the device (see "Downloads: how it works"). A page opens from
+the extension in Settings → Extensions ("Open <page>"), from the header of its
+Home rows, and in the places its `placement` asks for (see "Where a page
+shows" below). Each skip label has a setting in the "Skip" group of the
+extension's page in Settings → Extensions.
+
+A version 1 manifest is read as version 2 with one page per Home row: the page
+has one `row` section, no tab, no Library tile, and the section on Home.
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "org.example.media",
+  "name": "Example Media",
+  "version": "2.0.0",
+  "baseUrl": "https://media.example.org",
+  "permissions": ["network", "playback", "downloads"],
+  "contributes": {
+    "pages": [
+      {
+        "id": "main",
+        "title": "Example",
+        "icon": "play.rectangle",
+        "placement": { "tab": true, "library": true, "home": ["latest"] },
+        "search": { "feed": "/api/search", "placeholder": "Search Example" },
+        "sections": [
+          { "id": "latest", "title": "Latest", "layout": "row", "shape": "thumb", "feed": "/api/feed/latest", "refreshSeconds": 300 },
+          { "id": "all", "title": "Everything", "layout": "grid", "shape": "poster", "feed": "/api/feed/all" },
+          { "id": "queue", "title": "Queue", "layout": "list", "feed": "/api/feed/queue" }
+        ]
+      }
+    ],
+    "skipLabels": [
+      { "id": "intro", "title": "Intro", "default": "ask" },
+      { "id": "promo", "title": "Promotion", "default": "auto" }
+    ]
+  }
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen, each with its own switch (on by default). Turn one off there or on the extension's page in Settings to stop that use. A version 1 manifest cannot ask for them. |
+| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`. |
+| `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
+| `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
+| `sections` | `id`, `title`, `feed`, `layout` (`row`, the default, `grid` or `list`), `shape` (`poster`, `thumb`, the default, or `square`), `refreshSeconds` (5 to 3600). `grid` and `list` load the next page near the end. |
+| `skipLabels` | At most 10. `id`, `title`, `default`: `auto` (skip, with Undo), `ask` (the default; a Skip button) or `off`. |
+
+Ids are unique in each list: pages, the sections of one page, the Home ids of
+one page, and skip labels. A Home id must name a section of its page.
+
+### Replies (schema version 2)
+
+All paths are under `baseUrl`, or full URLs on the same origin. The app checks
+every URL in a reply: a URL on another origin is left out, never followed. A
+reply is read entry by entry: a bad entry is left out, and the others stay.
+
+**Feed page.** `GET <feed>?cursor=<cursor>` (search adds `query`):
+
+```json
+{ "items": [], "next": "opaque-cursor-or-null" }
+```
+
+`next` is a cursor, not a URL. No `next`, `null` or `""` means the last page,
+so a version 1 feed is one page. At most 100 entries per page.
+
+**Feed entry.** The version 1 fields stay. Version 2 adds:
+
+```json
+{
+  "id": "e123",
+  "title": "An entry",
+  "subtitle": "12 min · 2 days ago",
+  "image": "/img/e123.jpg",
+  "progress": 0.4,
+  "badge": "New",
+  "detail": "/api/entries/e123",
+  "media": { "id": "e123", "kind": "video", "duration": 734, "playback": "/api/entries/e123/play", "download": "/api/entries/e123/download" }
+}
+```
+
+- `badge`: a short label (40 characters at most).
+- `detail`: answers with a detail description.
+- `media`: `kind` is `video` (the default) or `audio`; `duration` is in seconds;
+  `playback` answers with a stream description; `download` with a download
+  description. Media with neither URL on the origin is left out.
+- A bad `badge`, `detail` or `media` is left out on its own; the entry stays.
+- A card opens, in this order: `detail`, else plays `media`, else `panel`,
+  else `link`. An entry with an `itemId` that the server knows shows and
+  opens as that Jellyfin item. TV has no panels: a card that only opens a
+  panel says so there.
+
+### Pages
+
+A page shows its title, a search field when it has `search`, and its
+sections in order.
+
+- `row`: one horizontal row with the first page of the feed.
+- The last section of a page, when it is a `grid` or a `list`, fills the rest
+  of the screen and asks for the next page (`?cursor=<next>`) when the user
+  nears its end. It stops when `next` is empty, when a cursor comes back a
+  second time, or after 20 pages (2000 entries), with a note.
+- A `grid` or `list` that is not last shows its first entries (a row for a
+  grid, five lines for a list) and "See all", which opens that section on
+  its own screen, where it pages.
+- While the user types in the search field, the app waits 0.3 s, then sends
+  `GET <search.feed>?query=<text>` (and `cursor` for more pages). The results
+  replace the sections until the field is empty. A reply to an older text is
+  never shown.
+- A section that fails shows "<name> is not available now." and the rest of
+  the page stays. On Home, a row that loads or is empty takes no room.
+- Pull to refresh (not on TV) loads every feed of the extension again.
+  `refreshSeconds` loads a feed again on that interval.
+- The cursor and the search text are added to the URL as they are: they are
+  never read as templates.
+
+### Where a page shows
+
+`placement` asks for places; the app decides per platform. Only the pages of
+extensions that are on count. With no extension that asks, the app looks as
+it did before.
+
+| Place | iPhone, Android phone and tablet | iPad | Web, Mac app | TV |
+|---|---|---|---|---|
+| The tab (`tab`) | A Library tile, or a tab in place of one tab (the user chooses, see below) | A tab (the sidebar in regular width) | A tab, an item in the sidebar | An item in the side menu |
+| A Library tile (`library`) | A tile after the libraries, unless the page is the tab | A tile after the libraries | A tile, unless the page is the tab | An item in the side menu |
+| Home rows (`home`) | Yes | Yes | Yes | Yes |
+
+- **One tab.** The app has one tab slot for all extensions. When more than one
+  page has `tab: true`, the page chosen in Settings → Extensions → the
+  extension → "Show as tab" fills it (the choice follows the account to other
+  devices). With no choice, the page of the extension installed first fills it.
+- **Phones.** Phones already have five tabs (Android cannot show a sixth), so
+  the user chooses in Settings → Extensions → the extension → "On this phone":
+  - **Library tile** (the default): the page with `tab: true` is a tile in
+    Library, like a page with `library: true`.
+  - **Tab in place of Music, Downloads, Search or Library**: the page is a
+    tab, and the chosen tab hides. Home is never replaced. The bar keeps five
+    tabs.
+
+  The replaced tab stays one tap away. Music, Downloads and Search get a tile
+  in Library with the tab's name and icon; it opens the same screen in the
+  Library stack. When Library is replaced, Home shows a "Library" button at
+  the top. Links, the music player's "open" actions and "Go to Downloads"
+  go to the new place. One extension at a time can be the phone tab; its
+  page is the one chosen with "Show as tab", else its first tab page. The
+  choice follows the account to your other phones; iPad, the web, the Mac
+  app and TV ignore it. When the extension is off or removed, loses its tab
+  page in an update, or you sign in to an account without it, the replaced
+  tab comes back. A change rebuilds the tab bar and opens Home; playback and
+  the mini player go on.
+- **TV.** The side menu lists at most two extension pages, before Settings:
+  the tab page first, then the pages with `tab` or `library` in install order.
+- The tab and the side menu show the page `title` and `icon`. `icon` is an
+  icon name of the app (`src/components/icon-names.ts`, for example `film`,
+  `tv`, `music.note`, `play.fill`). Another name shows a grid icon.
+
+**Stream description.** `GET media.playback`:
+
+```json
+{
+  "stream": { "url": "/hls/e123/master.m3u8", "type": "hls" },
+  "alternatives": [{ "url": "/files/e123.mp4", "type": "file" }],
+  "title": "An entry",
+  "subtitle": "Example Media",
+  "image": "/img/e123.jpg",
+  "duration": 734,
+  "resume": 120.5,
+  "qualities": [{ "id": "720", "label": "720p", "url": "/hls/e123/720.m3u8" }],
+  "subtitles": [{ "id": "en", "label": "English", "language": "en", "url": "/subs/e123.en.vtt" }],
+  "segments": [{ "label": "intro", "start": 0, "end": 12.5 }],
+  "chapters": [{ "title": "Part 1", "start": 0 }],
+  "next": { "id": "e124", "title": "Next entry", "media": { "id": "e124", "playback": "/api/entries/e124/play" } },
+  "report": { "path": "/api/entries/e123/progress", "intervalSeconds": 10 }
+}
+```
+
+- The player tries `stream`, then each of `alternatives` (5 at most). With no
+  `type`, a path that ends in `.m3u8` is `hls`, any other is `file`. With no
+  stream on the origin, the reply is refused.
+- `live: true` marks a live stream: `duration` and `resume` are ignored.
+- `resume` at or past `duration` is ignored.
+- Segment labels are free text. `skipLabels` say what the player does with each.
+- `next` is a feed entry with `media.playback`; otherwise it is left out.
+- `report.intervalSeconds` is 5 to 300 (10 by default).
+- On the web and in the Mac app, playlists and segments need CORS, as feeds do.
+
+**Progress report.** `POST report.path`. Errors are ignored.
+
+```json
+{ "event": "start | progress | pause | resume | seek | stop | finished", "mediaId": "e123", "position": 130.2, "duration": 734, "rate": 1, "quality": "720", "offline": false }
+```
+
+Times are seconds, to 0.1 s. `duration` is not sent for a live stream, and
+`quality` is not sent when the stream has no qualities.
+
+**Detail description.** `GET entry.detail`:
+
+```json
+{
+  "title": "An entry",
+  "eyebrow": "Example Media",
+  "image": "/img/e123.jpg",
+  "backdrop": "/img/e123-wide.jpg",
+  "lines": ["12 min", "2 days ago"],
+  "description": "Plain text.",
+  "media": { "id": "e123", "kind": "video", "playback": "/api/entries/e123/play" },
+  "progress": 0.4,
+  "actions": [
+    {
+      "id": "save",
+      "title": "Save",
+      "icon": "heart",
+      "state": { "on": false, "onTitle": "Saved", "onIcon": "heart.fill" },
+      "request": { "method": "POST", "path": "/api/entries/e123/save", "body": { "on": "{{action.next}}" } }
+    }
+  ],
+  "sections": [{ "id": "related", "title": "Related", "layout": "row", "feed": "/api/entries/e123/related" }]
+}
+```
+
+- `title` is required. Any other bad field is left out on its own.
+- At most 6 `lines` and 6 `actions`, and 8 `sections`.
+- An action takes `inputs` and `confirm`, as an item action does. With
+  `state`, it is an on/off button; `{{action.next}}` is the state it asks for.
+  An action whose `request.path` is on another origin is left out.
+
+The answer to an action adds two `refresh` values and `state` to
+[Responses](#responses):
+
+```json
+{ "toast": "Saved", "refresh": "none | item | entry | page | library", "state": { "on": true } }
+```
+
+`entry` reloads the detail page, `page` the extension page. Where there is no
+such page (the item action sheet), they do nothing. A `state` that is not valid
+is ignored.
+
+**The entry page.** A card with `detail` opens the entry page. The app loads
+the detail description (8 s at most) and shows:
+
+- The backdrop, the poster (`image`), the eyebrow, the title and the `lines`
+  on one line. The description shows three lines and "More".
+- Play, or Resume with a bar when `progress` is more than 0 and less than 1.
+  Play needs `media.playback`. Resume plays from the stream description's
+  `resume`; "Start over" plays from 0.
+- Download when `media.download` is set, the user's downloads switch is on,
+  and the device saves files (not TV and not the plain web).
+- The buttons of `actions`. `icon` is an icon name of the app
+  (`src/components/icon-names.ts`); an unknown name shows a default icon.
+- The `sections`, as on a page. A row is the default. A last `grid` or `list`
+  scrolls with the page and asks for more. A `grid` or `list` that is not last
+  shows its first entries with no "See all".
+- While it loads, a placeholder; when it fails, a message (never a URL) and
+  "Try again". A `detail` URL on another origin shows "This entry cannot be
+  opened".
+- TV: Play has the first focus (with no Play, the first button). The D-pad
+  goes from Play to the buttons, then down to the sections.
+
+**Buttons with state.** An action with `state` is an on/off button:
+
+- It shows `title` and `icon` while off, and `onTitle` and `onIcon` (else the
+  same ones) while on, in the accent colour.
+- A press runs the action's `inputs` and `confirm` first. Then the button
+  shows the new state at once and the app sends the request with
+  `{{action.next}}` set to that state (`true` or `false`; in a JSON body as a
+  boolean, in a path or a query as text).
+- A failed request (an error, a time-out, an HTTP error) puts back the last
+  state that the extension confirmed.
+- `state` in the reply is the truth: the button shows it. With no `state`, the
+  button keeps the state it asked for.
+- When the user presses again before a reply arrives, only the reply to the
+  newest press changes the button. A late reply to an older press never does.
+- `refresh: "entry"` loads the entry page again; the page's own state is the
+  truth after that. `"page"` loads the extension's feeds again, and
+  `"library"` the app's data, as for an item action.
+
+**Long press.** A long press (a right click on the web and in the Mac app) on
+a card with `media` opens a menu:
+
+| Row | Shown when |
+| --- | --- |
+| Play | `media.playback` is set |
+| Play from the beginning | `media.playback` is set and `progress` is more than 0 and less than 1 |
+| Open | the card has `detail` |
+| Download | `media.download` is set, the user's downloads switch is on, and the device saves files |
+
+**Playback and downloads switches.** The `playback` and `downloads`
+permissions have a switch on the confirm screen and in Settings → Extensions.
+With playback off, Play (on a card, in the menu, on the entry page and from a
+panel) shows "Playback is turned off for <name>. Turn it on in Settings →
+Extensions." With downloads off, Download does not show.
+
+**Download description.** `GET media.download`:
+
+```json
+{
+  "url": "/files/e123-720.mp4",
+  "bytes": 123456789,
+  "container": "mp4",
+  "label": "720p",
+  "subtitles": [{ "label": "English", "language": "en", "url": "/subs/e123.en.vtt" }],
+  "image": "/img/e123.jpg",
+  "options": [{ "id": "720", "label": "720p · 310 MB", "download": "/api/entries/e123/download?q=720" }]
+}
+```
+
+- One progressive file: a `url` whose path ends in `.m3u8` is left out.
+- `options` (10 at most) let the user pick first. Each `download` answers with
+  another download description. A reply can have only `options`.
+- A reply with no file and no option is refused.
+- Every URL (the file, the subtitles, the image and each option) must be on the
+  extension's origin. A URL on another origin is left out.
+- The file request gets the manifest `headers`, and the Jellyfin token headers
+  only when the user allowed `jellyfinToken`. It never gets the header that the
+  app sends to Jellyfin for its own downloads. Use `Range` support on the file
+  if you can: a paused or stopped download then continues where it stopped.
+- `bytes` is the size the app shows before the transfer starts; the real size
+  comes from the response.
+
+**Downloads: how it works.**
+
+- The app asks `media.download` when the user taps Download. When the reply has
+  `options` and no `url`, the app shows the options and asks
+  the chosen option's `download` for the file.
+- The app asks the description again each time a transfer starts (a resume
+  after a restart, Retry). A file URL can therefore expire: when the transfer
+  answers 401, 403, 404 or 410, the app asks the description once more and
+  continues from the saved bytes when the server allows ranges, else it starts
+  again. Keep the chosen option's `download` valid.
+- After the file, the app saves each subtitle (`subtitle-<n>.vtt`) and the
+  image next to it, with the same headers. When the entry has
+  `media.playback`, the app also reads the stream description once to learn
+  `report.path`, so play with no connection can report.
+- The download needs the `downloads` permission and its switch. With the switch
+  off, the app says "Downloads are off for this extension". The web app in a
+  browser and TV have no downloads; they say so. iPhone, iPad, Android phones
+  and the Mac app download.
+
+**What the user sees.**
+
+- The Downloads tab has a section per extension (the extension's name), below
+  the server sections. A row shows the title, the line under it, the quality
+  label and the size. Tap plays the file; swipe left deletes it. Downloads in
+  progress show with the others, with pause, resume, retry and cancel.
+- A download belongs to the Jellyfin account that made it. Another account on
+  the same device does not see it; its file stays on the device until that
+  account signs in again. Removing the extension asks whether to delete its
+  downloads too. Downloads that the user keeps stay in the Downloads tab and
+  still play.
+- A downloaded entry plays from the device, also with a connection, with its
+  saved subtitles, title and image. The position is kept on the device, so the
+  next play resumes there. Reports carry `"offline": true`. A `stop` or
+  `finished` report that cannot go waits on the device (100 per account at
+  most, 30 days at most) and is sent, oldest first, when the extension answers
+  again. Other reports from offline play are not kept.
+- Quality choices, `next`, segments and chapters come only from a stream
+  description, so a downloaded entry plays without them.
+
+## Try it
+
+1. Start the sample server on a computer (Node 18 or later, no packages):
+   `node examples/extensions/hello/server.mjs`.
+2. In the app (web build on the same computer), Settings → Extensions → **Add
+   an extension**, enter `http://localhost:8787/pages/zoggyfin-extension.json`
+   and tap **Add**.
+3. Open the "Hello Pages" page: scroll the row, the list and the grid, search
+   for "clip 12", open "Sample clip 3", press Save, play it, pick another
+   quality and the English subtitles, and let the intro and credits segments
+   show their Skip button and toast.
+4. On a phone or the Mac app, download an entry and pick one of the two
+   choices; the server's console shows each progress report.
+
+On a phone, start the server with `BASE_URL=http://<your computer's LAN
+address>:8787` and add that address. The section below lists what the
+samples contain.
+
 ## Sample: Hello
 
 `examples/extensions/hello/` has a static manifest, a panel page and a small fake
@@ -303,5 +723,35 @@ Then add `http://localhost:8787` in Settings → Extensions. Hello adds:
 - "Send to Hello" for any shared link.
 - A "Hello" panel with buttons for the bridge methods.
 
-On a phone, start the server with `BASE_URL=http://<your computer's LAN
-address>:8787` and add that address.
+A second sample, Hello Pages (schema version 2), runs on the same server. Add
+`http://localhost:8787/pages/zoggyfin-extension.json` in Settings →
+Extensions. It has one page, opened from its settings page ("Open Hello
+Pages") or from the header of its "Latest samples" Home row:
+
+- "Latest samples": a row of 12 entries, also on Home.
+- "Up next": a list with progress bars that pages 5 entries at a time; its
+  "See all" opens the full list.
+- "All samples": a poster grid of 95 entries that pages 20 at a time through
+  `next`.
+- A search field: `/pages/search` matches titles and topics, 20 per page.
+- Every entry plays the same 6 s test video, which the sample serves itself
+  (`media/sample.mp4`, a test pattern with a tone, with byte ranges). The stream
+  description is at `/pages/entries/<id>/play`. It has two `qualities` ("High"
+  and "Low", the same file under two URLs), an English WebVTT subtitle file,
+  two segments with the manifest's `skipLabels` (`intro`, default `ask`, and
+  `credits`, default `auto`), two `chapters`, the following sample as `next`,
+  and a `report` path; the server prints each report it gets.
+- The download description at `/pages/entries/<id>/download` offers two
+  `options`; each answers with one file and its subtitles.
+- The page has `tab` and `library` in its `placement`: a tab on iPad, the web
+  and the Mac app, a Library tile on phones, a side menu entry on TV.
+- Every third entry opens an entry page (`/pages/entries/<id>`): Play or
+  Resume, a Save button with state that the server keeps in memory until it
+  stops (`POST /pages/entries/<id>/save` with `{ "on": {{action.next}} }`; any
+  other value than `true` or `false` is refused), and a "Related" row.
+- A long press on an entry opens its menu: Play, Play from the beginning (with
+  progress), Open (with an entry page) and Download.
+- Every third entry has a `detail` page; the others carry `media`.
+
+`src/extensions/__tests__/hello-sample.test.ts` starts the server and reads
+every endpoint through the app's parsers, so the sample stays valid.

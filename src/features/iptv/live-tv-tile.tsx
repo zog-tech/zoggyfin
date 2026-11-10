@@ -18,7 +18,7 @@ import { useMergedLists, useProviders } from '@/iptv';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, mediaColors, radius, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
 
-import { liveTvHref, liveTvTab } from './nav';
+import { liveTvHref, liveTvTab, useLiveGroup } from './nav';
 import { LIVE_TV_TILE_ID, libraryTileSubtitle, showLibraryTile, withLiveTvTile } from './placement';
 
 const ENV = { os: Platform.OS, tab: liveTvTab, tv: isTV };
@@ -45,6 +45,8 @@ function LiveTvTile({ width, subtitle, preferredFocus }: { width: number; subtit
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const height = (width * 9) / 16;
+  // The Library stack, or Home when the grid shows there (Library replaced on a phone).
+  const group = useLiveGroup();
   return (
     <Touchable
       kind="tile"
@@ -52,7 +54,7 @@ function LiveTvTile({ width, subtitle, preferredFocus }: { width: number; subtit
       // TV: the lit caption strip is the focus mark (design system §7.19).
       ring={!isTV}
       firstFocus={preferredFocus}
-      onPress={() => router.push(liveTvHref('(library)'))}
+      onPress={() => router.push(liveTvHref(group === '(home)' ? '(home)' : '(library)'))}
       accessibilityRole="button"
       accessibilityLabel={`Live TV, ${subtitle}`}
       containerStyle={{ width }}>

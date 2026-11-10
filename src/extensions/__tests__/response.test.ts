@@ -46,3 +46,35 @@ describe('task status', () => {
     expect(readTaskStatus({ state: 'paused' })).toBeNull();
   });
 });
+
+describe('action reply, v2', () => {
+  it('reads the new state of an on/off button', () => {
+    const f = fx();
+    const r = handleActionResponse({ toast: 'Saved', refresh: 'none', state: { on: true } }, f, 'Sent');
+    expect(r?.state).toEqual({ on: true });
+    expect(f.toast).toHaveBeenCalledWith('Saved', 'ok');
+  });
+  it('ignores a state that is not valid, and keeps the rest', () => {
+    const f = fx();
+    const r = handleActionResponse({ toast: 'Saved', state: { on: 'yes' } }, f, 'Sent');
+    expect(r).not.toBeNull();
+    expect(r?.state).toBeUndefined();
+    expect(f.toast).toHaveBeenCalledWith('Saved', 'ok');
+  });
+  it('refreshes the entry or the page when the caller can', () => {
+    const f = { ...fx(), refreshEntry: jest.fn(), refreshPage: jest.fn() };
+    handleActionResponse({ refresh: 'entry' }, f, 'Sent');
+    handleActionResponse({ refresh: 'page' }, f, 'Sent');
+    expect(f.refreshEntry).toHaveBeenCalledTimes(1);
+    expect(f.refreshPage).toHaveBeenCalledTimes(1);
+    expect(f.refreshItem).not.toHaveBeenCalled();
+    expect(f.refreshLibrary).not.toHaveBeenCalled();
+  });
+  it('does nothing for an entry refresh where there is no entry page', () => {
+    const f = fx();
+    handleActionResponse({ toast: 'Done', refresh: 'entry' }, f, 'Sent');
+    expect(f.toast).toHaveBeenCalledWith('Done', 'ok');
+    expect(f.refreshItem).not.toHaveBeenCalled();
+    expect(f.refreshLibrary).not.toHaveBeenCalled();
+  });
+});

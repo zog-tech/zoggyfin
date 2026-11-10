@@ -1,4 +1,4 @@
-import { KEEP_FINISHED_MS, MAX_POLL_FAILURES, startTask, useTasks } from '../tasks';
+import { KEEP_FINISHED_MS, MAX_POLL_FAILURES, startTask, stopTasksExcept, useTasks } from '../tasks';
 
 function harness(answers: unknown[]) {
   const timers: { fn: () => void; ms: number }[] = [];
@@ -54,5 +54,18 @@ describe('tasks', () => {
     startTask({ id: 'same', title: 'A', statusUrl: '/s' }, { id: 'x', name: 'X' }, h.deps);
     startTask({ id: 'same', title: 'B', statusUrl: '/s' }, { id: 'x', name: 'X' }, h.deps);
     expect(useTasks.getState().tasks.map((t) => t.title)).toEqual(['B']);
+  });
+
+  it('an account switch stops the polls of the other account', async () => {
+    const h = harness([{ state: 'running', progress: 0.1 }, { state: 'running', progress: 0.2 }]);
+    startTask({ id: 'a1', title: 'A', statusUrl: '/a' }, { id: 'x', name: 'X', account: 'srv.userA' }, h.deps);
+    startTask({ id: 'b1', title: 'B', statusUrl: '/b' }, { id: 'x', name: 'X', account: 'srv.userB' }, h.deps);
+    stopTasksExcept('srv.userB');
+    expect(useTasks.getState().tasks.map((t) => t.title)).toEqual(['B']);
+    await h.step();
+    await h.step();
+    // Only B's poll asked the extension.
+    expect(h.deps.fetchStatus).toHaveBeenCalledTimes(1);
+    expect(h.deps.fetchStatus).toHaveBeenCalledWith('/b');
   });
 });

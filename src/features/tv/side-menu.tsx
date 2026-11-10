@@ -16,12 +16,14 @@
 import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, TabSlot, TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { LinearGradient } from 'expo-linear-gradient';
-import { type ComponentRef, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon, type IconName } from '@/components/icon';
+import { pageHref, pagePathname } from '@/features/extensions/nav';
+import { usePagePlacement } from '@/features/extensions/use-placement';
 import { tvKeyFromEvent } from '@/player/tv-keys';
 import { isNativeTV, isTVPreview } from '@/platform/tv';
 import { type AppTheme, createStyles, font, motion, radius, spacing, tv, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
@@ -32,22 +34,52 @@ import { useTvRemote } from './use-tv-remote';
 import { installWebSpatialNav } from './web-spatial-nav';
 
 interface Destination {
-  /** The tab name; null for a page that is not a tab (Settings). */
+  key: string;
+  /** The tab name; null for a page that is not a tab (Settings, an extension page). */
   name: string | null;
   href: Href;
+  /** A page that is not a tab: its pathname, which marks it as selected. */
+  path?: string;
   label: string;
   icon: IconName;
 }
 
 /** The menu, top to bottom. Downloads, watch together and extension panels are not on TV. */
 const DESTINATIONS: Destination[] = [
-  { name: 'home', href: '/', label: 'Home', icon: 'house' },
-  { name: 'search', href: '/search', label: 'Search', icon: 'magnifyingglass' },
-  { name: 'library', href: '/libraries', label: 'Library', icon: 'square.stack' },
-  { name: 'music', href: '/music', label: 'Music', icon: 'music.note' },
-  { name: 'live', href: '/(tabs)/(live)/live-tv', label: 'Live TV', icon: 'tv' },
-  { name: null, href: '/settings', label: 'Settings', icon: 'gearshape' },
+  { key: 'home', name: 'home', href: '/', label: 'Home', icon: 'house' },
+  { key: 'search', name: 'search', href: '/search', label: 'Search', icon: 'magnifyingglass' },
+  { key: 'library', name: 'library', href: '/libraries', label: 'Library', icon: 'square.stack' },
+  { key: 'music', name: 'music', href: '/music', label: 'Music', icon: 'music.note' },
+  { key: 'live', name: 'live', href: '/(tabs)/(live)/live-tv', label: 'Live TV', icon: 'tv' },
 ];
+
+/** Settings is a page in the Home stack, not a tab. */
+const SETTINGS: Destination = { key: 'settings', name: null, href: '/(tabs)/(home)/settings', path: '/settings', label: 'Settings', icon: 'gearshape' };
+
+/**
+ * The menu with the extension pages that ask for a place (features/extensions/placement.ts)
+ * before Settings. They are pages in the Library stack, not tabs, so the tab list does not change.
+ */
+function useDestinations(): Destination[] {
+  const pages = usePagePlacement().tvMenu;
+  return useMemo(
+    () => [
+      ...DESTINATIONS,
+      ...pages.map(
+        (p): Destination => ({
+          key: `ext:${p.extId}:${p.pageId}`,
+          name: null,
+          href: pageHref('(library)', p.extId, p.pageId),
+          path: pagePathname(p.extId, p.pageId),
+          label: p.title,
+          icon: p.icon,
+        }),
+      ),
+      SETTINGS,
+    ],
+    [pages],
+  );
+}
 
 const STANDARD = Easing.bezier(...motion.easing.standard);
 
@@ -99,7 +131,7 @@ export function TvTabsLayout() {
       </TvFocusGuide>
       <SideMenu content={content} />
       <TabList style={styles.hidden}>
-        {DESTINATIONS.filter((d) => d.name).map((d) => (
+        {DESTINATIONS.map((d) => (
           <TabTrigger key={d.name} name={d.name ?? ''} href={d.href} />
         ))}
       </TabList>
@@ -126,7 +158,9 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
   // The selected item: the focus lands on it when it comes into the menu.
   const [active, setActive] = useState<FocusTarget | null>(null);
   const root = useRef<FocusTarget | null>(null);
-  const settings = pathname === '/settings';
+  const destinations = useDestinations();
+  // A page that is not a tab is open (Settings, an extension page): it is the selected item, not its stack's tab.
+  const pageOpen = destinations.some((d) => !d.name && d.path === pathname);
 
   const onItemFocus = useCallback(() => {
     if (closing.current) clearTimeout(closing.current);
@@ -225,12 +259,13 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
             <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
           </View>
           <View style={s.items}>
-            {DESTINATIONS.map((d) => (
+            {destinations.map((d) => (
               <MenuItem
-                key={d.label}
+                key={d.key}
                 destination={d}
                 open={wide}
-                settings={settings}
+                pageOpen={pageOpen}
+                pathname={pathname}
                 railWidth={railW}
                 progress={progress}
                 onSelected={setActive}
@@ -249,7 +284,8 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
 function MenuItem({
   destination,
   open,
-  settings,
+  pageOpen,
+  pathname,
   railWidth,
   progress,
   onSelected,
@@ -259,8 +295,9 @@ function MenuItem({
 }: {
   destination: Destination;
   open: boolean;
-  /** Settings is open (it is a page in the Home stack, not a tab). */
-  settings: boolean;
+  /** A page that is not a tab is open (Settings, an extension page). */
+  pageOpen: boolean;
+  pathname: string;
   railWidth: number;
   /** The menu's open progress (0 to 1): the labels fade in with the panel. */
   progress: SharedValue<number>;
@@ -272,9 +309,9 @@ function MenuItem({
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const [focused, setFocused] = useState(false);
-  // Settings is not a tab: its trigger lookup is unused.
+  // A page that is not a tab: its trigger lookup is unused.
   const tab = useTabTrigger({ name: destination.name ?? 'home' });
-  const selected = destination.name ? !settings && !!tab.trigger?.isFocused : settings;
+  const selected = destination.name ? !pageOpen && !!tab.trigger?.isFocused : pathname === destination.path;
   const view = useRef<FocusTarget | null>(null);
   const labelStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
   useEffect(() => {
@@ -288,7 +325,7 @@ function MenuItem({
     if (destination.name && tab.trigger?.isFocused) {
       if (router.canDismiss()) router.dismissTo(destination.href);
     } else if (destination.name) tab.switchTab(destination.name, { resetOnFocus: true });
-    else router.navigate('/(tabs)/(home)/settings');
+    else router.navigate(destination.href);
     // Let the new screen mount, then give it the focus.
     setTimeout(onDone, 80);
   };

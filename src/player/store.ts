@@ -7,11 +7,12 @@ import { create } from 'zustand';
 
 import type { BaseItemDto } from '@/api/types';
 
+import { type AutoSkipState, initialAutoSkip } from './auto-skip';
 import type { EmbeddedTracks, VideoTrackInfo } from './engine-types';
 import type { Segment } from './segments';
 import type { StreamPlan } from './stream';
 import type { Chapter, Trickplay } from './timeline';
-import type { LiveChannelRef, LiveSource, VodRef, VodSource } from './types';
+import type { ExternalQuality, ExternalRef, ExternalSource, LiveChannelRef, LiveSource, SkipMode } from './types';
 import type { Cue } from './vtt';
 
 export type PlayerKind = 'video' | 'audio';
@@ -35,15 +36,31 @@ export interface NowPlaying {
   next: BaseItemDto | null;
   /** A live channel (IPTV): no duration, no seeking; channel up and down move through `channels`. */
   live?: LiveNow;
-  /** An IPTV film or episode: seekable, positions kept on the device, no Jellyfin calls. */
-  vod?: VodNow;
+  /**
+   * A title from outside Jellyfin (an IPTV film or episode, an extension's
+   * media): no Jellyfin calls; seekable unless it is live.
+   */
+  external?: ExternalNow;
 }
 
-export interface VodNow {
-  items: VodRef[];
+export interface ExternalNow {
+  items: ExternalRef[];
   index: number;
-  source: VodSource;
+  source: ExternalSource;
+  /** A live stream: no duration, no seeking, no saved position. */
+  live: boolean;
+  /** The quality menu; empty when the source has one stream form. */
+  qualities: ExternalQuality[];
+  /** The chosen quality, or null for the first stream ("Auto"). */
+  qualityId: string | null;
+  /** The quality whose URL is the first stream (the source's own "Auto"), or null. */
+  mainQuality: string | null;
+  /** The skip settings of the source (`segments.ts`), or none. */
+  skip?: { scope: string; defaults: Record<string, SkipMode> };
 }
+
+/** The IPTV name of `ExternalNow`. */
+export type VodNow = ExternalNow;
 
 export interface LiveNow {
   channels: LiveChannelRef[];
@@ -70,6 +87,8 @@ export interface PlayerState {
   video: VideoTrackInfo | null;
   /** IPTV: the audio and subtitle tracks inside the stream, as the engine lists them; null when none are known. */
   embedded: EmbeddedTracks | null;
+  /** Automatic skips in this play (`auto-skip.ts`): what was skipped, undone or entered on purpose. */
+  autoSkip: AutoSkipState;
 }
 
 export const initialPlayerState: PlayerState = {
@@ -87,6 +106,7 @@ export const initialPlayerState: PlayerState = {
   cues: null,
   video: null,
   embedded: null,
+  autoSkip: initialAutoSkip,
 };
 
 export const usePlayerStore = create<PlayerState>(() => initialPlayerState);

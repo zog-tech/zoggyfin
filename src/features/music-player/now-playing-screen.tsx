@@ -41,6 +41,7 @@ import { font, scriptStyle, type } from '@/theme';
 import { nearbySupported } from '@/together/nearby';
 import { openTogetherSheet } from '@/together/store';
 import { syncPlaySupported } from '@/together/syncplay';
+import { tabGroupNow } from '@/features/extensions/tab-nav';
 
 import { AirPlayButton } from '../player/airplay-button';
 import { Glass } from '../player/glass';
@@ -231,7 +232,8 @@ export function NowPlayingScreen() {
   const sleepLeft = sleepRemaining(sleep, clock);
 
   const go = (target: BaseItemDto) => {
-    const href = itemHref('(music)', target);
+    // The Music stack, or Library when an extension tab takes the place of Music on this phone.
+    const href = itemHref(tabGroupNow('(music)'), target);
     minimize();
     if (href) setTimeout(() => router.push(href as Href), 50);
   };

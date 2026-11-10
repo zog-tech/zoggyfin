@@ -1,11 +1,18 @@
 /**
  * What an extension answers to an action, and to a task status poll. The
  * answer only asks the app to do a small, fixed set of things: show a toast,
- * follow a task, or refresh the item or the library.
+ * follow a task, refresh the item, the entry, the page or the library, or
+ * set the on/off state of a detail button.
+ *
+ * `entry` and `page` (schema version 2) refresh an extension detail page and
+ * an extension page. Where the app has no such page (the item action sheet),
+ * they do nothing.
  */
 import { z } from 'zod';
 
-const refresh = z.enum(['none', 'item', 'library']);
+export const REFRESH_KINDS = ['none', 'item', 'entry', 'page', 'library'] as const;
+const refresh = z.enum(REFRESH_KINDS);
+export type RefreshKind = (typeof REFRESH_KINDS)[number];
 
 const toastSchema = z.union([z.string().max(200), z.object({ text: z.string().max(200) })]);
 
@@ -22,6 +29,8 @@ export const actionResponseSchema = z.looseObject({
   toast: toastSchema.optional(),
   task: taskRefSchema.optional(),
   refresh: refresh.optional(),
+  /** The new state of an on/off button. A value that is not valid is ignored. */
+  state: z.object({ on: z.boolean() }).optional().catch(undefined),
 });
 export type ActionResponse = z.infer<typeof actionResponseSchema>;
 
@@ -47,6 +56,10 @@ export interface ResponseEffects {
   startTask(task: TaskRef): void;
   refreshItem(): void;
   refreshLibrary(): void;
+  /** An extension detail page reloads its entry. */
+  refreshEntry?(): void;
+  /** An extension page reloads its sections. */
+  refreshPage?(): void;
 }
 
 /**
@@ -68,8 +81,10 @@ export function handleActionResponse(data: unknown, fx: ResponseEffects, fallbac
   return res;
 }
 
-export function applyRefresh(kind: ActionResponse['refresh'], fx: Pick<ResponseEffects, 'refreshItem' | 'refreshLibrary'>): void {
+export function applyRefresh(kind: ActionResponse['refresh'], fx: Pick<ResponseEffects, 'refreshItem' | 'refreshLibrary' | 'refreshEntry' | 'refreshPage'>): void {
   if (kind === 'item') fx.refreshItem();
+  else if (kind === 'entry') fx.refreshEntry?.();
+  else if (kind === 'page') fx.refreshPage?.();
   else if (kind === 'library') fx.refreshLibrary();
 }
 

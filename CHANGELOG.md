@@ -13,6 +13,17 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Extensions, schema version 2.** An extension can add native pages (rows, grids and lists that
+  load more as you scroll, with search), shown as a tab on iPad, the web and the Mac app, in the
+  TV side menu, and on phones as a Library tile or, if you choose ("On this phone"), as a tab in
+  place of Music, Downloads, Search or Library; the replaced tab stays one tap away. Entries open an entry page with Play, on/off
+  buttons and related rows. The video player plays an extension's media with its headers (and the
+  Jellyfin token only when you allow it), quality choices, subtitles, chapters, a next title and
+  labelled skip segments (auto skip with Undo, a Skip button, or off, per label in Settings).
+  Phones, tablets and the Mac app can save an extension's media for offline play. Installed
+  extensions now belong to the Jellyfin account and sync between your devices through it. Each
+  use (playback, downloads, the token) has its own switch. An older app version keeps its own
+  downloads after a rollback.
 - **Swipe a song to queue it.** Swipe a song row right to play it next, or left to add it to the
   queue, as in Music. It works in search, albums, artists, playlists and the Songs page. Playlist
   entries and downloads keep swipe left to remove, and add to the queue on a swipe right. A swipe

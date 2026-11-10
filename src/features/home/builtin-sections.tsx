@@ -34,6 +34,7 @@ import { episodeLabel, formatDuration } from '@/lib/format';
 import { itemHref, useTabGroup, videoGenreHref } from '@/lib/navigation';
 import { isTV } from '@/platform/tv';
 import { homeSections } from '@/registry/home-sections';
+import { openTabRoot } from '@/features/extensions/tab-nav';
 
 const runtimeSubtitle = (item: BaseItemDto) => formatDuration(item.RunTimeTicks);
 
@@ -201,7 +202,7 @@ function DownloadedRow() {
       title="Downloads"
       shape={shapeForList(items, 'poster')}
       items={items}
-      onSeeAll={() => router.navigate('/(tabs)/(saved)/downloads')}
+      onSeeAll={() => openTabRoot('downloads')}
       tileSubtitle={(it) => {
         const g = groups.find((x) => x.id === it.Id);
         const count = g && g.records.length > 1 ? `${g.records.length} ${g.type === 'Series' ? 'episodes' : 'songs'}` : null;

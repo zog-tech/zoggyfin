@@ -99,7 +99,8 @@ export function relinkDownloads(
   const groups: Record<string, string> = {};
   let total = 0;
   for (const r of Object.values(records)) {
-    if (r.serverId !== from.serverId) {
+    // An extension's download is not a Jellyfin item: it never matches one by name.
+    if (r.serverId !== from.serverId || r.source?.kind === 'extension') {
       out[r.itemId] = r;
       continue;
     }

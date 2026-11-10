@@ -5,7 +5,7 @@
  */
 import type { BaseItemDto } from '@/api/types';
 
-export const DOWNLOAD_SCHEMA_VERSION = 2;
+export const DOWNLOAD_SCHEMA_VERSION = 3;
 
 /**
  * queued → downloading → completed
@@ -40,10 +40,61 @@ export interface LocalImages {
   backdrop?: string;
 }
 
-/** One downloadable item: a movie, an episode, a song or an audiobook. */
+/**
+ * Where a download comes from (schema version 3). Every record before v3 is
+ * a Jellyfin item; `migrate.ts` sets `jellyfin` on them.
+ */
+export type DownloadSource = JellyfinDownloadSource | ExtensionDownloadSource;
+
+export interface JellyfinDownloadSource {
+  kind: 'jellyfin';
+}
+
+/**
+ * A file of an extension's media entry. The record id is
+ * `ext:<extId>:<mediaId>` (`extensionRecordId`), so it never matches a
+ * Jellyfin item id. The record's `serverId` and `userId` are the account
+ * that made it; only that account lists, plays and continues it.
+ */
+export interface ExtensionDownloadSource {
+  kind: 'extension';
+  /** The extension's manifest id. */
+  extId: string;
+  /** `media.id` of the entry. */
+  mediaId: string;
+  /** The account that made the download (`serverId.userId`, `accountKey`). */
+  account: string;
+  /** `media.download`: the download description, a full URL on the extension's origin. */
+  download: string;
+  /** The chosen option id, when the description offers options. */
+  option?: string;
+  /** What the rows and the player show with no connection. */
+  title: string;
+  subtitle?: string;
+  /** The entry's image on the extension's origin; the copy on the device is `images.primary`. */
+  imageUrl?: string;
+  /** Seconds. */
+  duration?: number;
+  /** The file's container (`mp4`), from the description. */
+  container?: string;
+  /** The size the description named, in bytes. */
+  bytes?: number;
+  /** The quality label of the description or of the chosen option (`720p`). */
+  label?: string;
+  /** `media.playback`, when known: the stream description that names the report URL. */
+  playback?: string;
+  /** Where progress reports go, learnt from the stream description when the file was saved. */
+  report?: { url: string; intervalSeconds: number };
+  /** Where the user stopped in the file, seconds. Kept on the device only. */
+  position?: number;
+}
+
+/** One downloadable item: a movie, an episode, a song or an audiobook, or an extension's file. */
 export interface DownloadRecord {
   schemaVersion: typeof DOWNLOAD_SCHEMA_VERSION;
   itemId: string;
+  /** Jellyfin, or an extension's media (see `DownloadSource`). */
+  source: DownloadSource;
   serverId: string;
   userId: string;
   kind: MediaKind;

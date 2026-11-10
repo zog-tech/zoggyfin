@@ -1,6 +1,8 @@
 /**
  * An extension panel: the extension's own web page, over the app. The page
- * can only use the six bridge methods (see extensions/bridge.ts).
+ * can only use the nine bridge methods (see extensions/bridge.ts). Media,
+ * entry pages and extension pages open through the same functions as a
+ * tile (`openMedia`, `entryHref`, `pageHref`), with the same checks.
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -12,11 +14,15 @@ import { EmptyState } from '@/components/states';
 import type { BridgeRequest } from '@/extensions/bridge';
 import { handleBridgeRequest } from '@/extensions/bridge';
 import { resolveOnOrigin } from '@/extensions/match';
+import { playRefusal } from '@/extensions/media/source';
+import { pagesOf } from '@/extensions/schema';
 import { currentAccount, refreshLibrary, templateContext } from '@/extensions/runtime';
-import { useExtensions } from '@/extensions/store';
+import { getExtension, useExtensions } from '@/extensions/store';
 import { render } from '@/extensions/template';
 import { ModalHeader } from '@/extensions/ui/modal-header';
 import { PanelView } from '@/extensions/ui/panel-view';
+import { entryHref, pageHref } from '@/features/extensions/nav';
+import { openMedia } from '@/features/extensions/open-entry';
 import { itemHref } from '@/lib/navigation';
 import { toast } from '@/lib/toast';
 import { usePlayer } from '@/player';
@@ -68,6 +74,26 @@ export default function ExtensionPanelScreen() {
         refreshLibrary,
         toast: (text) => toast(text),
         close,
+        baseUrl: ext?.manifest.baseUrl ?? '',
+        playRefusal: () => playRefusal(ext ? (getExtension(ext.manifest.id) ?? ext) : undefined),
+        playMedia: async (m) => {
+          if (!ext) return;
+          const media = { id: m.mediaId, kind: 'video' as const, playback: m.playback };
+          await openMedia(getExtension(ext.manifest.id) ?? ext, { title: m.title, imageUrl: m.image, media });
+        },
+        openEntry: ({ detail, title }) => {
+          if (!ext) return;
+          const href = entryHref('(home)', ext.manifest.id, { key: 'panel', detail, title });
+          close();
+          setTimeout(() => router.push(href), 50);
+        },
+        hasPage: (pageId) => !!ext && pagesOf(ext.manifest).some((p) => p.id === pageId),
+        openPage: (pageId) => {
+          if (!ext) return;
+          const href = pageHref('(home)', ext.manifest.id, pageId);
+          close();
+          setTimeout(() => router.push(href), 50);
+        },
       }),
     [ext, scheme, player, api, userId, close],
   );
