@@ -124,17 +124,17 @@ export function useItemActions(item: BaseItemDto | undefined) {
   const facts = factsQ.data;
 
   const actions = useMemo(
-    () => (item ? actionsFor({ item, app, platform: Platform.OS, facts }) : []),
+    () => (item ? actionsFor({ item, app, platform: Platform.OS, facts, here: routeId }) : []),
     // `version` changes when the registry changes; `dlKey` when the download state does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [item, app, version, dlKey, facts],
+    [item, app, version, dlKey, facts, routeId],
   );
-  const titleOf = (action: ItemAction) => (item ? actionTitle(action, { item, app, platform: Platform.OS, facts }) : action.title);
+  const titleOf = (action: ItemAction) => (item ? actionTitle(action, { item, app, platform: Platform.OS, facts, here: routeId }) : action.title);
 
   // Returns the action's promise, so a caller can wait for its end (an optimistic toggle).
   const run = (action: ItemAction): Promise<void> | undefined => {
     if (!item) return undefined;
-    return Promise.resolve(action.run({ item, app, platform: Platform.OS, facts })).catch((e: unknown) =>
+    return Promise.resolve(action.run({ item, app, platform: Platform.OS, facts, here: routeId })).catch((e: unknown) =>
       toast(describeError(e).title),
     );
   };

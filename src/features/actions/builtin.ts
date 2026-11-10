@@ -29,6 +29,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Play',
     icon: 'play.fill',
     order: 10,
+    group: 'play',
     when: ({ item }) => PLAYABLE.has(item.Type ?? ''),
     run: ({ item, app }) => app.play(item),
   });
@@ -36,7 +37,8 @@ export function registerBuiltinItemActions(): void {
     id: 'builtin.playOn',
     title: 'Play on…',
     icon: 'airplay.video',
-    order: 11,
+    order: 51,
+    group: 'more',
     when: ({ item, app }) => !!app.playOn && canPlayRemotely(item),
     run: ({ item, app }) => app.playOn?.(item),
   });
@@ -45,6 +47,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Play next',
     icon: 'text.line.first.and.arrowtriangle.forward',
     order: 12,
+    group: 'play',
     when: ({ item, app }) => !!app.playNext && queueable(item),
     run: ({ item, app }) => app.playNext?.(item),
   });
@@ -53,6 +56,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Add to queue',
     icon: 'text.append',
     order: 13,
+    group: 'play',
     when: ({ item, app }) => !!app.addToQueue && queueable(item),
     run: ({ item, app }) => app.addToQueue?.(item),
   });
@@ -60,7 +64,8 @@ export function registerBuiltinItemActions(): void {
     id: 'builtin.instantMix',
     title: 'Instant mix',
     icon: 'wand.and.stars',
-    order: 14,
+    order: 50,
+    group: 'more',
     when: ({ item, app }) => !!app.instantMix && (MIXABLE.has(item.Type ?? '') || (item.Type === 'Playlist' && item.MediaType === 'Audio')),
     run: ({ item, app }) => app.instantMix?.(item),
   });
@@ -68,7 +73,8 @@ export function registerBuiltinItemActions(): void {
     id: 'builtin.addToPlaylist',
     title: 'Add to playlist…',
     icon: 'text.badge.plus',
-    order: 15,
+    order: 21,
+    group: 'library',
     when: ({ item, app }) => !!app.addToPlaylist && canAddToPlaylist(item),
     run: ({ item, app }) => app.addToPlaylist?.(item),
   });
@@ -77,7 +83,8 @@ export function registerBuiltinItemActions(): void {
     id: 'builtin.download',
     title: 'Download',
     icon: 'arrow.down.circle',
-    order: 16,
+    order: 22,
+    group: 'library',
     when: ({ item, app }) => !!app.downloadStatus && isDownloadable(item) && app.downloadStatus(item).state === 'none',
     run: ({ item, app }) => app.download?.(item),
   });
@@ -92,7 +99,8 @@ export function registerBuiltinItemActions(): void {
       return st.state === 'failed' ? 'Download failed, see Downloads' : st.state === 'paused' ? `Download paused at ${pct}` : `Downloading ${pct}`;
     },
     icon: 'arrow.down.circle',
-    order: 16,
+    order: 22,
+    group: 'library',
     when: ({ item, app }) => {
       const st = app.downloadStatus?.(item).state;
       return !!st && st !== 'none' && st !== 'completed';
@@ -109,6 +117,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Remove download',
     icon: 'trash',
     order: 90,
+    group: 'library',
     destructive: true,
     when: ({ item, app }) => app.downloadStatus?.(item).state === 'completed',
     run: ({ item, app }) => app.removeDownload?.(item),
@@ -117,7 +126,8 @@ export function registerBuiltinItemActions(): void {
     id: 'builtin.renamePlaylist',
     title: 'Rename playlist',
     icon: 'pencil',
-    order: 50,
+    order: 55,
+    group: 'more',
     when: ({ item, app }) => item.Type === 'Playlist' && !!app.renamePlaylist,
     run: ({ item, app }) => app.renamePlaylist?.(item),
   });
@@ -126,6 +136,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Delete playlist',
     icon: 'trash',
     order: 95,
+    group: 'more',
     destructive: true,
     when: ({ item, app }) => item.Type === 'Playlist' && !!app.deletePlaylist,
     run: ({ item, app }) => app.deletePlaylist?.(item),
@@ -136,6 +147,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Delete from server',
     icon: 'trash',
     order: 96,
+    group: 'more',
     destructive: true,
     when: ({ item, app }) => !!app.deleteItem && item.CanDelete === true && item.Type !== 'Playlist',
     run: ({ item, app }) => app.deleteItem?.(item),
@@ -145,6 +157,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Add to favourites',
     icon: 'heart',
     order: 20,
+    group: 'library',
     when: ({ item }) => !!item.Id && !item.UserData?.IsFavorite,
     run: ({ item, app }) => app.setFavorite(item, true),
   });
@@ -153,6 +166,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Remove from favourites',
     icon: 'heart.fill',
     order: 20,
+    group: 'library',
     when: ({ item }) => !!item.Id && !!item.UserData?.IsFavorite,
     run: ({ item, app }) => app.setFavorite(item, false),
   });
@@ -161,6 +175,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Mark as played',
     icon: 'checkmark.circle.fill',
     order: 30,
+    group: 'library',
     when: ({ item }) => WATCHABLE.has(item.Type ?? '') && !item.UserData?.Played,
     run: ({ item, app }) => app.setPlayed(item, true),
   });
@@ -169,6 +184,7 @@ export function registerBuiltinItemActions(): void {
     title: 'Mark as unplayed',
     icon: 'circle',
     order: 30,
+    group: 'library',
     when: ({ item }) => WATCHABLE.has(item.Type ?? '') && !!item.UserData?.Played,
     run: ({ item, app }) => app.setPlayed(item, false),
   });
@@ -177,7 +193,8 @@ export function registerBuiltinItemActions(): void {
     title: 'Go to show',
     icon: 'tv',
     order: 40,
-    when: ({ item }) => (item.Type === 'Episode' || item.Type === 'Season') && !!item.SeriesId,
+    group: 'goTo',
+    when: ({ item, here }) => (item.Type === 'Episode' || item.Type === 'Season') && !!item.SeriesId && item.SeriesId !== here,
     run: ({ item, app }) => app.openItem({ Id: item.SeriesId ?? '', Type: 'Series', Name: item.SeriesName }),
   });
   itemActions.register({
@@ -185,7 +202,8 @@ export function registerBuiltinItemActions(): void {
     title: 'Go to album',
     icon: 'square.stack',
     order: 40,
-    when: ({ item }) => item.Type === 'Audio' && !!item.AlbumId,
+    group: 'goTo',
+    when: ({ item, here }) => item.Type === 'Audio' && !!item.AlbumId && item.AlbumId !== here,
     run: ({ item, app }) => app.openItem({ Id: item.AlbumId ?? '', Type: 'MusicAlbum', Name: item.Album }),
   });
   itemActions.register({
@@ -193,7 +211,8 @@ export function registerBuiltinItemActions(): void {
     title: 'Go to artist',
     icon: 'music.mic',
     order: 41,
-    when: ({ item }) => (item.Type === 'Audio' || item.Type === 'MusicAlbum') && !!item.AlbumArtists?.[0]?.Id,
+    group: 'goTo',
+    when: ({ item, here }) => (item.Type === 'Audio' || item.Type === 'MusicAlbum') && !!item.AlbumArtists?.[0]?.Id && item.AlbumArtists[0].Id !== here,
     run: ({ item, app }) => {
       const a = item.AlbumArtists?.[0];
       app.openItem({ Id: a?.Id ?? '', Type: 'MusicArtist', Name: a?.Name });
