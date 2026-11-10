@@ -6,20 +6,23 @@
  * Recently played, Recently added and Your top songs are core rows: they show
  * a skeleton while they load. The others are discovery rows, like the
  * discovery rows on Home: no skeleton, no error, and hidden while the server
- * is out of reach.
+ * is out of reach. The catalog rows of an optional server plugin are
+ * discovery rows too; on a server without the plugin they never show.
  */
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import { useLatest, useMusicItemsByIds, useMusicShelf, usePlayedSongs } from '@/api/queries';
+import type { OnDemandSection } from '@/api/ondemand';
+import { useLatest, useMusicItemsByIds, useMusicShelf, useOnDemandHome, usePlayedSongs } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { ItemRow } from '@/components/item-row';
 import { useDay } from '@/features/home/use-day';
 import { useOffline } from '@/lib/online';
-import { musicGenreHref, useTabGroup } from '@/lib/navigation';
+import { musicGenreHref, useOpenItem, useTabGroup } from '@/lib/navigation';
 import { usePlayer } from '@/player';
 import { musicHomeSections, type MusicHomeSectionProps } from '@/registry/music-home-sections';
 
+import { catalogShape, catalogSongs, catalogSubtitle } from './catalog-rules';
 import {
   genreSongs,
   MAX_MIXES,
@@ -185,6 +188,60 @@ function Rediscover({ libraryId }: MusicHomeSectionProps) {
   return <ItemRow title="Rediscover" shape="square" items={items} tileSubtitle={albumSubtitle} {...row} />;
 }
 
+/** One catalog row. A song plays the row's songs as a queue; anything else opens its page. */
+function CatalogRow({
+  section,
+  preferredFocus,
+  onLongPress,
+}: {
+  section: OnDemandSection;
+  preferredFocus: boolean;
+  onLongPress?: (item: BaseItemDto) => void;
+}) {
+  const player = usePlayer();
+  const open = useOpenItem();
+  const { items } = section;
+  const songs = useMemo(() => catalogSongs(items), [items]);
+  const onPress = useCallback(
+    (item: BaseItemDto) => {
+      if (item.Type !== 'Audio') return open(item);
+      player.play({ item, list: songs, index: songs.indexOf(item) });
+    },
+    [open, player, songs],
+  );
+  return (
+    <ItemRow
+      title={section.title}
+      shape={catalogShape(section)}
+      items={items}
+      tileSubtitle={catalogSubtitle}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      preferredFocus={preferredFocus}
+    />
+  );
+}
+
+/**
+ * The rows of an optional server plugin that adds a music catalog. The server
+ * picks the rows and their titles. A server without the plugin answers null,
+ * and the section shows nothing. One section, so one claim on the first TV focus.
+ */
+function Catalog(_: MusicHomeSectionProps) {
+  const offline = useOffline();
+  const q = useOnDemandHome(!offline);
+  const sections = q.data?.sections ?? [];
+  const row = useMusicHomeRow(!offline && sections.length > 0);
+  if (offline || !sections.length) return null;
+  return (
+    <>
+      {sections.map((sec, i) => (
+        <CatalogRow key={sec.id} section={sec} preferredFocus={row.preferredFocus && i === 0} onLongPress={row.onLongPress} />
+      ))}
+    </>
+  );
+}
+
 /** Music genres, the largest first. A tile opens the genre page of this library. */
 function Genres({ libraryId }: MusicHomeSectionProps) {
   const offline = useOffline();
@@ -215,6 +272,8 @@ export function registerBuiltinMusicHomeSections(): void {
   musicHomeSections.register({ id: 'builtin.mixes', order: 20, component: Mixes });
   musicHomeSections.register({ id: 'builtin.recentlyAdded', order: 30, component: RecentlyAdded });
   musicHomeSections.register({ id: 'builtin.topSongs', order: 40, component: TopSongs });
+  // After the user's own rows, at the head of the discovery rows.
+  musicHomeSections.register({ id: 'builtin.catalog', order: 45, component: Catalog });
   musicHomeSections.register({ id: 'builtin.newReleases', order: 50, component: NewReleases });
   musicHomeSections.register({ id: 'builtin.favourites', order: 60, component: Favourites });
   musicHomeSections.register({ id: 'builtin.playlists', order: 70, component: Playlists });

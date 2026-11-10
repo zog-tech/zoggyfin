@@ -41,6 +41,8 @@ export function MusicHome({ libraryId }: { libraryId: string }) {
       qc.invalidateQueries({ queryKey: [...queryKeys.all(scope), 'music', libraryId] }),
       qc.invalidateQueries({ queryKey: [...queryKeys.all(scope), 'played', libraryId] }),
       qc.invalidateQueries({ queryKey: queryKeys.latest(scope, libraryId) }),
+      // The catalog plugin's rows (or its absence) are asked again.
+      qc.invalidateQueries({ queryKey: queryKeys.onDemandHome(scope) }),
     ]),
   );
   useRefreshSpinner(pull.refreshing);
