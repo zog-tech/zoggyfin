@@ -24,9 +24,11 @@ import { getUserDataApi } from '@jellyfin/sdk/lib/utils/api/user-data-api';
 import { getUserViewApi } from '@jellyfin/sdk/lib/utils/api/user-view-api';
 import axios, { isCancel } from 'axios';
 
+import { clientIdentity } from '@/auth/identity';
 import { devOffline } from '@/lib/dev-offline';
 
-import { isOnDemandAbsent, type OnDemandHome, parseOnDemandHome } from './ondemand';
+import { type OnDemandHome, parseOnDemandHome } from './ondemand';
+import { buildAuthHeader } from './auth-header';
 import type { LibraryQuery } from './query-keys';
 import { serverUrlCandidates } from './server-url';
 import type {
@@ -874,18 +876,29 @@ export async function getText(api: Api, url: string): Promise<string> {
 
 // ---- Server plugin: music catalog --------------------------------------------------
 
+/** How long the app waits for the catalog plugin (ms). It is an extra row, not a page. */
+const ONDEMAND_TIMEOUT_MS = 10_000;
+
 /**
  * The rows of the optional music catalog plugin (`/OnDemand/Home`). Null when
- * the server does not have it: an HTTP error (404) or a body of another shape.
- * Only a request with no answer (offline, timeout) throws.
+ * the server does not have it, and on any failure: a 404, a body of another
+ * shape, or no answer. A browser cannot tell these apart, because a proxy's
+ * 404 page often lacks the CORS headers and looks like a lost connection.
+ *
+ * Plain axios with the auth header, not the session's instance: a failure here
+ * must not start an address check (lost connection) or a sign-out (401).
  */
 export async function getOnDemandHome(api: Api, limit: number): Promise<OnDemandHome | null> {
+  if (devOffline()) return null;
   try {
-    const res = await api.axiosInstance.get<unknown>(`${api.basePath}/OnDemand/Home`, { params: { limit } });
+    const res = await axios.get<unknown>(`${api.basePath}/OnDemand/Home`, {
+      params: { limit },
+      timeout: ONDEMAND_TIMEOUT_MS,
+      headers: { Authorization: buildAuthHeader(clientIdentity(), api.accessToken) },
+    });
     return parseOnDemandHome(res.data, limit);
-  } catch (e) {
-    if (isOnDemandAbsent(e)) return null;
-    throw e;
+  } catch {
+    return null;
   }
 }
 

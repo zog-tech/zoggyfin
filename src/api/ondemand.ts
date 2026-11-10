@@ -73,12 +73,3 @@ export function parseOnDemandHome(body: unknown, maxItems = ONDEMAND_MAX_ITEMS):
   return { version, sections };
 }
 
-/**
- * Whether a failed request means "no plugin" (the server answered with an
- * HTTP error, such as 404) rather than "no server" (no answer at all).
- */
-export function isOnDemandAbsent(error: unknown): boolean {
-  if (!isRecord(error)) return false;
-  const res = error.response;
-  return isRecord(res) && typeof res.status === 'number';
-}

@@ -234,7 +234,7 @@ const ONDEMAND_LIMIT = 20;
 /**
  * The rows of the optional music catalog plugin. A server without it answers
  * null; the null is cached (and saved with the cache) like any answer, so the
- * app asks such a server again only when the result is stale.
+ * app asks such a server again only when the result is stale (or on a pull to refresh).
  */
 export function useOnDemandHome(enabled = true) {
   const { api, scope } = useApi();

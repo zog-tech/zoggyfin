@@ -1,4 +1,4 @@
-import { isOnDemandAbsent, ONDEMAND_MAX_SECTIONS, parseOnDemandHome } from '../ondemand';
+import { ONDEMAND_MAX_SECTIONS, parseOnDemandHome } from '../ondemand';
 
 const song = (id: string, extra: Record<string, unknown> = {}) => ({ Id: id, Name: `Song ${id}`, Type: 'Audio', ...extra });
 const album = (id: string) => ({ Id: id, Name: `Album ${id}`, Type: 'MusicAlbum' });
@@ -84,18 +84,5 @@ describe('parseOnDemandHome', () => {
     const home = parseOnDemandHome({ Sections: rows }, 20);
     expect(home?.sections).toHaveLength(ONDEMAND_MAX_SECTIONS);
     expect(home?.sections[0].items).toHaveLength(20);
-  });
-});
-
-describe('isOnDemandAbsent', () => {
-  it('is true when the server answered with an HTTP error', () => {
-    expect(isOnDemandAbsent({ response: { status: 404 } })).toBe(true);
-    expect(isOnDemandAbsent({ response: { status: 500 } })).toBe(true);
-  });
-  it('is false when no answer came', () => {
-    expect(isOnDemandAbsent({ code: 'ERR_NETWORK' })).toBe(false);
-    expect(isOnDemandAbsent({ code: 'ECONNABORTED', response: undefined })).toBe(false);
-    expect(isOnDemandAbsent(new Error('x'))).toBe(false);
-    expect(isOnDemandAbsent(null)).toBe(false);
   });
 });
