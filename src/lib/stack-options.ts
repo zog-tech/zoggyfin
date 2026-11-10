@@ -109,3 +109,11 @@ export const detailScreenOptions: NativeStackNavigationOptions = {
   // iOS 26 dims content under a transparent bar. The hero has its own top scrim.
   scrollEdgeEffects: { top: 'hidden' },
 };
+
+/**
+ * Pages with swipeable song rows (album, artist, playlist, a music library).
+ * iOS 26 pops a page on a swipe right anywhere in its content, and that swipe
+ * would take the row's "Play next" swipe. These pages keep only the swipe
+ * from the left edge, which the rows leave free (`swipe-logic.ts` EDGE_X).
+ */
+export const rowSwipeScreenOptions: NativeStackNavigationOptions = Platform.OS === 'ios' && !isTV ? { fullScreenGestureEnabled: false } : {};

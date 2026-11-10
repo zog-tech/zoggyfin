@@ -1,3 +1,4 @@
+import { Stack } from 'expo-router';
 import { type ReactNode, useState } from 'react';
 import { Text, View } from 'react-native';
 
@@ -9,6 +10,7 @@ import { ErrorState, LoadingState } from '@/components/states';
 import { shapeForList } from '@/components/tile';
 import { episodeLabel, formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
+import { rowSwipeScreenOptions } from '@/lib/stack-options';
 import { usePlayer } from '@/player';
 import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles } from '@/theme';
 
@@ -214,45 +216,49 @@ function TrackListDetail({ item, onRefresh, kind }: ViewProps & { kind: 'tracks'
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
 
   return (
-    <DetailScaffold
-      item={item}
-      eyebrow={isPlaylist ? null : item.AlbumArtist ?? item.AlbumArtists?.[0]?.Name}
-      onEyebrowPress={artistId ? () => open({ Id: artistId, Type: 'MusicArtist', Name: item.AlbumArtists?.[0]?.Name }) : undefined}
-      meta={[
-        isPlaylist ? 'Playlist' : 'Album',
-        year(item),
-        list.length ? `${list.length} ${isPlaylist ? (list.length === 1 ? 'item' : 'items') : list.length === 1 ? 'song' : 'songs'}` : null,
-        formatDuration(totalTicks),
-      ]}
-      playable
-      onShuffle={() => player.play({ item, shuffle: true })}
-      onRefresh={() => Promise.all([onRefresh(), tracks.refetch()])}
-      footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
-      beforeRows={
-        <View style={{ marginTop: spacing.xl }}>
-          {tracks.isPending ? <LoadingState rows={6} /> : null}
-          {tracks.error && !tracks.data ? <ErrorState error={tracks.error} onRetry={tracks.refetch} compact /> : null}
-          {tracks.data && list.length === 0 ? <SectionMessage>Nothing here yet.</SectionMessage> : null}
-        </View>
-      }
-      rows={list}
-      rowKey={(t, i) => t.PlaylistItemId ?? t.Id ?? String(i)}
-      renderRow={(t, i) => (
-        <>
-          {multiDisc && (i === 0 || list[i - 1]?.ParentIndexNumber !== t.ParentIndexNumber) ? (
-            <Text style={[styles.disc, { paddingHorizontal: l.gutter }]}>DISC {t.ParentIndexNumber ?? 1}</Text>
-          ) : null}
-          <TrackRow
-            item={t}
-            index={i}
-            showArt={isPlaylist}
-            last={i === list.length - 1}
-            onPress={(song) => player.play({ item: song, list, index: i, context: item })}
-            onLongPress={setMenu}
-          />
-        </>
-      )}
-    />
+    <>
+      <Stack.Screen options={rowSwipeScreenOptions} />
+      <DetailScaffold
+        item={item}
+        eyebrow={isPlaylist ? null : item.AlbumArtist ?? item.AlbumArtists?.[0]?.Name}
+        onEyebrowPress={artistId ? () => open({ Id: artistId, Type: 'MusicArtist', Name: item.AlbumArtists?.[0]?.Name }) : undefined}
+        meta={[
+          isPlaylist ? 'Playlist' : 'Album',
+          year(item),
+          list.length ? `${list.length} ${isPlaylist ? (list.length === 1 ? 'item' : 'items') : list.length === 1 ? 'song' : 'songs'}` : null,
+          formatDuration(totalTicks),
+        ]}
+        playable
+        onShuffle={() => player.play({ item, shuffle: true })}
+        onRefresh={() => Promise.all([onRefresh(), tracks.refetch()])}
+        footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
+        beforeRows={
+          <View style={{ marginTop: spacing.xl }}>
+            {tracks.isPending ? <LoadingState rows={6} /> : null}
+            {tracks.error && !tracks.data ? <ErrorState error={tracks.error} onRetry={tracks.refetch} compact /> : null}
+            {tracks.data && list.length === 0 ? <SectionMessage>Nothing here yet.</SectionMessage> : null}
+          </View>
+        }
+        rows={list}
+        rowKey={(t, i) => t.PlaylistItemId ?? t.Id ?? String(i)}
+        renderRow={(t, i) => (
+          <>
+            {multiDisc && (i === 0 || list[i - 1]?.ParentIndexNumber !== t.ParentIndexNumber) ? (
+              <Text style={[styles.disc, { paddingHorizontal: l.gutter }]}>DISC {t.ParentIndexNumber ?? 1}</Text>
+            ) : null}
+            <TrackRow
+              item={t}
+              index={i}
+              showArt={isPlaylist}
+              last={i === list.length - 1}
+              onPress={(song) => player.play({ item: song, list, index: i, context: item })}
+              onLongPress={setMenu}
+              queue="both"
+            />
+          </>
+        )}
+      />
+    </>
   );
 }
 
@@ -271,39 +277,43 @@ export function ArtistDetail({ item, onRefresh }: ViewProps) {
   const songList = songs.data ?? [];
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
   return (
-    <DetailScaffold
-      item={item}
-      meta={['Artist', albums.data ? `${albums.data.length} ${albums.data.length === 1 ? 'album' : 'albums'}` : null]}
-      playable
-      onShuffle={() => player.play({ item, shuffle: true })}
-      extraActions={[{ icon: 'wand.and.stars', label: 'Instant mix', onPress: () => player.instantMix(item) }]}
-      footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
-      onRefresh={onRefresh}
-      beforeRows={
-        <>
-          <ItemRow title="Albums" shape="square" items={albums.data} isLoading={albums.isPending} error={albums.error} onRetry={albums.refetch} />
-          {songList.length || songs.isPending || songs.error ? (
-            <Block>
-              <RowHeader title="Top songs" />
-              {songs.isPending ? <LoadingState rows={5} /> : null}
-              {songs.error && !songs.data ? <ErrorState error={songs.error} onRetry={songs.refetch} compact /> : null}
-            </Block>
-          ) : null}
-        </>
-      }
-      rows={songList}
-      rowKey={(t, i) => t.Id ?? String(i)}
-      renderRow={(t, i) => (
-        <TrackRow
-          item={t}
-          index={i}
-          showArt
-          last={i === songList.length - 1}
-          onPress={() => player.play({ item: t, list: songList, index: i, context: item })}
-          onLongPress={setMenu}
-        />
-      )}
-    />
+    <>
+      <Stack.Screen options={rowSwipeScreenOptions} />
+      <DetailScaffold
+        item={item}
+        meta={['Artist', albums.data ? `${albums.data.length} ${albums.data.length === 1 ? 'album' : 'albums'}` : null]}
+        playable
+        onShuffle={() => player.play({ item, shuffle: true })}
+        extraActions={[{ icon: 'wand.and.stars', label: 'Instant mix', onPress: () => player.instantMix(item) }]}
+        footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
+        onRefresh={onRefresh}
+        beforeRows={
+          <>
+            <ItemRow title="Albums" shape="square" items={albums.data} isLoading={albums.isPending} error={albums.error} onRetry={albums.refetch} />
+            {songList.length || songs.isPending || songs.error ? (
+              <Block>
+                <RowHeader title="Top songs" />
+                {songs.isPending ? <LoadingState rows={5} /> : null}
+                {songs.error && !songs.data ? <ErrorState error={songs.error} onRetry={songs.refetch} compact /> : null}
+              </Block>
+            ) : null}
+          </>
+        }
+        rows={songList}
+        rowKey={(t, i) => t.Id ?? String(i)}
+        renderRow={(t, i) => (
+          <TrackRow
+            item={t}
+            index={i}
+            showArt
+            last={i === songList.length - 1}
+            onPress={() => player.play({ item: t, list: songList, index: i, context: item })}
+            onLongPress={setMenu}
+            queue="both"
+          />
+        )}
+      />
+    </>
   );
 }
 

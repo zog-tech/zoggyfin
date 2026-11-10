@@ -34,7 +34,7 @@ import { audioPlan, groupFor, isContainer, mediaKindOf, type MediaPlan, slimForD
 import { askForDownloadNotifications } from './notification-permission';
 import { canResume, isWholeFile, resumeHint } from './resume';
 import { type DownloadEvent, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
-import { downloadsState, dropCollection, dropRecord, patchRecord, putCollection, putRecord, useDownloadsStore } from './store';
+import { downloadsState, dropCollection, dropRecord, patchRecord, putCollection, putRecord, rekeyRecord, useDownloadsStore } from './store';
 import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadRecord, type LocalImages } from './types';
 
 export const MAX_PARALLEL = 2;
@@ -338,52 +338,91 @@ class DownloadManager {
       this.native.delete(itemId);
     }
     this.preparing.add(itemId);
+    /** The record's id: another one when the server moves the item (see `prepare`). */
+    let id = itemId;
     let stale = false;
     try {
       const ctx = context(r);
-      const plan = await this.prepare(r, ctx);
-      const cur = downloadsState().records[itemId];
-      // Paused, cancelled or deleted meanwhile. A resume in that time waits for this
-      // preparation to end; the tick below then starts it again.
-      if (!cur || cur.state !== 'downloading') {
+      const plan = await this.prepare(r, ctx, (to) => {
+        id = to;
+        // Busy under the new id too, so a pause and a resume meanwhile do not begin it twice.
+        this.preparing.add(to);
+      });
+      const cur = downloadsState().records[id];
+      // Paused, cancelled or deleted meanwhile, or moved onto a download that is there
+      // already. A resume in that time waits for this preparation to end; the tick
+      // below then starts it again.
+      if (!plan || !cur || cur.state !== 'downloading') {
         stale = true;
         return;
       }
       files.ensureDir(cur.dir);
-      const resume = canResume(r, plan);
+      // A moved record starts in a new folder, with no partial file.
+      const resume = canResume(id === itemId ? r : cur, plan);
       // A partial file of an earlier try that cannot continue would block the move into place.
       if (!resume) {
         files.remove(`${cur.dir}/${plan.file}`);
-        if (cur.bytesDone > 0) patchRecord(itemId, (x) => ({ ...x, bytesDone: 0, validator: null }), false);
+        if (cur.bytesDone > 0) patchRecord(id, (x) => ({ ...x, bytesDone: 0, validator: null }), false);
       }
       engine.start({
-        id: itemId,
+        id,
         url: plan.url,
         destination: files.absolutePath(`${cur.dir}/${plan.file}`),
         headers: { Authorization: ctx.authHeader },
         resume: resume ? resumeHint(cur) : undefined,
       });
-      this.native.add(itemId);
+      this.native.add(id);
     } catch (e) {
-      apply(itemId, { type: 'fail', error: describeError(e).title, now: Date.now() });
+      apply(id, { type: 'fail', error: describeError(e).title, now: Date.now() });
       this.tick();
     } finally {
       this.preparing.delete(itemId);
+      this.preparing.delete(id);
       if (stale) this.tick();
     }
   }
 
-  /** Asks the server for the full item and how to download it, and saves the item facts. */
-  private async prepare(r: DownloadRecord, ctx: Ctx): Promise<MediaPlan> {
-    const full = await jf.getItem(ctx.api, ctx.userId, r.itemId);
+  /**
+   * Asks the server for the full item and how to download it, and saves the
+   * item facts. Null: there is nothing to start (the record is gone, or it
+   * moved onto a download that is there already).
+   *
+   * A song asks for PlaybackInfo first. For a catalog item (not on the
+   * server's disk yet) that request makes the server save it to the library;
+   * the item then has another id, a clean name and its real album. The record
+   * moves to that id before the transfer starts, and `moved` tells `begin`.
+   */
+  private async prepare(r: DownloadRecord, ctx: Ctx, moved: (id: string) => void): Promise<MediaPlan | null> {
     const profile = buildDeviceProfile(mediaCapabilities(), { maxBitrate: MAX_BITRATE });
+    const body = playbackInfoBody({ userId: ctx.userId, profile, maxBitrate: MAX_BITRATE });
+    // The answer is not used: a song downloads from the universal URL of the full item.
+    if (r.kind !== 'video') await jf.getPlaybackInfo(ctx.api, r.itemId, body);
+    const full = await jf.getItem(ctx.api, ctx.userId, r.itemId);
+    let id = r.itemId;
+    if (full.Id && full.Id !== r.itemId) {
+      const result = rekeyRecord(r.itemId, full.Id, `${ROOT}/${full.Id}`);
+      if (result === 'missing') return null;
+      // The old folder holds at most a partial file of the old id.
+      files.remove(r.dir);
+      if (result === 'exists') {
+        // The same as a second download of that item (see `enqueue`).
+        const cur = downloadsState().records[full.Id];
+        if (cur?.state === 'failed') apply(full.Id, { type: 'retry' });
+        if (cur?.state === 'paused') apply(full.Id, { type: 'resume' });
+        return null;
+      }
+      id = full.Id;
+      moved(id);
+    }
+    const rec = downloadsState().records[id];
+    if (!rec) return null;
     let plan: MediaPlan;
     let item = full;
     if (r.kind === 'video') {
-      const info = await jf.getPlaybackInfo(ctx.api, r.itemId, playbackInfoBody({ userId: ctx.userId, profile, maxBitrate: MAX_BITRATE }));
+      const info = await jf.getPlaybackInfo(ctx.api, id, body);
       const source = pickSource(info.MediaSources);
       if (!source) throw new Error('The server has no version of this item to download.');
-      plan = videoPlan(ctx.server, r.itemId, source, r.quality as 0 | 1080 | 720 | 480, {
+      plan = videoPlan(ctx.server, id, source, r.quality as 0 | 1080 | 720 | 480, {
         playSessionId: info.PlaySessionId,
         runTimeTicks: full.RunTimeTicks,
         audioIndex: source.DefaultAudioStreamIndex,
@@ -393,23 +432,30 @@ class DownloadManager {
       plan = audioPlan(ctx.server, full, profile, ctx.userId, randomId().replace(/-/g, ''));
     }
     const slim = slimForDownload(item);
+    let group = rec.group;
+    // An album download groups by the album it was started from. When the server
+    // names another album for the song (a catalog album saved to the library), the
+    // song goes to that one; the other songs of the download follow as they prepare.
+    if (group.type === 'MusicAlbum' && full.AlbumId && group.id !== full.AlbumId) {
+      group = { ...group, id: full.AlbumId, name: full.Album || group.name };
+    }
     // A song with no album tag: get the album name for its group from the album itself.
-    let group = r.group;
     if (group.type === 'MusicAlbum' && !full.Album && full.AlbumId) {
       const album = await jf.getItem(ctx.api, ctx.userId, full.AlbumId).catch(() => null);
       if (album?.Name) group = { ...group, name: album.Name };
     }
-    patchRecord(r.itemId, (x) => ({
+    patchRecord(id, (x) => ({
       ...x,
       group,
       item: slim,
+      sort: id === r.itemId ? x.sort : sortFor(full),
       mediaFile: plan.file,
       method: plan.method,
       mediaSourceId: plan.mediaSourceId,
       bytesTotal: x.bytesTotal ?? plan.expectedBytes,
     }));
-    files.ensureDir(r.dir);
-    files.writeText(`${r.dir}/item.json`, JSON.stringify(slim));
+    files.ensureDir(rec.dir);
+    files.writeText(`${rec.dir}/item.json`, JSON.stringify(slim));
     return plan;
   }
 

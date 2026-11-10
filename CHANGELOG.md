@@ -13,6 +13,13 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Swipe a song to queue it.** Swipe a song row right to play it next, or left to add it to the
+  queue, as in Music. It works in search, albums, artists, playlists and the Songs page. Playlist
+  entries and downloads keep swipe left to remove, and add to the queue on a swipe right. A swipe
+  on a song row no longer turns the Music page or goes back from an album. Search results now
+  open the song's actions with a long press too. Catalog songs (" ☁") are fetched when they play,
+  not when they go into the queue.
+
 - **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
   mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
   sections mount as you reach them, the side menu slides over the page, screens change at once, and

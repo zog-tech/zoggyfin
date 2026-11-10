@@ -9,6 +9,7 @@ import { Icon, type IconName } from '@/components/icon';
 import { ItemImage } from '@/components/item-image';
 import { EmptyState } from '@/components/states';
 import { SwipeRow } from '@/components/swipe-row';
+import { ADD_TO_QUEUE_ACTION, canQueue, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { Touchable } from '@/components/touchable';
 import {
   type DownloadGroupView,
@@ -310,8 +311,11 @@ function GroupRow({ group: g, last }: { group: DownloadGroupView; last: boolean 
   const player = usePlayer();
   const open = useOpenDetail();
   const [expanded, setExpanded] = useState(false);
+  const queueSwipe = useQueueSwipe();
   const single = g.type === 'Single' && g.records.length === 1;
   const first = g.records[0];
+  // A single song: "Add to queue" on a swipe right (swipe left deletes). An album queues from its expanded rows.
+  const queueItem = single && first?.kind === 'audio' && canQueue(first.item) ? first.item : null;
   const video = first?.kind === 'video';
   const words = GROUP_WORDS[g.type] ?? ['item', 'items'];
   const meta = single
@@ -339,7 +343,7 @@ function GroupRow({ group: g, last }: { group: DownloadGroupView; last: boolean 
 
   return (
     <View>
-      <SwipeRow onSwipe={remove}>
+      <SwipeRow onSwipe={remove} leading={queueItem ? queueSwipe.addToQueue(queueItem) : undefined}>
         <Touchable
           kind="row"
           onPress={() => (single ? playGroup() : setExpanded((e) => !e))}
@@ -347,8 +351,17 @@ function GroupRow({ group: g, last }: { group: DownloadGroupView; last: boolean 
           accessibilityRole="button"
           accessibilityLabel={`${g.name}. ${meta}. Downloaded`}
           accessibilityHint={single ? 'Plays it' : expanded ? 'Hides the items' : 'Shows the items'}
-          accessibilityActions={[{ name: 'delete', label: 'Delete download' }, ...(open ? [{ name: 'open', label: 'Open details' }] : [])]}
-          onAccessibilityAction={(e) => (e.nativeEvent.actionName === 'delete' ? void remove() : open?.(single && first ? first.item : g.item))}
+          accessibilityActions={[
+            { name: 'delete', label: 'Delete download' },
+            ...(queueItem ? [{ name: ADD_TO_QUEUE_ACTION, label: 'Add to queue' }] : []),
+            ...(open ? [{ name: 'open', label: 'Open details' }] : []),
+          ]}
+          onAccessibilityAction={(e) => {
+            const name = e.nativeEvent.actionName;
+            if (name === 'delete') void remove();
+            else if (queueItem && queueSwipe.runAccessibility(name, queueItem)) return;
+            else open?.(single && first ? first.item : g.item);
+          }}
           style={({ pressed, hovered }) => [s.row, (pressed || hovered) && s.rowActive]}>
           <Thumb item={single && first ? first.item : g.item} video={!!video && single} />
           <View style={[s.rowBody, !last || expanded ? s.line : null]}>
@@ -391,6 +404,8 @@ function useOpenDetail(): ((item: BaseItemDto) => void) | null {
 function ChildRow({ record: r, group, index, last }: { record: DownloadRecord; group: DownloadGroupView; index: number; last: boolean }) {
   const s = useStyles(makeStyles);
   const player = usePlayer();
+  const queueSwipe = useQueueSwipe();
+  const queueable = r.kind === 'audio' && canQueue(r.item);
   const remove = async () => {
     const ok = await confirmDestructive(`Delete ${r.item.Name ?? 'this download'}?`, `This frees ${formatBytes(r.bytesDone)} on this device. Nothing changes on the server.`, 'Delete');
     if (ok) await downloads.remove(r.itemId);
@@ -401,15 +416,18 @@ function ChildRow({ record: r, group, index, last }: { record: DownloadRecord; g
     else player.play({ item: r.item });
   };
   return (
-    <SwipeRow onSwipe={remove}>
+    <SwipeRow onSwipe={remove} leading={queueable ? queueSwipe.addToQueue(r.item) : undefined}>
       <Touchable
         kind="row"
         onPress={play}
         accessibilityRole="button"
         accessibilityLabel={`${r.item.Name}, ${formatBytes(r.bytesDone)}`}
         accessibilityHint="Plays it"
-        accessibilityActions={[{ name: 'delete', label: 'Delete download' }]}
-        onAccessibilityAction={() => void remove()}
+        accessibilityActions={[{ name: 'delete', label: 'Delete download' }, ...(queueable ? [{ name: ADD_TO_QUEUE_ACTION, label: 'Add to queue' }] : [])]}
+        onAccessibilityAction={(e) => {
+          if (queueable && queueSwipe.runAccessibility(e.nativeEvent.actionName, r.item)) return;
+          void remove();
+        }}
         style={({ pressed, hovered }) => [s.childRow, (pressed || hovered) && s.rowActive]}>
         <Text style={s.childNo}>{r.item.Type === 'Episode' ? `E${r.item.IndexNumber ?? index + 1}` : (r.item.IndexNumber ?? index + 1)}</Text>
         <View style={[s.childBody, !last && s.line]}>

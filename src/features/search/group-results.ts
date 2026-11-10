@@ -55,7 +55,9 @@ export function groupSearchResults(items: readonly BaseItemDto[]): SearchSection
 export function pushRecentSearch(recent: readonly string[], term: string, max = 10): string[] {
   const t = term.trim();
   if (!t) return [...recent];
-  const rest = recent.filter((r) => r.toLowerCase() !== t.toLowerCase());
+  // Drop the same search and the shorter searches it extends ("gare" when "garee2a" is saved).
+  const lower = t.toLowerCase();
+  const rest = recent.filter((r) => !lower.startsWith(r.toLowerCase()));
   return [t, ...rest].slice(0, max);
 }
 
