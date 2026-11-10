@@ -40,7 +40,7 @@ describe('withFeedParams', () => {
     const m = manifest();
     const sent: string[] = [];
     await fetchFeedPage(
-      () => buildRequest(m, { method: 'GET', path: '/feed' }, { settings: { apiKey: 'secret' } }, { itemPath: false, jellyfinToken: false }, null),
+      () => buildRequest(m, { method: 'GET', path: '/feed' }, { settings: { apiKey: 'secret' } }, { itemPath: false, jellyfinToken: false, playback: false, downloads: false }, null),
       m.baseUrl,
       { cursor: '{{settings.apiKey}}' },
       {
