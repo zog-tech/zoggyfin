@@ -225,6 +225,6 @@ describe('the Hello Pages sample', () => {
     expect(page.sections.map((s) => s.layout)).toEqual(['row', 'list', 'grid']);
     expect(page.sections.map((_, i) => sectionMode(page.sections, i))).toEqual(['row', 'preview', 'infinite']);
     expect(page.search?.feed).toBe('/pages/search');
-    expect(r.manifest.contributes.homeSections?.map((h) => h.id)).toEqual(['main:latest']);
+    expect(r.manifest.contributes.homeSections?.map((h) => h.id)).toEqual(['main:latest', 'tabs:mine']);
   });
 });

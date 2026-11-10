@@ -381,14 +381,17 @@ has one `row` section, no tab, no Library tile, and the section on Home.
 | Field | Notes |
 | --- | --- |
 | `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen, each with its own switch (on by default). Turn one off there or on the extension's page in Settings to stop that use. A version 1 manifest cannot ask for them. |
-| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`. |
+| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`, or `tabs` (see [Tabs](#tabs)), or both. |
+| `tabs` | 2 to 6 tabs. Each has `id`, `title`, 1 to 8 `sections` and an optional `search`. |
 | `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
 | `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
 | `sections` | `id`, `title`, `feed`, `layout` (`row`, the default, `grid` or `list`), `shape` (`poster`, `thumb`, the default, or `square`), `refreshSeconds` (5 to 3600). `grid` and `list` load the next page near the end. |
 | `skipLabels` | At most 10. `id`, `title`, `default`: `auto` (skip, with Undo), `ask` (the default; a Skip button) or `off`. |
 
-Ids are unique in each list: pages, the sections of one page, the Home ids of
-one page, and skip labels. A Home id must name a section of its page.
+Ids are unique in each list: pages, the sections of one page, the tabs of one
+page, the section ids across all tabs of one page, the Home ids of one page,
+and skip labels. A Home id must name a section of its page (in `sections` or
+in a tab).
 
 ### Replies (schema version 2)
 
@@ -473,6 +476,65 @@ sections in order.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are
   never read as templates.
+
+### Tabs
+
+A page can split its sections into tabs. The app shows a tab strip under the
+page title; on TV it is a row that the D-pad reaches.
+
+```json
+{
+  "id": "main",
+  "title": "Example",
+  "placement": { "tab": true, "home": ["latest"] },
+  "search": { "feed": "/api/search" },
+  "sections": [
+    { "id": "latest", "title": "Latest", "feed": "/api/feed/latest" },
+    { "id": "all", "title": "Everything", "layout": "grid", "feed": "/api/feed/all" }
+  ],
+  "tabs": [
+    {
+      "id": "films",
+      "title": "Films",
+      "sections": [
+        { "id": "latest", "title": "Latest", "feed": "/api/feed/latest" },
+        { "id": "all", "title": "Everything", "layout": "grid", "feed": "/api/feed/all" }
+      ]
+    },
+    {
+      "id": "shows",
+      "title": "Shows",
+      "search": { "feed": "/api/search/shows", "placeholder": "Search shows" },
+      "sections": [{ "id": "airing", "title": "Airing", "layout": "list", "feed": "/api/feed/airing" }]
+    }
+  ]
+}
+```
+
+- `tabs`: 2 to 6 tabs. A tab has `id`, `title`, 1 to 8 `sections` (the same
+  fields as page sections) and an optional `search` (the same fields as the
+  page `search`). Tab ids are unique on the page. Section ids are unique
+  across all tabs of the page.
+- Each tab is laid out like a page: rows, previews with "See all", and a last
+  `grid` or `list` that loads more.
+- A tab without its own `search` uses the page's `search`; with neither, it
+  has no search field.
+- The app loads a tab's feeds when the tab first shows, and keeps each tab's
+  feeds and scroll position while the user switches (on TV the feeds come
+  back from the cache; the scroll position starts at the top). The page opens
+  on the tab the user chose last on it, until the app quits.
+- `placement.home` can name a section inside any tab.
+- `tabs` and `sections`: `tabs` wins. `sections` is what an app version
+  without tabs shows. Such a version ignores `tabs`, but it refuses a page
+  with no `sections` and a Home id that is not in `sections`, and so the whole
+  manifest. Until every user has a version with tabs, keep `sections` on the
+  page and keep each Home id in it.
+- A `tabs` value that is not valid (fewer than 2 or more than 6 tabs, an id
+  used twice, a bad section) is left out when the page has `sections`: the
+  page shows them. A page with no `sections` and bad `tabs` is refused, as is
+  a page with neither.
+- An update that only adds `tabs` (and a new `version`) asks nothing: it
+  needs no new permission and places no new page.
 
 ### Where a page shows
 
@@ -774,6 +836,14 @@ Pages") or from the header of its "Latest samples" Home row:
   `options`; each answers with one file and its subtitles.
 - The page has `tab` and `library` in its `placement`: a tab on iPad, the web
   and the Mac app, a Library tile on phones, a side menu entry on TV.
+- A second page, "Hello Tabs" (a Library tile), has three tabs: "Clips" (a
+  row and a grid), "Up next" (a list) and "My list" (a grid with its own
+  search). Its flat `sections` are the fallback for app versions without
+  tabs. "My list" is also a Home row (a Home id inside a tab).
+- "My list" is empty until you sign in: its feed answers with a `message` and
+  a "Sign in" `action` that opens the "Hello account" panel. The panel's
+  Sign in keeps the state on the sample server, shows a toast and calls
+  `openPage`; the page then shows the list. Sign out calls `refreshPage`.
 - Every third entry opens an entry page (`/pages/entries/<id>`): Play or
   Resume, a Save button with state that the server keeps in memory until it
   stops (`POST /pages/entries/<id>/save` with `{ "on": {{action.next}} }`; any

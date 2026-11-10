@@ -17,7 +17,7 @@ import type { z } from 'zod';
 
 import type { HomeSectionSpec, Permission } from './common';
 import { manifestSchemaV1, type ManifestV1 } from './v1';
-import { manifestSchemaV2, type ManifestV2, type PageSpec, type SectionSpec, type SkipLabelSpec } from './v2';
+import { manifestSchemaV2, type ManifestV2, type PageInput, type PageSpec, type SectionSpec, type SkipLabelSpec, type TabSpec, tabsSchema } from './v2';
 
 export const SCHEMA_VERSIONS = [1, 2] as const;
 export type SchemaVersion = (typeof SCHEMA_VERSIONS)[number];
@@ -39,9 +39,10 @@ export type Manifest = Omit<ManifestV1, 'schemaVersion' | 'permissions' | 'contr
 
 export type ParseResult = { ok: true; manifest: Manifest } | { ok: false; error: string };
 
-function firstIssue(error: z.ZodError): string {
+function firstIssue(error: z.ZodError, prefix?: string): string {
   const issue = error.issues[0];
-  const where = issue?.path.length ? issue.path.join('.') : 'manifest';
+  const parts = [...(prefix ? [prefix] : []), ...(issue?.path ?? []).map(String)];
+  const where = parts.length ? parts.join('.') : 'manifest';
   return `${where}: ${issue?.message ?? 'not valid'}`;
 }
 
@@ -61,12 +62,25 @@ export function pageFromHomeSection(sec: HomeSectionSpec): PageSpec {
   return { id: sec.id, title: sec.title, placement: { tab: false, library: false, home: [sec.id] }, sections: [section] };
 }
 
+/** The sections a page shows: those of all its tabs in order, else its own. */
+export function pageSections(page: Pick<PageSpec, 'sections' | 'tabs'>): SectionSpec[] {
+  return page.tabs?.length ? page.tabs.flatMap((t) => t.sections) : page.sections;
+}
+
+/**
+ * A section of a page by id: in its tabs first, else in its own `sections`
+ * (a Home row or a "See all" can name either).
+ */
+export function findPageSection(page: Pick<PageSpec, 'sections' | 'tabs'>, sectionId: string): SectionSpec | undefined {
+  return pageSections(page).find((s) => s.id === sectionId) ?? page.sections.find((s) => s.id === sectionId);
+}
+
 /** The Home rows of v2 pages, in page order and then in `placement.home` order. */
 export function homeSectionsOfPages(pages: PageSpec[]): HomeSectionSpec[] {
   const out: HomeSectionSpec[] = [];
   for (const page of pages) {
     for (const sid of page.placement.home) {
-      const sec = page.sections.find((s) => s.id === sid);
+      const sec = findPageSection(page, sid);
       if (!sec) continue;
       const row: HomeSectionSpec = { id: homeRowKey(page.id, sec.id), title: sec.title, feed: sec.feed, shape: sec.shape };
       if (sec.refreshSeconds !== undefined) row.refreshSeconds = sec.refreshSeconds;
@@ -87,25 +101,68 @@ function fromV1(m: ManifestV1): Manifest {
   return { ...m, contributes };
 }
 
-function fromV2(m: ManifestV2): Manifest {
-  const contributes: Contributes = { ...m.contributes };
-  const rows = homeSectionsOfPages(m.contributes.pages ?? []);
+function fromV2(m: ManifestV2, pages: PageSpec[] | undefined): Manifest {
+  const { pages: _written, ...rest } = m.contributes;
+  const contributes: Contributes = { ...rest };
+  if (pages) contributes.pages = pages;
+  const rows = homeSectionsOfPages(pages ?? []);
   if (rows.length) contributes.homeSections = rows;
   return { ...m, contributes };
 }
 
-/** Checks the rules zod cannot: unique ids in each list, and Home rows that name a section of the page. */
-function checkV2Pages(m: ManifestV2): string | null {
-  for (const [i, page] of (m.contributes.pages ?? []).entries()) {
-    const ids = page.sections.map((s) => s.id);
-    const dup = duplicate(ids);
-    if (dup) return `contributes.pages.${i}.sections: the id "${dup}" is used twice`;
-    const homeDup = duplicate(page.placement.home);
-    if (homeDup) return `contributes.pages.${i}.placement.home: the id "${homeDup}" is used twice`;
-    const missing = page.placement.home.find((h) => !ids.includes(h));
-    if (missing) return `contributes.pages.${i}.placement.home: the page has no section "${missing}"`;
+/**
+ * Reads a page's `tabs`: 2 to 6 tabs, unique tab ids, and section ids that
+ * are unique across all tabs (a Home row or a "See all" names one section).
+ */
+function readTabs(raw: unknown, where: string): { tabs: TabSpec[] } | { error: string } {
+  const r = tabsSchema.safeParse(raw);
+  if (!r.success) return { error: firstIssue(r.error, where) };
+  const tabDup = duplicate(r.data.map((t) => t.id));
+  if (tabDup) return { error: `${where}: the id "${tabDup}" is used twice` };
+  const secDup = duplicate(r.data.flatMap((t) => t.sections.map((s) => s.id)));
+  if (secDup) return { error: `${where}: the section id "${secDup}" is used twice` };
+  return { tabs: r.data };
+}
+
+/**
+ * Turns a written page into the model, with the rules zod cannot check:
+ * unique ids in each list, `tabs` (a bad one falls back to `sections`, or
+ * refuses the page when it has none), and Home rows that name a section of
+ * the page.
+ */
+function readPage(page: PageInput, i: number): { page: PageSpec } | { error: string } {
+  const at = `contributes.pages.${i}`;
+  const { tabs: rawTabs, sections: written, ...rest } = page;
+  let tabs: TabSpec[] | undefined;
+  if (rawTabs !== undefined) {
+    const r = readTabs(rawTabs, `${at}.tabs`);
+    if ('error' in r) {
+      if (!written) return r;
+    } else tabs = r.tabs;
   }
-  return null;
+  if (!written && !tabs) return { error: `${at}.sections: a page needs sections or tabs` };
+  if (written) {
+    const dup = duplicate(written.map((s) => s.id));
+    if (dup) return { error: `${at}.sections: the id "${dup}" is used twice` };
+  }
+  const out: PageSpec = { ...rest, sections: written ?? (tabs as TabSpec[])[0].sections };
+  if (tabs) out.tabs = tabs;
+  const homeDup = duplicate(page.placement.home);
+  if (homeDup) return { error: `${at}.placement.home: the id "${homeDup}" is used twice` };
+  const missing = page.placement.home.find((h) => !findPageSection(out, h));
+  if (missing) return { error: `${at}.placement.home: the page has no section "${missing}"` };
+  return { page: out };
+}
+
+function readPages(m: ManifestV2): { pages: PageSpec[] | undefined } | { error: string } {
+  if (!m.contributes.pages) return { pages: undefined };
+  const pages: PageSpec[] = [];
+  for (const [i, page] of m.contributes.pages.entries()) {
+    const r = readPage(page, i);
+    if ('error' in r) return r;
+    pages.push(r.page);
+  }
+  return { pages };
 }
 
 /**
@@ -121,9 +178,9 @@ export function parseManifest(data: unknown): ParseResult {
   if (version === 2) {
     const r = manifestSchemaV2.safeParse(data);
     if (!r.success) return { ok: false, error: firstIssue(r.error) };
-    const bad = checkV2Pages(r.data);
-    if (bad) return { ok: false, error: bad };
-    m = fromV2(r.data);
+    const pages = readPages(r.data);
+    if ('error' in pages) return { ok: false, error: pages.error };
+    m = fromV2(r.data, pages.pages);
   } else {
     // No version at all: the v1 schema names `schemaVersion` as the wrong field.
     const r = manifestSchemaV1.safeParse(data);

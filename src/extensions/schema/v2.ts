@@ -11,6 +11,8 @@ import { headersSchema, headFields, id, label, path, PERMISSIONS, SHAPES, v1Cont
 export const MAX_PAGES = 5;
 export const MAX_SECTIONS_PER_PAGE = 8;
 export const MAX_SKIP_LABELS = 10;
+export const MIN_TABS = 2;
+export const MAX_TABS = 6;
 
 export const LAYOUTS = ['row', 'grid', 'list'] as const;
 export type Layout = (typeof LAYOUTS)[number];
@@ -39,17 +41,45 @@ export const placementSchema = z.object({
 });
 export type Placement = z.infer<typeof placementSchema>;
 
+/** A search field. The feed gets `query` and `cursor`. */
+export const searchSchema = z.object({ feed: path, placeholder: z.string().max(80).optional() });
+export type SearchSpec = z.infer<typeof searchSchema>;
+
+/** One tab of a page: its own sections and, optionally, its own search (else the page's). */
+export const tabSchema = z.object({
+  id,
+  title: label,
+  sections: z.array(sectionSchema).min(1).max(MAX_SECTIONS_PER_PAGE),
+  search: searchSchema.optional(),
+});
+export type TabSpec = z.infer<typeof tabSchema>;
+export const tabsSchema = z.array(tabSchema).min(MIN_TABS).max(MAX_TABS);
+
+/**
+ * A page as written. `sections`, `tabs` or both: with both, `tabs` wins and
+ * `sections` is what an app version without tabs shows. `tabs` is read on
+ * its own (`normalize.ts`), so a bad `tabs` falls back to `sections`
+ * instead of refusing the manifest.
+ */
 export const pageSchema = z.object({
   id,
   title: label,
   /** An icon name of the app (`src/components/icon-names.ts`). Another name shows a default icon. */
   icon: z.string().max(60).optional(),
   placement: placementSchema.default({ tab: false, library: false, home: [] }),
-  /** A search field on the page. The feed gets `query` and `cursor`. */
-  search: z.object({ feed: path, placeholder: z.string().max(80).optional() }).optional(),
-  sections: z.array(sectionSchema).min(1).max(MAX_SECTIONS_PER_PAGE),
+  /** A search field on the page (on every tab that has none of its own). */
+  search: searchSchema.optional(),
+  sections: z.array(sectionSchema).min(1).max(MAX_SECTIONS_PER_PAGE).optional(),
+  tabs: z.unknown().optional(),
 });
-export type PageSpec = z.infer<typeof pageSchema>;
+export type PageInput = z.infer<typeof pageSchema>;
+
+/**
+ * A page in the app's model. `sections` is always set: the page's own, or
+ * the first tab's when the page has only tabs (so a saved manifest stays
+ * valid for an app version without tabs). `tabs`, when set, is valid and wins.
+ */
+export type PageSpec = Omit<PageInput, 'sections' | 'tabs'> & { sections: SectionSpec[]; tabs?: TabSpec[] };
 
 export const SKIP_MODES = ['auto', 'ask', 'off'] as const;
 export type SkipMode = (typeof SKIP_MODES)[number];

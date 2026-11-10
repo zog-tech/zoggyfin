@@ -12,6 +12,9 @@ const panel = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
 // A second sample, schema version 2: add http://localhost:8787/pages/zoggyfin-extension.json.
 const pagesManifest = JSON.parse(readFileSync(new URL('./pages-extension.json', import.meta.url), 'utf8'));
 pagesManifest.baseUrl = base;
+// The panel of the "My list" tab: a fake sign-in that the server keeps in memory.
+const accountPanel = readFileSync(new URL('./account-panel.html', import.meta.url), 'utf8');
+let signedIn = false;
 // A 6 s test pattern with a tone (320x180 H.264 and AAC, made with ffmpeg's
 // testsrc and sine sources). Every sample entry plays this one file.
 const video = readFileSync(new URL('./media/sample.mp4', import.meta.url));
@@ -195,6 +198,21 @@ createServer(async (req, res) => {
   if (url.pathname === '/pages/latest') return send(res, 200, { items: samples.slice(0, 12), next: null });
   if (url.pathname === '/pages/queue') return send(res, 200, pageOf(samples.filter((e) => e.progress !== undefined), url, 5));
   if (url.pathname === '/pages/all') return send(res, 200, pageOf(samples, url, 20));
+  // The "My list" tab: empty with a message and a Sign in button until the panel signs in.
+  if (url.pathname === '/pages/account') return send(res, 200, accountPanel, 'text/html; charset=utf-8');
+  if (url.pathname === '/pages/account/state') {
+    if (req.method === 'POST') signedIn = (await readBody(req)).signedIn === true;
+    return send(res, 200, { signedIn });
+  }
+  const mine = () => samples.filter((e) => saved.has(e.id) || Number(e.id.slice(1)) % 10 === 0);
+  if (url.pathname === '/pages/mine') {
+    if (!signedIn) return send(res, 200, { items: [], message: 'Sign in to see your list.', action: { title: 'Sign in', panel: 'account' } });
+    return send(res, 200, pageOf(mine(), url, 20));
+  }
+  if (url.pathname === '/pages/mine/search') {
+    const q = (url.searchParams.get('query') || '').trim().toLowerCase();
+    return send(res, 200, pageOf(signedIn && q ? mine().filter((e) => e.title.toLowerCase().includes(q)) : [], url, 20));
+  }
   if (url.pathname === '/pages/search') {
     const q = (url.searchParams.get('query') || '').trim().toLowerCase();
     const found = q ? samples.filter((e) => `${e.title} ${e.subtitle}`.toLowerCase().includes(q)) : [];
