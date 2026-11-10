@@ -17,6 +17,7 @@
  */
 import type { ExternalPlayRequest, ExternalRef, ExternalSource, ExternalStream, MediaPlayRequest, SkipMode } from '@/player/types';
 
+import { hasGrant } from '../grants';
 import { buildHeaders, ExtensionError, FEED_TIMEOUT_MS, fetchWithTimeout, type JellyfinAccount, send } from '../http';
 import { urlOnOrigin } from '../match';
 import type { Manifest } from '../schema';
@@ -77,11 +78,15 @@ const isHls = (url: string) => {
 
 const none = (unsupported: string): ExternalStream => ({ candidates: [], userAgent: null, unsupported });
 
-/** Why the extension cannot play, or null when it can. */
-function refusal(ext: InstalledExtension | undefined): string | null {
+/**
+ * Why the extension cannot play, or null when it can. It needs the
+ * `playback` permission in its manifest and the user's grant (`hasGrant`).
+ */
+export function playRefusal(ext: InstalledExtension | undefined): string | null {
   if (!ext) return 'This extension is not installed any more.';
   if (!ext.enabled) return 'This extension is off. Turn it on in Settings, Extensions.';
   if (!ext.manifest.permissions.includes('playback')) return 'This extension cannot play media.';
+  if (!hasGrant(ext, 'playback')) return `Playback is turned off for ${ext.manifest.name}. Turn it on in Settings → Extensions.`;
   return null;
 }
 
@@ -138,7 +143,7 @@ export function extensionSource(extId: string, deps: ExtensionMediaDeps, refs = 
     itemId: (ref) => mediaItemId(extId, ref.id),
     async resolve(ref) {
       const ext = deps.extension(extId);
-      const why = refusal(ext);
+      const why = playRefusal(ext);
       if (why || !ext) return none(why ?? 'This extension is not installed any more.');
       const m = ext.manifest;
       const playback = urlOnOrigin(m.baseUrl, refs.get(ref.id));
@@ -164,7 +169,7 @@ export function extensionSource(extId: string, deps: ExtensionMediaDeps, refs = 
     },
     async loadText(url) {
       const ext = deps.extension(extId);
-      if (refusal(ext) || !ext) throw new ExtensionError('This extension cannot play media.');
+      if (playRefusal(ext) || !ext) throw new ExtensionError('This extension cannot play media.');
       const target = urlOnOrigin(ext.manifest.baseUrl, url);
       if (!target) throw new ExtensionError("The subtitles are not on the extension's server.");
       const res = await fetchFn(target, { method: 'GET', headers: { ...headersNow(ext), Accept: 'text/vtt, text/plain, */*' } }, FEED_TIMEOUT_MS);
@@ -180,7 +185,7 @@ export function extensionSource(extId: string, deps: ExtensionMediaDeps, refs = 
  */
 export function mediaPlayRequest(req: MediaPlayRequest, deps: ExtensionMediaDeps): { request: ExternalPlayRequest } | { error: string } {
   const ext = deps.extension(req.extension);
-  const why = refusal(ext);
+  const why = playRefusal(ext);
   if (why || !ext) return { error: why ?? 'This extension is not installed any more.' };
   const playback = urlOnOrigin(ext.manifest.baseUrl, req.playback);
   if (!req.mediaId || !playback) return { error: 'This title cannot play.' };
