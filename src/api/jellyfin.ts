@@ -26,6 +26,7 @@ import axios, { isCancel } from 'axios';
 
 import { devOffline } from '@/lib/dev-offline';
 
+import { isOnDemandAbsent, type OnDemandHome, parseOnDemandHome } from './ondemand';
 import type { LibraryQuery } from './query-keys';
 import { serverUrlCandidates } from './server-url';
 import type {
@@ -869,6 +870,23 @@ export async function resolvePlayable(api: Api, userId: string, item: BaseItemDt
 export async function getText(api: Api, url: string): Promise<string> {
   const res = await api.axiosInstance.get<string>(url, { responseType: 'text', transformResponse: (d: unknown) => d });
   return typeof res.data === 'string' ? res.data : String(res.data);
+}
+
+// ---- Server plugin: music catalog --------------------------------------------------
+
+/**
+ * The rows of the optional music catalog plugin (`/OnDemand/Home`). Null when
+ * the server does not have it: an HTTP error (404) or a body of another shape.
+ * Only a request with no answer (offline, timeout) throws.
+ */
+export async function getOnDemandHome(api: Api, limit: number): Promise<OnDemandHome | null> {
+  try {
+    const res = await api.axiosInstance.get<unknown>(`${api.basePath}/OnDemand/Home`, { params: { limit } });
+    return parseOnDemandHome(res.data, limit);
+  } catch (e) {
+    if (isOnDemandAbsent(e)) return null;
+    throw e;
+  }
 }
 
 // ---- Remote control ---------------------------------------------------------------

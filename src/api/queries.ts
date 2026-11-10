@@ -228,6 +228,24 @@ export function useMusicShelf(libraryId: string, shelf: jf.MusicShelf, limit?: n
   });
 }
 
+/** Rows a music Home asks the plugin for. */
+const ONDEMAND_LIMIT = 20;
+
+/**
+ * The rows of the optional music catalog plugin. A server without it answers
+ * null; the null is cached (and saved with the cache) like any answer, so the
+ * app asks such a server again only when the result is stale.
+ */
+export function useOnDemandHome(enabled = true) {
+  const { api, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.onDemandHome(scope),
+    queryFn: () => jf.getOnDemandHome(api, ONDEMAND_LIMIT),
+    staleTime: 30 * 60 * 1000,
+    enabled,
+  });
+}
+
 /** Items by Id for a music Home row (mixes, Rediscover). The Ids are part of the key. */
 export function useMusicItemsByIds(libraryId: string, part: string, ids: readonly string[], enabled = true) {
   const { api, userId, scope } = useApi();
