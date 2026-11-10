@@ -26,7 +26,7 @@ import { bitrateFor, usePlaybackSettings } from '@/settings/playback';
 import { readJson, writeJson } from '@/storage/json';
 import { storage } from '@/storage/kv';
 
-import { mediaCapabilities } from '../capabilities';
+import { audioCapabilities } from '../capabilities';
 import { controlGate, queueGate, togglePauses, type UserControl } from '../control-gate';
 import { buildDeviceProfile } from '../device-profile';
 import { isForeignDownload, outboxOnly, withOutbox } from '../outbox-transport';
@@ -65,7 +65,7 @@ import {
 import { isCatalogSong } from './catalog';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
 import { audioState, initialAudioState, setAudioState } from './store';
-import { formatLine, predictPlayMethod, universalAudioUrl } from './stream-url';
+import { formatLine, hasCodecInfo, predictPlayMethod, universalAudioUrl } from './stream-url';
 
 /**
  * A listen-together guest: where each track comes from (its own download, or
@@ -145,6 +145,8 @@ interface TrackInfo {
   playSessionId: string;
   playMethod: 'DirectPlay' | 'Transcode' | 'DirectStream';
   url: string;
+  /** True for a stream from the server (not a download, not a listen-together host's file). */
+  remote?: boolean;
 }
 
 class AudioSession {
@@ -182,7 +184,7 @@ class AudioSession {
         const key = this.engine.currentKey;
         const status = e.buffering ? 'buffering' : e.loaded ? 'ready' : st.status === 'loading' ? 'loading' : 'buffering';
         const patch: Partial<typeof st> = { position: e.position, status, buffered: e.position };
-        if (e.duration > 0 && Math.abs(e.duration - st.duration) > 0.5) patch.duration = e.duration;
+        if (e.duration > 0 && Number.isFinite(e.duration) && Math.abs(e.duration - st.duration) > 0.5) patch.duration = e.duration;
         if (e.playing !== st.playing) {
           patch.playing = e.playing;
           this.reporter?.tick(e.playing ? 'Unpause' : 'Pause');
@@ -360,10 +362,16 @@ class AudioSession {
 
   // ---- Starting tracks ---------------------------------------------------------
 
-  private trackFor(entry: QueueEntry<AudioItem> | null): EngineTrack | null {
+  /**
+   * The engine track for a queue entry. A server transcode is a progressive
+   * stream with no byte seeking, so a transcode that starts later than 0
+   * asks the server to start there (`StartTimeTicks`) and tells the engine
+   * the offset. A direct-play file starts at 0 and the engine seeks in it.
+   */
+  private trackFor(entry: QueueEntry<AudioItem> | null, startSeconds = 0, reuseSessionId?: string): EngineTrack | null {
     if (!entry) return null;
-    const profile = buildDeviceProfile(mediaCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
-    const playSessionId = randomId().replace(/-/g, '');
+    const profile = buildDeviceProfile(audioCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
+    const playSessionId = reuseSessionId ?? randomId().replace(/-/g, '');
     const sharedUri = this.shared?.(entry.item) ?? null;
     if (sharedUri) {
       this.tracks.set(entry.key, { playSessionId, playMethod: 'DirectPlay', url: sharedUri });
@@ -372,16 +380,25 @@ class AudioSession {
     // A guest with no file for this track streams it from the server only when it is signed in to that server.
     const active = useSessionStore.getState().session?.serverId;
     if (this.shared && (!active || (entry.item.ServerId && entry.item.ServerId !== active))) return null;
+    const maxBitrate = profile.MaxStreamingBitrate ?? this.bitrate;
+    const predicted = predictPlayMethod(entry.item, profile, maxBitrate);
+    const offset = predicted === 'Transcode' && startSeconds > 0.5 ? startSeconds : 0;
     // A downloaded track plays from the device; the server URL is built only when it is not.
     // A download from any saved server plays from the device.
     // The server (and a sign-in) is needed only for a track that is not on the device.
     const choice = chooseMedia(findDownload(entry.item.Id), documentsDir(), null, () => {
       const { server, userId } = context();
-      return universalAudioUrl(server, entry.item.Id, profile, { userId, maxBitrate: profile.MaxStreamingBitrate ?? this.bitrate, playSessionId });
+      return universalAudioUrl(server, entry.item.Id, profile, {
+        userId,
+        maxBitrate,
+        playSessionId,
+        startTicks: offset ? secondsToTicks(offset) : undefined,
+      });
     });
-    const playMethod = choice.kind === 'local' ? 'DirectPlay' : predictPlayMethod(entry.item, profile, profile.MaxStreamingBitrate ?? this.bitrate);
-    this.tracks.set(entry.key, { playSessionId, playMethod, url: choice.uri });
-    return { key: entry.key, uri: choice.uri };
+    const remote = choice.kind !== 'local';
+    const playMethod = remote ? predicted : 'DirectPlay';
+    this.tracks.set(entry.key, { playSessionId, playMethod, url: choice.uri, remote });
+    return { key: entry.key, uri: choice.uri, offset: remote ? offset : 0 };
   }
 
   /**
@@ -458,7 +475,7 @@ class AudioSession {
       start = resumeSeconds(this.positions.get(entry.item.Id), ticksToSecondsExact(entry.item.UserData?.PlaybackPositionTicks), duration);
       resumed = start > 0;
     }
-    const current = this.trackFor(entry);
+    const current = this.trackFor(entry, start);
     if (!current) {
       // The queue has moved to this entry: the old track must not play on under it.
       this.engine.unload();
@@ -577,6 +594,33 @@ class AudioSession {
       // Not signed in.
     }
     void this.loadLyrics(entry.item);
+    void this.fillMediaInfo(entry);
+  }
+
+  /**
+   * A song played from a tile has only its container ("mov,mp4,m4a,…"), not
+   * the codec, so the format line and the play-method guess are weak. Fetch
+   * the full item once, in the background. This never reloads the track.
+   */
+  private async fillMediaInfo(entry: QueueEntry<AudioItem>) {
+    const item = entry.item;
+    if (hasCodecInfo(item) || foreignRecord(item.Id) || isOffline()) return;
+    try {
+      const { api, userId } = context();
+      const full = await jf.getItem(api, userId, item.Id);
+      if (currentEntry(audioState().queue)?.key !== entry.key) return;
+      const slim = slimItem(full);
+      if (!hasCodecInfo(slim)) return;
+      setAudioState({ format: formatLine(slim) });
+      const info = this.tracks.get(entry.key);
+      // The guess decides how a later seek works (see seekTranscode).
+      if (info?.remote && this.engine.currentKey === entry.key) {
+        const profile = buildDeviceProfile(audioCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
+        info.playMethod = predictPlayMethod(slim, profile, profile.MaxStreamingBitrate ?? this.bitrate);
+      }
+    } catch {
+      // Not signed in or the server is away: keep the container line.
+    }
   }
 
   private async loadLyrics(item: AudioItem) {
@@ -833,9 +877,40 @@ class AudioSession {
   private doSeek(target: number): void {
     setPlayerState({ position: target });
     if (!this.engine.loaded) return;
+    if (this.seekTranscode(target)) return;
     this.engine.seekTo(target);
     this.reporter?.tick('Seek');
     setAudioState({ resumedAt: null });
+  }
+
+  /**
+   * A seek in a server transcode. The progressive stream cannot seek by
+   * bytes: the browser asks for a byte range, and the server starts a new
+   * transcode from 0, so the song started again. Instead, ask the server
+   * for a new stream that starts at `target`, in the same play session.
+   * The reporter keeps running: for the server this is a seek, not a new
+   * playback.
+   */
+  private seekTranscode(target: number): boolean {
+    const key = this.engine.currentKey;
+    const info = key ? this.tracks.get(key) : undefined;
+    if (!key || !info?.remote || info.playMethod !== 'Transcode') return false;
+    const q = audioState().queue;
+    const entry = currentEntry(q);
+    if (!entry || entry.key !== key) return false;
+    const current = this.trackFor(entry, target, info.playSessionId);
+    if (!current) return false;
+    const nextKey = this.engine.nextKey;
+    const nextInfo = nextKey ? this.tracks.get(nextKey) : undefined;
+    const next = nextKey && nextInfo ? { key: nextKey, uri: nextInfo.url } : null;
+    const autoplay = playerState().playing;
+    const id = ++this.loadId;
+    void this.engine.load(current, next, target, autoplay).then(() => {
+      if (id !== this.loadId) return;
+      this.reporter?.tick('Seek');
+    });
+    setAudioState({ resumedAt: null });
+    return true;
   }
 
   skip(delta: number): void {

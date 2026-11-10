@@ -22,7 +22,7 @@ import { type ImageVariant, resolveImage } from '@/images/resolve-image';
 import { randomId } from '@/lib/id';
 import { toast } from '@/lib/toast';
 import { makeSeekableMp4 } from '@/native/zoggyfin-native';
-import { mediaCapabilities } from '@/player/capabilities';
+import { audioCapabilities, mediaCapabilities } from '@/player/capabilities';
 import { buildDeviceProfile } from '@/player/device-profile';
 import { mayHaveLyrics } from '@/player/audio/lyrics';
 import { pickSource, playbackInfoBody, type StreamServer } from '@/player/stream';
@@ -429,7 +429,9 @@ class DownloadManager {
       });
       item = { ...full, MediaSources: [source] };
     } else {
-      plan = audioPlan(ctx.server, full, profile, ctx.userId, randomId().replace(/-/g, ''));
+      // A song plays in the music player, which has its own profile (the desktop app plays music in the web view).
+      const audioProfile = buildDeviceProfile(audioCapabilities(), { maxBitrate: MAX_BITRATE });
+      plan = audioPlan(ctx.server, full, audioProfile, ctx.userId, randomId().replace(/-/g, ''));
     }
     const slim = slimForDownload(item);
     let group = rec.group;

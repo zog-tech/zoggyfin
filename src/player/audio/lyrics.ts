@@ -8,6 +8,17 @@ export interface LyricLine {
   text: string;
   /** Seconds, or null for plain (unsynced) lyrics. */
   start: number | null;
+  /** Word timing (enhanced LRC), when the server has it. */
+  cues?: LyricCue[];
+}
+
+/** The timing of a part of a line: characters `from` to `to` (exclusive) are sung from `start` to `end` (seconds). */
+export interface LyricCue {
+  from: number;
+  to: number;
+  start: number;
+  /** Null when the server does not know: the part then lasts until the next one. */
+  end: number | null;
 }
 
 export interface Lyrics {
@@ -15,12 +26,19 @@ export interface Lyrics {
   lines: LyricLine[];
 }
 
+interface LyricCueLike {
+  Position?: number;
+  EndPosition?: number;
+  Start?: number;
+  End?: number | null;
+}
+
 interface LyricDtoLike {
-  Lyrics?: readonly { Text?: string | null; Start?: number | null }[] | null;
+  Lyrics?: readonly { Text?: string | null; Start?: number | null; Cues?: readonly LyricCueLike[] | null }[] | null;
 }
 
 function finish(lines: LyricLine[]): Lyrics | null {
-  const trimmed = lines.map((l) => ({ ...l, text: l.text.trim() }));
+  const trimmed = lines.map(trimLine);
   // Drop leading and trailing blank lines; keep blank lines inside (pauses, verse breaks).
   while (trimmed.length && !trimmed[0]?.text) trimmed.shift();
   while (trimmed.length && !trimmed[trimmed.length - 1]?.text) trimmed.pop();
@@ -29,6 +47,33 @@ function finish(lines: LyricLine[]): Lyrics | null {
   if (!synced) return { synced: false, lines: trimmed.map((l) => ({ text: l.text, start: null })) };
   const sorted = [...trimmed].sort((a, b) => (a.start as number) - (b.start as number));
   return { synced: true, lines: sorted };
+}
+
+/** Trims the text and moves the cue positions with it; cues outside the text go. */
+function trimLine(l: LyricLine): LyricLine {
+  const lead = l.text.length - l.text.trimStart().length;
+  const text = l.text.trim();
+  if (!l.cues?.length) return { text, start: l.start };
+  const cues = l.cues
+    .map((c) => ({ ...c, from: Math.max(0, c.from - lead), to: Math.min(text.length, c.to - lead) }))
+    .filter((c) => c.to > c.from);
+  return cues.length ? { text, start: l.start, cues } : { text, start: l.start };
+}
+
+const TICKS = 10_000_000;
+
+function cuesOf(raw: readonly LyricCueLike[] | null | undefined, textLength: number): LyricCue[] | undefined {
+  if (!raw?.length) return undefined;
+  const cues: LyricCue[] = [];
+  for (const c of raw) {
+    if (typeof c.Start !== 'number' || !Number.isFinite(c.Start)) continue;
+    const from = Math.max(0, c.Position ?? 0);
+    const to = Math.min(textLength, c.EndPosition ?? textLength);
+    if (to <= from) continue;
+    const end = typeof c.End === 'number' && Number.isFinite(c.End) && c.End > c.Start ? c.End / TICKS : null;
+    cues.push({ from, to, start: c.Start / TICKS, end });
+  }
+  return cues.length ? cues.sort((a, b) => a.from - b.from) : undefined;
 }
 
 interface LyricHints {
@@ -54,10 +99,12 @@ export function fromLyricDto(dto: LyricDtoLike | null | undefined): Lyrics | nul
   const raw = dto?.Lyrics;
   if (!raw?.length) return null;
   return finish(
-    raw.map((l) => ({
-      text: l.Text ?? '',
-      start: typeof l.Start === 'number' && Number.isFinite(l.Start) ? l.Start / 10_000_000 : null,
-    })),
+    raw.map((l) => {
+      const text = l.Text ?? '';
+      const cues = cuesOf(l.Cues, text.length);
+      const start = typeof l.Start === 'number' && Number.isFinite(l.Start) ? l.Start / TICKS : null;
+      return cues ? { text, start, cues } : { text, start };
+    }),
   );
 }
 

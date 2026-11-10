@@ -23,3 +23,8 @@ export function mediaCapabilities(): MediaCapabilities {
   });
   return cached;
 }
+
+/** What the music player plays: on iOS and Android, the same player as video. */
+export function audioCapabilities(): MediaCapabilities {
+  return mediaCapabilities();
+}
