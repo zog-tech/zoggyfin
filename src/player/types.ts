@@ -1,4 +1,5 @@
 import type { BaseItemDto } from '@/api/types';
+import type { SkipMode } from '@/settings/skip-modes';
 
 /** What a screen asks the player for. */
 export interface PlayRequest {
@@ -166,8 +167,8 @@ export interface ExternalProgress {
   send(event: ExternalReportEvent, snapshot: ExternalReportSnapshot): Promise<void>;
 }
 
-/** What a skip label does: skip by itself, show the skip button, or nothing (`settings/playback.ts`). */
-export type SkipMode = 'auto' | 'ask' | 'off';
+/** What a skip label does: skip by itself, show the skip button, or nothing (`settings/skip-modes.ts`). */
+export type { SkipMode };
 
 /**
  * What the source answers for one title. Only the candidates are needed;

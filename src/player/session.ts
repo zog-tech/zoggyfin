@@ -20,7 +20,8 @@ import { outboxPosition } from '@/downloads/outbox-store';
 import { useDownloadsStore } from '@/downloads/store';
 import { resolveImage } from '@/images/resolve-image';
 import { isOffline } from '@/lib/online';
-import { bitrateFor, usePlaybackSettings } from '@/settings/playback';
+import { toast } from '@/lib/toast';
+import { bitrateFor, skipChoices, usePlaybackSettings } from '@/settings/playback';
 
 import { mediaCapabilities } from './capabilities';
 import { controlGate, togglePauses } from './control-gate';
@@ -31,7 +32,8 @@ import { sameEmbeddedTracks } from './embedded-tracks';
 import type { EmbeddedTracks, EngineEvent } from './engine-types';
 import { isForeignDownload, outboxOnly, withOutbox } from './outbox-transport';
 import { ProgressReporter, type ProgressTransport, secondsToTicks, ticksToSecondsExact, toServerReport } from './progress-reporter';
-import { normalizeSegments } from './segments';
+import { externalSegments, JELLYFIN_SKIP_SCOPE, normalizeSegments } from './segments';
+import { autoRanges, type SkipContext, skippedNow, transitionAutoSkip, undoneRange } from './auto-skip';
 import { chooseTracks, rememberChoice, titleKey } from './track-prefs';
 import { loadTrackPrefs, saveTrackPrefs } from './track-prefs-store';
 import { setPlayerState, initialPlayerState, playerState, type ExternalNow, type LiveNow, type NowPlaying } from './store';
@@ -286,6 +288,7 @@ class VideoSession {
         break;
       case 'time':
         setPlayerState({ position: e.position, buffered: e.buffered });
+        this.autoSkipAt(e.position);
         if (st.now.external && this.extPlayed && e.position >= 5 && Date.now() - this.extSavedAt >= EXTERNAL_SAVE_MS) this.saveExternal(false);
         break;
       case 'duration':
@@ -824,6 +827,7 @@ class VideoSession {
           ...now,
           item: externalItem(shown, source),
           chapters: live ? [] : (stream.chapters ?? []).map((c) => ({ name: c.title, start: c.start })),
+          segments: live ? [] : externalSegments(stream.segments),
           next: nextShown ? externalItem(nextShown, source) : null,
           plan: { ...now.plan, subtitles: externalSubtitleOptions(stream.subtitles) },
           external: { ...now.external, items, live, qualities: stream.qualities ?? [], qualityId, mainQuality: mainQualityId(stream), ...(stream.skip ? { skip: stream.skip } : {}) },
@@ -1144,6 +1148,45 @@ class VideoSession {
     const target = Math.max(0, duration > 0 ? Math.min(seconds, duration - 0.5) : seconds);
     if (controlGate.intercept({ action: 'seek', position: target })) return;
     this.directSeek(target);
+    this.autoSkipEvent({ type: 'userSeek', target, ranges: this.autoSkipRanges() });
+  }
+
+  /** The skip settings for what plays: Jellyfin's labels, or the external source's. */
+  private skipContext(): SkipContext {
+    const skip = playerState().now?.external?.skip;
+    return { scope: skip?.scope ?? JELLYFIN_SKIP_SCOPE, defaults: skip?.defaults, choices: skipChoices() };
+  }
+
+  private autoSkipRanges() {
+    const now = playerState().now;
+    return now?.segments.length ? autoRanges(now.segments, this.skipContext()) : [];
+  }
+
+  /** Applies an auto-skip event; seeks and says so when it skipped or undid a range. */
+  private autoSkipEvent(event: Parameters<typeof transitionAutoSkip>[1]): void {
+    const prev = playerState().autoSkip;
+    const next = transitionAutoSkip(prev, event);
+    if (next === prev) return;
+    setPlayerState({ autoSkip: next });
+    const skipped = skippedNow(prev, next);
+    if (skipped) {
+      const duration = playerState().duration;
+      this.directSeek(duration > 0 ? Math.min(skipped.end, duration - 0.5) : skipped.end);
+      // TV: the toast's Undo takes the focus, so one Select undoes (lib/toast.ts toastTakesFocus).
+      toast(`Skipped ${skipped.title}`, { icon: 'forward.fill', action: { label: 'Undo', onPress: () => this.autoSkipEvent({ type: 'undo' }) } });
+      return;
+    }
+    const undone = undoneRange(prev, next);
+    if (undone) this.directSeek(undone.start);
+  }
+
+  /** The position moved: skip an `auto` range the play is in (never live, never in a together session). */
+  private autoSkipAt(position: number): void {
+    const st = playerState();
+    const now = st.now;
+    if (!now || (!now.segments.length && st.autoSkip.phase === 'idle')) return;
+    const allowed = !now.live && !now.external?.live && !playRouter.active && !controlGate.active && st.status !== 'error' && st.status !== 'loading';
+    this.autoSkipEvent({ type: 'time', position, ranges: this.autoSkipRanges(), allowed, now: Date.now() });
   }
 
   /**

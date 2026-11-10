@@ -13,6 +13,7 @@ import { currentAccount, loadManifest, prefill, requestInstall, templateContext 
 import { describePermission, safeHost, type SettingField } from '@/extensions/schema';
 import { getExtension, removeExtension, setEnabled, setGrant, setValue, upsertExtension, useExtensions } from '@/extensions/store';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
+import { ExtensionSkipSettings } from '@/features/settings/skip-section';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { confirmDestructive } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
@@ -144,6 +145,8 @@ export default function ExtensionScreen() {
               })}
             </Group>
           ) : null}
+
+          <ExtensionSkipSettings extensionId={m.id} />
 
           {features.extensionPanels && m.contributes.panels?.length ? (
             <Group title="Pages">

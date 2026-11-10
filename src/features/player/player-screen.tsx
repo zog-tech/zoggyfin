@@ -28,9 +28,11 @@ import { hasTrackChoice } from '@/player/embedded-tracks';
 import { VideoSurface } from '@/player/engine';
 import type { VideoFit } from '@/player/engine-types';
 import type { KeyPress } from '@/native/key-input-types';
-import { nextUpPhase, nextUpStartsAt, skipPromptAt, skipPromptFor } from '@/player/segments';
+import { buttonShows } from '@/player/auto-skip';
+import { JELLYFIN_SKIP_SCOPE, nextUpPhase, nextUpStartsAt, skipPromptAt, skipPromptFor } from '@/player/segments';
 import { videoSession } from '@/player/session';
-import { useShowsPause } from '@/player/control-gate';
+import { controlGate, useShowsPause } from '@/player/control-gate';
+import { playRouter } from '@/player/play-router';
 import { playingVideo, transcodeReasonText, videoDetail, videoSummary } from '@/player/stream-info';
 import { type ExternalNow, type LiveNow, playerState, setPlayerState, usePlayerStore } from '@/player/store';
 import type { SubtitleOption } from '@/player/stream';
@@ -48,7 +50,7 @@ import {
   tapSeekTransition,
   tapZone,
 } from '@/player/tap-seek';
-import { MAX_BITRATE, QUALITY_OPTIONS, qualityLabel, usePlaybackSettings } from '@/settings/playback';
+import { MAX_BITRATE, QUALITY_OPTIONS, qualityLabel, usePlaybackSettings, useSkipSettings } from '@/settings/playback';
 import { breakpointFor, layout } from '@/theme/theme';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
 import { TogetherPill } from '@/features/together/together-pill';
@@ -415,7 +417,15 @@ export function PlayerScreen() {
   };
   const hasNext = !!now?.next;
   // Derived from the position in the selectors: they change at segment edges, not on every tick.
-  const promptSegment = usePlayerStore((st) => (st.now ? (skipPromptAt(st.now.segments, st.position, st.duration, !!st.now.next)?.segment ?? null) : null));
+  // The skip button follows the label's skip setting: shown for `ask`, and for `auto` where it did not skip by itself.
+  const skipChoices = useSkipSettings((x) => x.modes);
+  const promptSegment = usePlayerStore((st) => {
+    if (!st.now?.segments.length) return null;
+    const skip = st.now.external?.skip;
+    const ctx = { scope: skip?.scope ?? JELLYFIN_SKIP_SCOPE, defaults: skip?.defaults, choices: skipChoices };
+    const autoAllowed = !playRouter.active && !controlGate.active && !st.now.external?.live;
+    return skipPromptAt(st.now.segments, st.position, st.duration, !!st.now.next, (seg) => buttonShows(seg, ctx, st.autoSkip, autoAllowed))?.segment ?? null;
+  });
   const prompt = promptSegment ? skipPromptFor(promptSegment, duration) : null;
   const startsAt = now ? nextUpStartsAt(now.segments, duration) : null;
   const phase = usePlayerStore((st) => nextUpPhase({ position: st.position, startsAt, hasNext, dismissedAt }));

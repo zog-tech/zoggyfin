@@ -12,8 +12,8 @@ const raw = [
 describe('normalizeSegments', () => {
   it('keeps known kinds, drops tiny ones, sorts by start', () => {
     expect(normalizeSegments(raw)).toEqual([
-      { kind: 'Intro', start: 30, end: 90 },
-      { kind: 'Outro', start: 1300, end: 1400 },
+      { label: 'intro', title: 'Intro', start: 30, end: 90 },
+      { label: 'outro', title: 'Credits', start: 1300, end: 1400 },
     ]);
   });
   it('handles a missing list (older servers)', () => {
@@ -41,8 +41,8 @@ describe('skipPromptAt', () => {
 });
 
 describe('skipPromptFor', () => {
-  const intro = { kind: 'Intro' as const, start: 30, end: 90 };
-  const credits = { kind: 'Outro' as const, start: 1300, end: 1400 };
+  const intro = { label: 'intro', title: 'Intro', start: 30, end: 90 };
+  const credits = { label: 'outro', title: 'Credits', start: 1300, end: 1400 };
 
   it('builds the same prompt as skipPromptAt for the segment it picks', () => {
     const at = skipPromptAt([intro], 45, 1400, false);

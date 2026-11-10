@@ -7,6 +7,7 @@ import { create } from 'zustand';
 
 import type { BaseItemDto } from '@/api/types';
 
+import { type AutoSkipState, initialAutoSkip } from './auto-skip';
 import type { EmbeddedTracks, VideoTrackInfo } from './engine-types';
 import type { Segment } from './segments';
 import type { StreamPlan } from './stream';
@@ -86,6 +87,8 @@ export interface PlayerState {
   video: VideoTrackInfo | null;
   /** IPTV: the audio and subtitle tracks inside the stream, as the engine lists them; null when none are known. */
   embedded: EmbeddedTracks | null;
+  /** Automatic skips in this play (`auto-skip.ts`): what was skipped, undone or entered on purpose. */
+  autoSkip: AutoSkipState;
 }
 
 export const initialPlayerState: PlayerState = {
@@ -103,6 +106,7 @@ export const initialPlayerState: PlayerState = {
   cues: null,
   video: null,
   embedded: null,
+  autoSkip: initialAutoSkip,
 };
 
 export const usePlayerStore = create<PlayerState>(() => initialPlayerState);

@@ -27,6 +27,7 @@ const mockEngine = {
   },
 };
 const mockGetText = jest.fn(async () => 'WEBVTT\n');
+const mockGate = { active: false };
 
 jest.mock('../engine', () => ({ getEngine: () => mockEngine }));
 jest.mock('@/api/jellyfin', () => ({ getText: (...a: unknown[]) => mockGetText(...(a as [])) }));
@@ -43,15 +44,17 @@ jest.mock('expo-network', () => ({ getNetworkStateAsync: jest.fn(), NetworkState
 jest.mock('@/native/ts-bridge', () => ({ tsBridge: null }));
 jest.mock('../capabilities', () => ({ mediaCapabilities: jest.fn() }));
 jest.mock('../play-router', () => ({ playRouter: { active: false, autoplay: () => false, route: (r: unknown) => r } }));
-jest.mock('../control-gate', () => ({ controlGate: { active: false, intercept: () => false }, togglePauses: (p: boolean) => p }));
+jest.mock('../control-gate', () => ({ controlGate: { get active() { return mockGate.active; }, intercept: () => false }, togglePauses: (p: boolean) => p }));
 jest.mock('../outbox-transport', () => ({ isForeignDownload: jest.fn(), outboxOnly: jest.fn(), withOutbox: jest.fn() }));
 jest.mock('../track-prefs-store', () => ({ loadTrackPrefs: () => ({}), saveTrackPrefs: jest.fn() }));
-jest.mock('@/settings/playback', () => ({ usePlaybackSettings: { getState: () => ({ autoplayNext: true }) }, bitrateFor: () => 0 }));
+jest.mock('@/settings/playback', () => ({ usePlaybackSettings: { getState: () => ({ autoplayNext: true }) }, bitrateFor: () => 0, skipChoices: () => ({}) }));
 
 // eslint-disable-next-line import/first
 import { videoSession } from '../session';
 // eslint-disable-next-line import/first
 import { playerState } from '../store';
+// eslint-disable-next-line import/first
+import { useToastStore } from '@/lib/toast';
 
 const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
@@ -104,6 +107,7 @@ const full: Partial<ExternalStream> = {
 };
 
 beforeEach(async () => {
+  mockGate.active = false;
   await videoSession().stop();
   mockLoads.length = 0;
   mockEngine.position = 0;
@@ -261,5 +265,50 @@ describe('external titles in the video session', () => {
     await videoSession().playNext();
     expect(saved.at(-1)?.[2]).toBe(true);
     expect(mockLoads.at(-1)).toMatchObject({ uri: 'http://panel.example/series/u/p/2.mp4', startSeconds: 0 });
+  });
+
+  describe('auto skip', () => {
+    const skipping: Partial<ExternalStream> = {
+      ...full,
+      segments: [
+        { label: 'promo', title: 'Promotion', start: 200, end: 245 },
+        { label: 'intro', title: 'Intro', start: 0, end: 12 },
+      ],
+      skip: { scope: 'org.example', defaults: { promo: 'auto' } },
+    };
+
+    it('skips an auto range once, says so with Undo, and Undo goes back and stays', async () => {
+      await videoSession().playExternal(request(source(skipping), 190));
+      emit({ type: 'status', status: 'ready' });
+      // The intro is "ask" (the default): no automatic skip.
+      emit({ type: 'time', position: 5, buffered: 0 });
+      expect(mockEngine.seekTo).not.toHaveBeenCalled();
+      emit({ type: 'time', position: 201, buffered: 0 });
+      expect(mockEngine.seekTo).toHaveBeenLastCalledWith(245);
+      const t = useToastStore.getState().current;
+      expect(t?.text).toBe('Skipped Promotion');
+      expect(t?.action?.label).toBe('Undo');
+      t?.action?.onPress();
+      expect(mockEngine.seekTo).toHaveBeenLastCalledWith(200);
+      emit({ type: 'time', position: 201, buffered: 0 });
+      expect(mockEngine.seekTo).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not skip a range the user seeks into', async () => {
+      await videoSession().playExternal(request(source(skipping), 0));
+      emit({ type: 'status', status: 'ready' });
+      videoSession().seekTo(210);
+      emit({ type: 'time', position: 210, buffered: 0 });
+      expect(mockEngine.seekTo).toHaveBeenCalledTimes(1);
+      expect(mockEngine.seekTo).toHaveBeenLastCalledWith(210);
+    });
+
+    it('never skips in a watch-together session', async () => {
+      await videoSession().playExternal(request(source(skipping), 190));
+      emit({ type: 'status', status: 'ready' });
+      mockGate.active = true;
+      emit({ type: 'time', position: 201, buffered: 0 });
+      expect(mockEngine.seekTo).not.toHaveBeenCalled();
+    });
   });
 });
