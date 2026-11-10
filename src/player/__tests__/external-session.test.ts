@@ -163,13 +163,38 @@ describe('external titles in the video session', () => {
     expect(mockLoads[2]).toMatchObject({ uri: `${BASE}/hls/master.m3u8`, startSeconds: 400 });
   });
 
-  it('a failed quality falls back to the other stream forms at the same position', async () => {
+  it('a failed quality goes back to the previous quality at the same position, with a toast', async () => {
     await videoSession().playExternal(request(source(full)));
     emit({ type: 'playing', playing: true });
     mockEngine.position = 50;
     videoSession().setExternalQuality('720');
     emit({ type: 'status', status: 'error', error: 'decode' });
     expect(mockLoads[2]).toMatchObject({ uri: `${BASE}/hls/master.m3u8`, startSeconds: 50 });
+    expect(playerState().now?.external?.qualityId).toBeNull();
+    expect(playerState().status).toBe('loading');
+    expect(useToastStore.getState().current?.text).toBe('720p could not play. Auto plays again.');
+    // When the previous quality fails too, the other stream forms follow, then the error.
+    emit({ type: 'status', status: 'error', error: 'decode' });
+    expect(mockLoads[3]).toMatchObject({ uri: `${BASE}/files/e1.mp4`, startSeconds: 50 });
+  });
+
+  it('a quality change while paused stays paused at the position; while playing it plays on', async () => {
+    const src = source(full);
+    await videoSession().playExternal(request(src, 0));
+    emit({ type: 'status', status: 'ready' });
+    emit({ type: 'playing', playing: true });
+    mockEngine.position = 3;
+    emit({ type: 'playing', playing: false });
+    videoSession().setExternalQuality('720');
+    expect(mockLoads[1]).toMatchObject({ uri: `${BASE}/hls/720.m3u8`, startSeconds: 3, autoplay: false });
+    expect(playerState().position).toBe(3);
+    // The engine is ready with the new form: the title counts as played (its position is saved again).
+    emit({ type: 'status', status: 'ready' });
+    mockEngine.position = 4;
+    emit({ type: 'playing', playing: true });
+    videoSession().setExternalQuality('auto');
+    expect(mockLoads[2]).toMatchObject({ uri: `${BASE}/hls/master.m3u8`, startSeconds: 4 });
+    expect(mockLoads[2].autoplay).not.toBe(false);
   });
 
   it('loads subtitle files through the source, never through the Jellyfin client', async () => {

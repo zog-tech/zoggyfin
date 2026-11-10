@@ -84,11 +84,28 @@ class NativeEngine implements VideoEngine {
     }
   }
 
+  /**
+   * While a new source loads, the position is where it is to start: the new
+   * item is at 0 until it is ready, and a progress report or a reload must
+   * not take that 0 for the position.
+   */
   get position(): number {
-    return this.player?.currentTime ?? 0;
+    return this.pendingStart ?? this.player?.currentTime ?? 0;
   }
 
-
+  /**
+   * Seeks the new source to its start and plays it when it is to play. Called
+   * when the source is ready. True when there was a start to apply.
+   */
+  private applyPending(p: VideoPlayer): boolean {
+    if (this.pendingStart === null) return false;
+    const start = this.pendingStart;
+    this.pendingStart = null;
+    if (start > 0.5 || !this.pendingPlay) p.currentTime = start;
+    if (this.pendingPlay) this.startPlayer(p);
+    this.pendingPlay = false;
+    return true;
+  }
 
   private emit: EngineListener = (e) => this.listeners.forEach((l) => l(e));
 
@@ -106,16 +123,12 @@ class NativeEngine implements VideoEngine {
         const map: Record<string, EngineStatus> = { idle: 'idle', loading: 'loading', readyToPlay: 'ready', error: 'error' };
         if (status === 'readyToPlay') this.sourceReady = true;
         this.loading = status === 'loading';
-        if (status === 'readyToPlay' && this.pendingStart !== null) {
-          const start = this.pendingStart;
-          this.pendingStart = null;
-          if (start > 0.5 || !this.pendingPlay) p.currentTime = start;
-          if (this.pendingPlay) this.startPlayer(p);
-          this.pendingPlay = false;
-        }
+        if (status === 'readyToPlay') this.applyPending(p);
         this.emit({ type: 'status', status: map[status] ?? 'idle', error: error?.message });
       }),
       p.addListener('playingChange', ({ isPlaying }) => {
+        // The old item stops when a new source replaces it (another quality): not a pause.
+        if (!isPlaying && this.pendingStart !== null && this.pendingPlay) return;
         this.playing = isPlaying;
         if (isPlaying) {
           // It plays (also from outside the app: the lock screen, a headset): give it the rate it kept.
@@ -128,10 +141,19 @@ class NativeEngine implements VideoEngine {
         this.updateAutoPip();
         this.emit({ type: 'playing', playing: isPlaying });
       }),
-      p.addListener('timeUpdate', ({ currentTime, bufferedPosition }) =>
-        this.emit({ type: 'time', position: currentTime, buffered: Math.max(0, bufferedPosition) }),
-      ),
+      p.addListener('timeUpdate', ({ currentTime, bufferedPosition }) => {
+        // The new source is at 0 until it starts where it is to start.
+        if (this.pendingStart !== null) return;
+        this.emit({ type: 'time', position: currentTime, buffered: Math.max(0, bufferedPosition) });
+      }),
       p.addListener('sourceLoad', ({ duration }) => {
+        // iOS: a paused player that is ready and gets a new source (another
+        // quality) can stay 'readyToPlay' the whole time, so no statusChange
+        // comes. The loaded source is the sign that it is ready.
+        if (this.applyPending(p)) {
+          this.sourceReady = true;
+          this.emit({ type: 'status', status: 'ready' });
+        }
         this.emit({ type: 'duration', duration });
         this.emit({ type: 'video', video: trackInfo(p.videoTrack) });
         this.emitTracks(p);
@@ -195,6 +217,8 @@ class NativeEngine implements VideoEngine {
     this.pendingPlay = source.autoplay !== false;
     this.wantPlay = this.pendingPlay;
     this.sourceReady = false;
+    // A player that plays keeps its rate on a new source: it is to stay paused, so pause it now.
+    if (!this.pendingPlay && this.playing) p.pause();
     // Android's default is 20 s; iOS's 0 lets AVPlayer decide (it can read minutes ahead).
     p.bufferOptions = source.readAhead
       ? { preferredForwardBufferDuration: source.readAhead, minBufferForPlayback: 2, waitsToMinimizeStalling: true }
