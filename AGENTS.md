@@ -78,7 +78,7 @@ All app code is in `src/`. The path alias `@/` points to `src/` (`tsconfig.json`
 | `src/downloads/` | Download manager, state machine, engines, files, offline outbox, record migrations |
 | `src/together/` | Watch and listen together: nearby mode and Jellyfin SyncPlay |
 | `src/extensions/` | The data-only extension runtime (manifests, actions, Home rows, panels, share targets) |
-| `src/registry/` | Small ordered registries: item actions and Home sections |
+| `src/registry/` | Small ordered registries: item actions, Home sections and music Home sections |
 | `src/features/` | Feature UI and logic, one folder per feature (see below) |
 | `src/components/` | Shared UI parts that follow the design system |
 | `src/theme/` | Design tokens, `useTheme`, layout rules, the theme provider |
@@ -191,6 +191,7 @@ Play → session.ts finds the completed record (local.ts) → plays the file →
 - `registry/item-actions.ts`: `createRegistry()`, the `ItemAction` type and `actionsFor()`. An action whose `when` throws is hidden; it never breaks the sheet.
 - `registry/home-sections.ts`: Home renders every registered section in `order`.
 - Built-ins register through the same registries: `features/actions/builtin.ts` (orders in steps of 10) and `features/home/builtin-sections.tsx`.
+- `registry/music-home-sections.ts`: the music Home tab renders each section in `order`, with the library Id. Built-ins: `features/music/builtin-sections.tsx`; a section calls `useMusicHomeRow()` for the first TV focus and the long press menu.
 - `features/actions/use-item-actions.ts` supplies the `AppActionApi` (play, favourite, download, delete and so on) to the sheet.
 - `extensions/runtime.ts` turns installed manifests (`schema.ts`) into item actions (`ext.<id>.…`), Home rows (order 45+) and share targets. Extensions are data only: no extension code runs in the app. Requests go only to the manifest's origin (`http.ts`, `match.ts`). See `docs/extensions.md`.
 

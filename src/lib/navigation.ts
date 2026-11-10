@@ -42,6 +42,11 @@ export function videoGenreHref(group: TabGroup, genre: BaseItemDto): Href | null
   return { pathname: `/(tabs)/${group}/genre/[id]`, params: { id: genre.Id, name: genre.Name ?? '', kind: 'video' } } as unknown as Href;
 }
 
+/** A music genre in one music library: its page lists the genre's albums there. */
+export function musicGenreHref(group: TabGroup, genre: BaseItemDto, libraryId: string): Href {
+  return { pathname: `/(tabs)/${group}/genre/[id]`, params: { id: genre.Id ?? '', name: genre.Name ?? '', libraryId } } as unknown as Href;
+}
+
 export function useOpenItem() {
   const router = useRouter();
   const group = useTabGroup();

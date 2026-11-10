@@ -35,6 +35,8 @@ interface ItemRowProps {
   preferredFocus?: boolean;
   /** Override the tile press. */
   onPress?: (item: BaseItemDto) => void;
+  /** Long press (the item action sheet). Pass a stable function: the tile is a memo. */
+  onLongPress?: (item: BaseItemDto) => void;
 }
 
 /**
@@ -56,6 +58,7 @@ export function ItemRow({
   titleOnArt,
   preferredFocus,
   onPress,
+  onLongPress,
 }: ItemRowProps) {
   const s = useStyles(makeStyles);
   const open = useOpenItem();
@@ -88,6 +91,7 @@ export function ItemRow({
         width={width}
         shape={shape}
         onPress={press}
+        onLongPress={onLongPress}
         title={tileTitle?.(item)}
         subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
         titleOnArt={titleOnArt}
@@ -95,7 +99,7 @@ export function ItemRow({
       />
       </View>
     ),
-    [width, shape, press, tileTitle, tileSubtitle, titleOnArt, preferredFocus, l.gap],
+    [width, shape, press, onLongPress, tileTitle, tileSubtitle, titleOnArt, preferredFocus, l.gap],
   );
 
   if (error && !items?.length) {
@@ -143,6 +147,7 @@ export function ItemRow({
               width={width}
               shape={shape}
               onPress={press}
+              onLongPress={onLongPress}
               title={tileTitle?.(item)}
               subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
               titleOnArt={titleOnArt}

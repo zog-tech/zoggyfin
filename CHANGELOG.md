@@ -13,6 +13,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **A Home tab for music.** Music libraries open on a Home tab: recently played, mixes from your
+  top artists and genres, recently added, your top songs, new releases, favourites, playlists,
+  albums to rediscover and genres. The played rows moved there from Albums.
 - **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
   mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
   sections mount as you reach them, the side menu slides over the page, screens change at once, and

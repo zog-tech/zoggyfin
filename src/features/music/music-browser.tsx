@@ -4,12 +4,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { DEFAULT_MUSIC_OPTIONS, type MusicOptions, type MusicTab } from '@/api/jellyfin';
-import { useMusicTab, usePlayedSongs } from '@/api/queries';
+import { useMusicTab } from '@/api/queries';
 import type { BaseItemDto, ItemSortBy } from '@/api/types';
 import { ItemActionSheet } from '@/components/action-sheet';
 import { Chip, chipRowTV } from '@/components/chip';
 import { ItemGrid } from '@/components/item-grid';
-import { ItemRow, RowHeader } from '@/components/item-row';
 import { OptionSheet } from '@/components/option-sheet';
 import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
 import { EmptyState, ErrorState, GridSkeleton, LoadingState } from '@/components/states';
@@ -17,18 +16,22 @@ import { TabPager } from '@/components/tab-pager';
 import type { PagerTab } from '@/components/tab-pager-types';
 import { ArtistRow, TrackRow } from '@/features/detail/rows';
 import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
-import { type TabGroup, useOpenItem, useTabGroup } from '@/lib/navigation';
+import { MusicHome } from '@/features/music/music-home';
+import { musicGenreHref, useOpenItem, useTabGroup } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { usePlayer } from '@/player';
 import { readJson, writeJson } from '@/storage/json';
 import { storage } from '@/storage/kv';
-import { isTV } from '@/platform/tv';
 import { spacing, useLayout, useTheme } from '@/theme';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 export type AudioLibraryKind = 'music' | 'books';
 
-const MUSIC_TABS: (PagerTab & { key: MusicTab })[] = [
+/** A pager tab: a music tab, or the music Home page. */
+type BrowserTab = MusicTab | 'home';
+
+const MUSIC_TABS: (PagerTab & { key: BrowserTab })[] = [
+  { key: 'home', title: 'Home' },
   { key: 'albums', title: 'Albums' },
   { key: 'artists', title: 'Artists' },
   { key: 'playlists', title: 'Playlists' },
@@ -36,7 +39,7 @@ const MUSIC_TABS: (PagerTab & { key: MusicTab })[] = [
   { key: 'genres', title: 'Genres' },
 ];
 
-const BOOK_TABS: (PagerTab & { key: MusicTab })[] = [
+const BOOK_TABS: (PagerTab & { key: BrowserTab })[] = [
   { key: 'audiobooks', title: 'Audiobooks' },
   { key: 'authors', title: 'Authors' },
 ];
@@ -70,7 +73,11 @@ const SORTS: Record<MusicTab, SortChoice[]> = {
 };
 
 
-/** Albums / Artists / Playlists / Songs / Genres (or Audiobooks / Authors), as a pager that follows a horizontal swipe. */
+/**
+ * Home / Albums / Artists / Playlists / Songs / Genres (or Audiobooks /
+ * Authors), as a pager that follows a horizontal swipe. The saved tab opens
+ * first; with none saved, the first tab (Home for music).
+ */
 export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string; kind?: AudioLibraryKind }) {
   const tabs = kind === 'books' ? BOOK_TABS : MUSIC_TABS;
   const lastKey = `music.tab.${libraryId}`;
@@ -79,17 +86,12 @@ export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string;
     <TabPager
       tabs={tabs}
       initialIndex={initial}
-      onIndexChange={(i) => storage.set(lastKey, tabs[i]?.key ?? tabs[0]?.key ?? 'albums')}
-      renderPage={(tab) => <MusicPage libraryId={libraryId} tab={tab.key as MusicTab} />}
+      onIndexChange={(i) => storage.set(lastKey, tabs[i]?.key ?? tabs[0]?.key ?? 'home')}
+      renderPage={(tab) =>
+        tab.key === 'home' ? <MusicHome libraryId={libraryId} /> : <MusicPage libraryId={libraryId} tab={tab.key as MusicTab} />
+      }
     />
   );
-}
-
-function genreHref(group: TabGroup, genre: BaseItemDto, libraryId: string) {
-  return {
-    pathname: `/(tabs)/${group}/genre/[id]`,
-    params: { id: genre.Id ?? '', name: genre.Name ?? '', libraryId },
-  } as unknown as Parameters<typeof router.push>[0];
 }
 
 function useMusicOptions(libraryId: string, tab: MusicTab): [MusicOptions, (patch: Partial<MusicOptions>) => void] {
@@ -135,48 +137,6 @@ function SortBar({ tab, options, onChange }: { tab: MusicTab; options: MusicOpti
   );
 }
 
-/** "Recently played" and "Most played" above the albums. Hidden while empty. TV: the first row shown takes the first focus. */
-function PlayedRows({ libraryId }: { libraryId: string }) {
-  const recent = usePlayedSongs(libraryId, 'recent');
-  const most = usePlayedSongs(libraryId, 'most');
-  const player = usePlayer();
-  const l = useLayout();
-  const play = (list: BaseItemDto[] | undefined) => (item: BaseItemDto) => {
-    if (!list) return;
-    player.play({ item, list, index: list.indexOf(item) });
-  };
-  return (
-    <View>
-      <ItemRow
-        title="Recently played"
-        shape="square"
-        items={recent.data}
-        isLoading={recent.isPending}
-        hideWhenEmpty
-        onPress={play(recent.data)}
-        tileSubtitle={(i) => i.Artists?.[0] ?? i.Album}
-        preferredFocus={isTV && !!recent.data?.length}
-      />
-      <ItemRow
-        title="Most played"
-        shape="square"
-        items={most.data}
-        isLoading={most.isPending}
-        hideWhenEmpty
-        onPress={play(most.data)}
-        tileSubtitle={(i) => i.Artists?.[0] ?? i.Album}
-        preferredFocus={isTV && !recent.data?.length && !!most.data?.length}
-      />
-      {/* With a played row above, the grid gets its own header, so the sort chips do not read as part of that row. */}
-      {recent.data?.length || most.data?.length ? (
-        <View style={{ marginTop: l.sectionGap }}>
-          <RowHeader title="All albums" />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
   const [options, setOptions] = useMusicOptions(libraryId, tab);
   const q = useMusicTab(libraryId, tab, options);
@@ -197,16 +157,6 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
   };
 
   const bar = <SortBar tab={tab} options={options} onChange={setOptions} />;
-  const played = tab === 'albums' && options.sortBy === 'SortName' && !options.favorites;
-  const header =
-    played ? (
-      <View>
-        <PlayedRows libraryId={libraryId} />
-        {bar}
-      </View>
-    ) : (
-      bar
-    );
 
   if (q.isPending) {
     return (
@@ -242,7 +192,7 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
               <ArtistRow item={item} last={index === items.length - 1} onPress={open} />
             )
           }
-          ListHeaderComponent={header}
+          ListHeaderComponent={bar}
           onEndReached={more}
           onEndReachedThreshold={0.8}
           refreshControl={pull.onRefresh ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={refreshTint(c.text2)} /> : undefined}
@@ -263,11 +213,10 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
       isFetchingMore={q.isFetchingNextPage}
       onRefresh={q.refetch}
       // The grid has its own side padding; the chips and rows bring theirs.
-      ListHeaderComponent={<View style={{ marginHorizontal: -l.gutter, marginTop: -spacing.lg }}>{header}</View>}
+      ListHeaderComponent={<View style={{ marginHorizontal: -l.gutter, marginTop: -spacing.lg }}>{bar}</View>}
       ListEmptyComponent={empty}
-      // TV: the played rows sit above the grid; the first tile is off screen.
-      focusFirstTile={!played}
-      onPress={tab === 'genres' ? (g) => router.push(genreHref(group, g, libraryId)) : undefined}
+      focusFirstTile
+      onPress={tab === 'genres' ? (g) => router.push(musicGenreHref(group, g, libraryId)) : undefined}
     />
   );
 }
