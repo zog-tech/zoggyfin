@@ -7,7 +7,7 @@ buttons on items, Home rows and a page.
 An extension is **data only**. The app reads a JSON manifest from your server and
 draws the contributions. No code from an extension runs in the app (App Store
 guideline 2.5.2): there is no `eval`, and the app downloads no scripts. A panel is
-a normal web page in a WebView or an iframe. It can only use the six bridge
+a normal web page in a WebView or an iframe. It can only use the nine bridge
 methods below.
 
 Extensions work on iPhone, iPad, Android, web and the Mac app.
@@ -99,7 +99,7 @@ Strings in `path`, `query`, `body`, `headers`, `confirm` and a panel `url` can
 contain `{{scope.key}}`. A template only reads a value; there are no
 expressions. An unknown name gives an empty string. Values in a `path` are URL
 encoded. In a `body`, a string that is exactly one token of a toggle setting
-keeps its `true`/`false` type.
+or of `action.next` keeps its `true`/`false` type.
 
 | Scope | Keys |
 | --- | --- |
@@ -108,6 +108,7 @@ keeps its `true`/`false` type.
 | `settings` | the keys of `contributes.settings` |
 | `share` | `url` |
 | `jellyfin` | `serverUrl`, `serverId`, `userId`, `userName`, `isAdmin` |
+| `action` | `next`: the state an on/off button of an entry page asks for, `true` or `false` (schema version 2) |
 
 ### `settings`
 
@@ -293,6 +294,9 @@ function zoggyfin(method, params = {}) {
 | `refreshLibrary` | – | Loads the app's data again. |
 | `toast` | `{ text }` | Shows a toast. |
 | `close` | – | Closes the panel. |
+| `playMedia` | `{ mediaId, playback, title?, image? }` | Plays the media, as a card with `media` does. `playback` (and `image`) must be on the extension's origin. Needs the `playback` permission, and the user's switch must be on; otherwise the answer is an error that says so. Schema version 2. |
+| `openEntry` | `{ detail, title? }` | Closes the panel and opens the entry page of `detail` (on the extension's origin). Schema version 2. |
+| `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. Schema version 2. |
 
 The app answers only messages from the extension's origin, and sends answers
 only to that origin.
@@ -546,6 +550,61 @@ The answer to an action adds two `refresh` values and `state` to
 such page (the item action sheet), they do nothing. A `state` that is not valid
 is ignored.
 
+**The entry page.** A card with `detail` opens the entry page. The app loads
+the detail description (8 s at most) and shows:
+
+- The backdrop, the poster (`image`), the eyebrow, the title and the `lines`
+  on one line. The description shows three lines and "More".
+- Play, or Resume with a bar when `progress` is more than 0 and less than 1.
+  Play needs `media.playback`. Resume plays from the stream description's
+  `resume`; "Start over" plays from 0.
+- Download when `media.download` is set, the user's downloads switch is on,
+  and the device saves files (not TV and not the plain web).
+- The buttons of `actions`. `icon` is an icon name of the app
+  (`src/components/icon-names.ts`); an unknown name shows a default icon.
+- The `sections`, as on a page. A row is the default. A last `grid` or `list`
+  scrolls with the page and asks for more. A `grid` or `list` that is not last
+  shows its first entries with no "See all".
+- While it loads, a placeholder; when it fails, a message (never a URL) and
+  "Try again". A `detail` URL on another origin shows "This entry cannot be
+  opened".
+- TV: Play has the first focus (with no Play, the first button). The D-pad
+  goes from Play to the buttons, then down to the sections.
+
+**Buttons with state.** An action with `state` is an on/off button:
+
+- It shows `title` and `icon` while off, and `onTitle` and `onIcon` (else the
+  same ones) while on, in the accent colour.
+- A press runs the action's `inputs` and `confirm` first. Then the button
+  shows the new state at once and the app sends the request with
+  `{{action.next}}` set to that state (`true` or `false`; in a JSON body as a
+  boolean, in a path or a query as text).
+- A failed request (an error, a time-out, an HTTP error) puts back the last
+  state that the extension confirmed.
+- `state` in the reply is the truth: the button shows it. With no `state`, the
+  button keeps the state it asked for.
+- When the user presses again before a reply arrives, only the reply to the
+  newest press changes the button. A late reply to an older press never does.
+- `refresh: "entry"` loads the entry page again; the page's own state is the
+  truth after that. `"page"` loads the extension's feeds again, and
+  `"library"` the app's data, as for an item action.
+
+**Long press.** A long press (a right click on the web and in the Mac app) on
+a card with `media` opens a menu:
+
+| Row | Shown when |
+| --- | --- |
+| Play | `media.playback` is set |
+| Play from the beginning | `media.playback` is set and `progress` is more than 0 and less than 1 |
+| Open | the card has `detail` |
+| Download | `media.download` is set, the user's downloads switch is on, and the device saves files |
+
+**Playback and downloads switches.** The `playback` and `downloads`
+permissions have a switch on the confirm screen and in Settings → Extensions.
+With playback off, Play (on a card, in the menu, on the entry page and from a
+panel) shows "Playback is turned off for <name>. Turn it on in Settings →
+Extensions." With downloads off, Download does not show.
+
 **Download description.** `GET media.download`:
 
 ```json
@@ -593,6 +652,16 @@ Pages") or from the header of its "Latest samples" Home row:
 - "All samples": a poster grid of 95 entries that pages 20 at a time through
   `next`.
 - A search field: `/pages/search` matches titles and topics, 20 per page.
+- Every entry plays the same 6 s test video, which the sample serves itself
+  (`media/sample.mp4`, a test pattern with a tone, with byte ranges). The stream
+  description is at `/pages/entries/<id>/play`, the download description at
+  `/pages/entries/<id>/download`.
+- Every third entry opens an entry page (`/pages/entries/<id>`): Play or
+  Resume, a Save button with state that the server keeps in memory until it
+  stops (`POST /pages/entries/<id>/save` with `{ "on": {{action.next}} }`; any
+  other value than `true` or `false` is refused), and a "Related" row.
+- A long press on an entry opens its menu: Play, Play from the beginning (with
+  progress), Open (with an entry page) and Download.
 - Every third entry has a `detail` page; the others carry `media`.
 
 On a phone, start the server with `BASE_URL=http://<your computer's LAN

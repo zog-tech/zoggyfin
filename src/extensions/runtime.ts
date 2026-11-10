@@ -19,11 +19,12 @@ import { readJson, writeJson } from '@/storage/json';
 import { homeSections } from '@/registry/home-sections';
 import { type ItemActionContext, itemActions } from '@/registry/item-actions';
 
+import type { DetailAction } from './feeds';
 import { ExtensionError, FEED_TIMEOUT_MS, buildRequest, type Grants, type JellyfinAccount, parseOptions, send } from './http';
 import { type InstallSource, loadInstallRequest } from './install-request';
 import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match';
 import { askChoice, askConfirm, askText, type ChoiceOption } from './prompts';
-import { applyRefresh, handleActionResponse, type ResponseEffects, type TaskRef, toastText } from './response';
+import { type ActionResponse, applyRefresh, handleActionResponse, type ResponseEffects, type TaskRef, toastText } from './response';
 import { type InputSpec, type ItemActionSpec, type Manifest, parseManifest, type RequestSpec, type ShareTargetSpec } from './schema';
 import { followSession } from './session-binding';
 import { accountInstall, type Offer, type SyncedExtension } from './sync/blob';
@@ -198,14 +199,18 @@ async function collectInputs(ext: InstalledExtension, inputs: InputSpec[] | unde
   return values;
 }
 
+/** How an action flow ended: the user cancelled a prompt, the request failed, or the extension answered. */
+export type FlowOutcome = { status: 'cancelled' } | { status: 'failed' } | { status: 'done'; reply: ActionResponse | null };
+
 async function runFlow(
   ext: InstalledExtension,
   spec: { title: string; confirm?: ItemActionSpec['confirm']; inputs?: InputSpec[]; request: RequestSpec; destructive?: boolean },
   base: Omit<TemplateContext, 'settings' | 'jellyfin'>,
-): Promise<void> {
+  opts: { onSend?: () => void; effects?: Partial<ResponseEffects> } = {},
+): Promise<FlowOutcome> {
   const ctx = templateContext(ext, base);
   const input = await collectInputs(ext, spec.inputs, ctx);
-  if (input === null) return;
+  if (input === null) return { status: 'cancelled' };
   const full: TemplateContext = { ...ctx, input };
   if (spec.confirm) {
     const ok = await askConfirm({
@@ -214,14 +219,37 @@ async function runFlow(
       action: spec.confirm.action,
       destructive: spec.destructive,
     });
-    if (!ok) return;
+    if (!ok) return { status: 'cancelled' };
   }
+  // After the prompts and right before the request: an on/off button shows its new state here.
+  opts.onSend?.();
   try {
     const data = await extensionRequest(ext, spec.request, full);
-    handleActionResponse(data, effectsFor(ext), `${spec.title}: sent to ${ext.manifest.name}`);
+    const reply = handleActionResponse(data, { ...effectsFor(ext), ...opts.effects }, `${spec.title}: sent to ${ext.manifest.name}`);
+    return { status: 'done', reply };
   } catch (e) {
     toast(e instanceof ExtensionError || e instanceof Error ? e.message : `${ext.manifest.name} did not answer.`, { icon: 'exclamationmark.triangle' });
+    return { status: 'failed' };
   }
+}
+
+/**
+ * Runs a button of an entry detail page, with the flow of an item action
+ * (inputs, confirm, request, reply). `next` is the state an on/off button
+ * asks for: `{{action.next}}` in the request. `onSend` runs after the
+ * prompts, right before the request (the button shows the new state then).
+ * The detail page supplies `refreshEntry` and `refreshPage` for the reply's
+ * `refresh`.
+ */
+export function runDetailAction(
+  ext: InstalledExtension,
+  action: DetailAction,
+  opts: { next?: boolean; onSend?: () => void; refreshEntry: () => void; refreshPage: () => void },
+): Promise<FlowOutcome> {
+  return runFlow(ext, action, opts.next === undefined ? {} : { action: { next: opts.next } }, {
+    onSend: opts.onSend,
+    effects: { refreshEntry: opts.refreshEntry, refreshPage: opts.refreshPage },
+  });
 }
 
 /** Facts about an item that need extra requests: its library and its file path. */
@@ -451,9 +479,9 @@ export function syncRegistrations(sectionComponent: (extId: string, sectionId: s
           // An action that needs a fact still loading stays hidden until it arrives.
           return matchesWhen(a.when, { type: ctx.item.Type, mediaType: ctx.item.MediaType, libraryName: item.libraryName || null, path: 'path' in item ? item.path || null : null });
         },
-        run: (ctx: ItemActionContext) => {
+        run: async (ctx: ItemActionContext) => {
           const cur = getExtension(id) ?? ext;
-          return runFlow(cur, a, { item: itemContext(cur, ctx.item, ctx.facts) });
+          await runFlow(cur, a, { item: itemContext(cur, ctx.item, ctx.facts) });
         },
       }),
     );

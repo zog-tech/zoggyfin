@@ -91,6 +91,14 @@ export function extensionFeedsKey(scope: SessionScope, extId: string) {
   return [...scopeKey(scope), 'ext-feed', extId] as const;
 }
 
+/**
+ * The key of an entry's detail. Not under `extensionFeedsKey`: a reply's
+ * `refresh: "page"` reloads the feeds, `"entry"` this key.
+ */
+export function entryDetailKey(scope: SessionScope, extId: string, detail: string) {
+  return [...scopeKey(scope), 'ext-detail', extId, detail] as const;
+}
+
 /** The key of one feed, and of one search text for a search feed. */
 export function feedQueryKey(scope: SessionScope, extId: string, feed: string, query?: string) {
   return [...extensionFeedsKey(scope, extId), feed, query ?? null] as const;

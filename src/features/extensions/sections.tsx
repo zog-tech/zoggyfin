@@ -3,7 +3,8 @@
  * on TV, a free-scrolling row elsewhere), a list, and the infinite grid or
  * list that ends a page. What each draws for loading, empty and failed
  * feeds comes from `section-view.ts`. An entry with a Jellyfin item draws
- * the normal item tile; any other entry a plain tile.
+ * the normal item tile; any other entry a plain tile. A long press on a
+ * plain entry with media opens its menu (`entry-menu.tsx`).
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { type ComponentRef, type ReactElement, memo, useCallback, useContext, useMemo, useRef } from 'react';
@@ -22,6 +23,7 @@ import { Delayed, SkeletonBlock } from '@/components/skeleton';
 import { GridSkeleton } from '@/components/states';
 import { Tile, tileAspect, tileHeight } from '@/components/tile';
 import { Touchable } from '@/components/touchable';
+import type { FeedEntry } from '@/extensions/feeds';
 import type { SectionSpec, Shape } from '@/extensions/schema';
 import { type FeedRow, type FeedState, useFeedSection } from '@/extensions/ui/use-feed';
 import { BillboardRows, showOnBillboard } from '@/features/tv/billboard';
@@ -32,6 +34,7 @@ import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
 
+import { entryHasMenu, useEntryMenu } from './entry-menu';
 import { entryIsPressable, useOpenEntry } from './open-entry';
 import { failedText, LIST_PREVIEW, sectionBody, type SectionMode, tileOfEntry } from './section-view';
 
@@ -51,6 +54,7 @@ const EntryTile = memo(function EntryTile({
   shape,
   onPress,
   onLongPressItem,
+  onLongPressEntry,
   firstFocus,
   index = 0,
   onFocus,
@@ -60,6 +64,8 @@ const EntryTile = memo(function EntryTile({
   shape: Shape;
   onPress: (tile: EntryTileData) => void;
   onLongPressItem?: (item: BaseItemDto) => void;
+  /** A plain entry with media: its menu (Play, Open, Download). */
+  onLongPressEntry?: (entry: FeedEntry) => void;
   firstFocus?: boolean;
   index?: number;
   /** TV: the tile took the focus (the shelf's stable callback). */
@@ -67,6 +73,7 @@ const EntryTile = memo(function EntryTile({
 }) {
   const press = useCallback(() => onPress(tile), [onPress, tile]);
   const focus = useCallback(() => onFocus?.(tile, index), [onFocus, tile, index]);
+  const longPress = useCallback(() => onLongPressEntry?.(tile.row.entry), [onLongPressEntry, tile]);
   const item = tile.row.item;
   if (item) {
     return (
@@ -89,6 +96,7 @@ const EntryTile = memo(function EntryTile({
       width={width}
       aspectRatio={tileAspect(shape)}
       onPress={entryIsPressable(tile.row.entry, false) ? press : undefined}
+      onLongPress={onLongPressEntry && entryHasMenu(tile.row.entry) ? longPress : undefined}
       firstFocus={firstFocus}
       index={index}
       onFocus={onFocus ? focus : undefined}
@@ -101,8 +109,10 @@ export function EntryRow({ extId, title, rows, shape, onSeeAll, firstFocus }: { 
   const l = useLayout();
   const open = useOpenEntry(extId);
   const press = useCallback((t: EntryTileData) => open(t.row.entry, t.row.item), [open]);
-  // Long press, and right click on the web and the Mac app: the item actions. Not on TV.
+  // Long press, and right click on the web and the Mac app: the item actions (not on TV),
+  // or the menu of a plain entry with media (every platform).
   const menu = useItemMenu();
+  const entryMenu = useEntryMenu(extId);
   const tiles = useEntryTiles(rows);
   const section = useRef<ComponentRef<typeof View> | null>(null);
   // TV Home: the billboard shows the Jellyfin item the focus rests on.
@@ -130,22 +140,36 @@ export function EntryRow({ extId, title, rows, shape, onSeeAll, firstFocus }: { 
           padV={padV}
           anchor={section}
           onFocusItem={onFocusItem}
-          renderTile={(t, i, onFocus) => <EntryTile tile={t} width={width} shape={shape} onPress={press} firstFocus={firstFocus && i === 0} index={i} onFocus={onFocus} />}
+          renderTile={(t, i, onFocus) => (
+            <EntryTile tile={t} width={width} shape={shape} onPress={press} onLongPressEntry={entryMenu.open} firstFocus={firstFocus && i === 0} index={i} onFocus={onFocus} />
+          )}
         />
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: l.gutter, gap: l.gap, paddingVertical: padV }}>
           {tiles.map((t) => (
-            <EntryTile key={t.key} tile={t} width={width} shape={shape} onPress={press} onLongPressItem={menu.open} />
+            <EntryTile key={t.key} tile={t} width={width} shape={shape} onPress={press} onLongPressItem={menu.open} onLongPressEntry={entryMenu.open} />
           ))}
         </ScrollView>
       )}
       {menu.sheet}
+      {entryMenu.sheet}
     </View>
   );
 }
 
 /** One entry as a list line: art, title, subtitle, badge and progress. */
-export const EntryListRow = memo(function EntryListRow({ tile, onPress, firstFocus }: { tile: EntryTileData; onPress: (tile: EntryTileData) => void; firstFocus?: boolean }) {
+export const EntryListRow = memo(function EntryListRow({
+  tile,
+  onPress,
+  onLongPressEntry,
+  firstFocus,
+}: {
+  tile: EntryTileData;
+  onPress: (tile: EntryTileData) => void;
+  /** A plain entry with media: its menu (Play, Open, Download). */
+  onLongPressEntry?: (entry: FeedEntry) => void;
+  firstFocus?: boolean;
+}) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();
@@ -201,6 +225,7 @@ export const EntryListRow = memo(function EntryListRow({ tile, onPress, firstFoc
       radius={radius.md}
       firstFocus={firstFocus}
       onPress={() => onPress(tile)}
+      onLongPress={!item && onLongPressEntry && entryHasMenu(entry) ? () => onLongPressEntry(entry) : undefined}
       accessibilityRole="button"
       accessibilityLabel={label}
       containerStyle={{ marginHorizontal: l.gutter }}
@@ -215,15 +240,17 @@ function ListPreview({ extId, title, rows, onSeeAll, firstFocus }: { extId: stri
   const l = useLayout();
   const open = useOpenEntry(extId);
   const press = useCallback((t: EntryTileData) => open(t.row.entry, t.row.item), [open]);
+  const entryMenu = useEntryMenu(extId);
   const tiles = useEntryTiles(rows.slice(0, LIST_PREVIEW));
   return (
     <View style={{ marginTop: l.sectionGap }}>
       <RowHeader title={title} onSeeAll={onSeeAll} />
       <View style={{ gap: spacing.sm }}>
         {tiles.map((t, i) => (
-          <EntryListRow key={t.key} tile={t} onPress={press} firstFocus={firstFocus && i === 0} />
+          <EntryListRow key={t.key} tile={t} onPress={press} onLongPressEntry={entryMenu.open} firstFocus={firstFocus && i === 0} />
         ))}
       </View>
+      {entryMenu.sheet}
       {/* TV: the header is not a focus stop, so "See all" is a button under the list. */}
       {isTV && onSeeAll ? (
         <View style={{ paddingHorizontal: l.gutter, marginTop: spacing.sm, flexDirection: 'row' }}>
@@ -327,6 +354,7 @@ export function InfiniteEntries({
   const open = useOpenEntry(extId);
   const press = useCallback((t: EntryTileData) => open(t.row.entry, t.row.item), [open]);
   const menu = useItemMenu();
+  const entryMenu = useEntryMenu(extId);
   const tiles = useEntryTiles(feed.rows);
   const body = sectionBody({ status: feed.status, count: feed.rows.length }, 'infinite', 'page');
 
@@ -356,8 +384,10 @@ export function InfiniteEntries({
     );
 
   const renderTile = useCallback(
-    (t: EntryTileData, width: number, first: boolean) => <EntryTile tile={t} width={width} shape={shape} onPress={press} onLongPressItem={l.tv ? undefined : menu.open} firstFocus={first} />,
-    [shape, press, l.tv, menu.open],
+    (t: EntryTileData, width: number, first: boolean) => (
+      <EntryTile tile={t} width={width} shape={shape} onPress={press} onLongPressItem={l.tv ? undefined : menu.open} onLongPressEntry={entryMenu.open} firstFocus={first} />
+    ),
+    [shape, press, l.tv, menu.open, entryMenu.open],
   );
 
   if (layout === 'grid') {
@@ -377,16 +407,33 @@ export function InfiniteEntries({
           refreshControl={refreshControl}
         />
         {menu.sheet}
+        {entryMenu.sheet}
       </>
     );
   }
-  return <EntryList tiles={tiles} onPress={press} header={header} empty={emptyView} footer={footer} onEndReached={feed.loadMore} focusFirst={focusFirst} refreshControl={refreshControl} />;
+  return (
+    <>
+      <EntryList
+        tiles={tiles}
+        onPress={press}
+        onLongPressEntry={entryMenu.open}
+        header={header}
+        empty={emptyView}
+        footer={footer}
+        onEndReached={feed.loadMore}
+        focusFirst={focusFirst}
+        refreshControl={refreshControl}
+      />
+      {entryMenu.sheet}
+    </>
+  );
 }
 
 /** The virtualized list form of `InfiniteEntries`. */
 function EntryList({
   tiles,
   onPress,
+  onLongPressEntry,
   header,
   empty,
   footer,
@@ -396,6 +443,7 @@ function EntryList({
 }: {
   tiles: EntryTileData[];
   onPress: (t: EntryTileData) => void;
+  onLongPressEntry: (entry: FeedEntry) => void;
   header?: ReactElement | null;
   empty: ReactElement;
   footer: ReactElement | null;
@@ -422,7 +470,7 @@ function EntryList({
       onEndReached={onEndReached}
       onEndReachedThreshold={0.6}
       refreshControl={refreshControl}
-      renderItem={({ item, index }) => <EntryListRow tile={item} onPress={onPress} firstFocus={isTV && focusFirst && index === 0} />}
+      renderItem={({ item, index }) => <EntryListRow tile={item} onPress={onPress} onLongPressEntry={onLongPressEntry} firstFocus={isTV && focusFirst && index === 0} />}
     />
   );
 }

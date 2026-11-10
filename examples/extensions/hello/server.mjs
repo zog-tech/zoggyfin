@@ -12,6 +12,12 @@ const panel = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
 // A second sample, schema version 2: add http://localhost:8787/pages/zoggyfin-extension.json.
 const pagesManifest = JSON.parse(readFileSync(new URL('./pages-extension.json', import.meta.url), 'utf8'));
 pagesManifest.baseUrl = base;
+// A 6 s test pattern with a tone (320x180 H.264 and AAC, made with ffmpeg's
+// testsrc and sine sources). Every sample entry plays this one file.
+const video = readFileSync(new URL('./media/sample.mp4', import.meta.url));
+const VIDEO_SECONDS = 6;
+// The Save button of the entry pages: the ids the user saved, in memory only.
+const saved = new Set();
 
 // Fake catalogue for the page sample: neutral titles, no pictures (the app draws generated art).
 const TOPICS = ['Nature', 'Cooking', 'Travel', 'Science', 'Music', 'Craft'];
@@ -21,9 +27,10 @@ const samples = Array.from({ length: 95 }, (_, i) => {
   const entry = { id: `s${n}`, title: `Sample clip ${n}`, subtitle: `${minutes} min · ${TOPICS[n % TOPICS.length]}` };
   if (n % 7 === 0) entry.badge = 'New';
   if (n % 5 === 0) entry.progress = (n % 10) / 10 || 0.5;
-  // Every third entry has a detail page, the others play their media.
+  // Every entry has media (the one test video). Every third entry also has a
+  // detail page: a tap opens it; a tap on any other entry plays at once.
+  entry.media = { id: `s${n}`, kind: 'video', duration: VIDEO_SECONDS, playback: `/pages/entries/s${n}/play`, download: `/pages/entries/s${n}/download` };
   if (n % 3 === 0) entry.detail = `/pages/entries/s${n}`;
-  else entry.media = { id: `s${n}`, kind: n % 4 === 0 ? 'audio' : 'video', duration: minutes * 60, playback: `/pages/entries/s${n}/play` };
   return entry;
 });
 
@@ -43,8 +50,8 @@ function send(res, status, body, type = 'application/json') {
     'Content-Type': type,
     // A sample: any origin. A real extension lists the app's web origins.
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Emby-Token, X-Jellyfin-Server-Url, X-Jellyfin-Server-Id, X-Jellyfin-User-Id',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Range, Authorization, X-Emby-Token, X-Jellyfin-Server-Url, X-Jellyfin-Server-Id, X-Jellyfin-User-Id',
+    'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
   });
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
 }
@@ -61,6 +68,47 @@ function readBody(req) {
       }
     });
   });
+}
+
+// The detail description of a sample entry.
+function detailOf(e) {
+  const d = {
+    title: e.title,
+    eyebrow: 'Hello Pages',
+    lines: [e.subtitle],
+    description: 'A sample entry from the Hello Pages extension. Play shows a short test pattern. Save is an on/off button that the sample server remembers until it stops.',
+    media: e.media,
+    actions: [
+      {
+        id: 'save',
+        title: 'Save',
+        icon: 'heart',
+        state: { on: saved.has(e.id), onTitle: 'Saved', onIcon: 'heart.fill' },
+        request: { method: 'POST', path: `/pages/entries/${e.id}/save`, body: { on: '{{action.next}}' } },
+      },
+    ],
+    sections: [{ id: 'related', title: 'Related', layout: 'row', shape: 'thumb', feed: `/pages/entries/${e.id}/related` }],
+  };
+  if (e.progress !== undefined) d.progress = e.progress;
+  return d;
+}
+
+// The test video, with byte ranges (AVPlayer and browsers ask for ranges).
+function sendVideo(req, res) {
+  const head = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Length, Content-Range' };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (!m) {
+    res.writeHead(200, { ...head, 'Content-Length': video.length });
+    return res.end(req.method === 'HEAD' ? undefined : video);
+  }
+  const start = m[1] ? Number(m[1]) : Math.max(0, video.length - Number(m[2]));
+  const end = m[1] && m[2] ? Math.min(Number(m[2]), video.length - 1) : video.length - 1;
+  if (start > end || start >= video.length) {
+    res.writeHead(416, { ...head, 'Content-Range': `bytes */${video.length}` });
+    return res.end();
+  }
+  res.writeHead(206, { ...head, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${video.length}` });
+  res.end(req.method === 'HEAD' ? undefined : video.subarray(start, end + 1));
 }
 
 createServer(async (req, res) => {
@@ -105,11 +153,28 @@ createServer(async (req, res) => {
     const found = q ? samples.filter((e) => `${e.title} ${e.subtitle}`.toLowerCase().includes(q)) : [];
     return send(res, 200, pageOf(found, url, 20));
   }
-  const entry = /^\/pages\/entries\/(s\d+)$/.exec(url.pathname);
-  if (entry) {
-    const e = samples.find((x) => x.id === entry[1]);
+  // Entry pages, their buttons and related rows, stream and download descriptions.
+  const route = /^\/pages\/entries\/(s\d+)(?:\/(play|download|save|related))?$/.exec(url.pathname);
+  if (route) {
+    const [, id, part] = route;
+    const e = samples.find((x) => x.id === id);
     if (!e) return send(res, 404, { error: 'No such entry' });
-    return send(res, 200, { title: e.title, eyebrow: 'Hello Pages', lines: [e.subtitle], description: 'A sample entry from the Hello Pages extension.' });
+    if (!part) return send(res, 200, detailOf(e));
+    if (part === 'play') return send(res, 200, { stream: { url: '/pages/media/sample.mp4', type: 'file' }, title: e.title, subtitle: 'Hello Pages', duration: VIDEO_SECONDS });
+    if (part === 'download') return send(res, 200, { url: '/pages/media/sample.mp4', bytes: video.length, container: 'mp4', label: 'Test pattern' });
+    if (part === 'related') {
+      const i = samples.indexOf(e);
+      return send(res, 200, { items: [...samples.slice(i + 1), ...samples.slice(0, i)].slice(0, 8), next: null });
+    }
+    if (part === 'save' && req.method === 'POST') {
+      const b = await readBody(req);
+      // {{action.next}} arrives as a JSON boolean.
+      if (typeof b.on !== 'boolean') return send(res, 400, { error: 'on must be true or false' });
+      if (b.on) saved.add(id);
+      else saved.delete(id);
+      return send(res, 200, { toast: b.on ? `${e.title} is saved` : `${e.title} is no longer saved`, state: { on: b.on } });
+    }
   }
+  if (url.pathname === '/pages/media/sample.mp4') return sendVideo(req, res);
   send(res, 404, { error: 'Not found' });
 }).listen(port, () => console.log(`Hello extension on ${base}`));

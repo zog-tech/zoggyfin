@@ -3,9 +3,9 @@
   "id": "org.example.hello.pages",
   "name": "Hello Pages",
   "version": "2.0.0",
-  "description": "A sample of a version 2 page: a row, a list, a grid that pages through `next`, and search.",
+  "description": "A sample of a version 2 page: a row, a list, a grid that pages through `next`, search, entry pages with a Save button, and a short test video to play.",
   "baseUrl": "http://localhost:8787",
-  "permissions": ["network"],
+  "permissions": ["network", "playback", "downloads"],
   "contributes": {
     "pages": [
       {

@@ -10,6 +10,7 @@ export {
   MAX_QUERY_LENGTH,
   SEARCH_DEBOUNCE_MS,
   StaleSearchError,
+  entryDetailKey,
   extensionFeedsKey,
   feedQueryKey,
   flattenPages,
@@ -21,4 +22,4 @@ export {
   type FeedParams,
   type LoadedPage,
 } from './paging';
-export { fetchFeedPage } from './fetch';
+export { fetchDetail, fetchFeedPage } from './fetch';
