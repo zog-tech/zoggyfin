@@ -8,16 +8,15 @@ import { useCallback, useMemo } from 'react';
 import { Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
+import { PlainGrid } from '@/components/plain-grid';
 import { EmptyState, GridSkeleton } from '@/components/states';
 import { ALL_CATEGORY, playedFractionOf, positionOf, useActiveProviderId, useVodCategory, useVodLists, vod, type VodKind } from '@/iptv';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles } from '@/theme';
 
 import { useLiveGroup } from '../nav';
-import { VodGrid } from './vod-grid';
-import { openTile } from './vod-shelf';
-import type { VodTileData } from './vod-tile';
-import { tileOfItem } from './vod-view';
+import { openTile } from './vod-nav';
+import { tileOfItem, type VodTileData } from './vod-view';
 
 export function VodCategoryScreen({ kind, providerId: wanted, categoryId, name }: { kind: VodKind; providerId?: string; categoryId: string; name?: string }) {
   const s = useStyles(makeStyles);
@@ -47,7 +46,7 @@ export function VodCategoryScreen({ kind, providerId: wanted, categoryId, name }
     body = <GridSkeleton shape="poster" />;
   } else {
     body = (
-      <VodGrid
+      <PlainGrid
         items={tiles}
         onPress={open}
         ListHeaderComponent={

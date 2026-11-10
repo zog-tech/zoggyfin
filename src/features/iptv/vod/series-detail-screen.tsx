@@ -10,6 +10,7 @@ import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon } from '@/components/icon';
+import { PlainArt } from '@/components/plain-art';
 import { Touchable } from '@/components/touchable';
 import {
   type Episode,
@@ -30,7 +31,6 @@ import { toast } from '@/lib/toast';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scaled, scriptStyle, sizes, spacing, tvRowInset, type, useLayout, useStyles, useTheme } from '@/theme';
 
-import { VodArt } from './vod-art';
 import { type VodAction, VodDetail } from './vod-detail';
 import { episodeLine, factsOf } from './vod-view';
 
@@ -136,7 +136,7 @@ export function SeriesDetailScreen({ id, providerId: wanted }: { id: string; pro
                 containerStyle={inset ? { marginLeft: inset.marginLeft, marginRight: inset.marginRight } : undefined}
                 style={({ pressed, hovered, focused }) => [s.episode, { paddingHorizontal: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
                 <View>
-                  <VodArt uri={ep.still ?? poster} name={ep.title} id={ep.id} kind="episode" width={scaled(sizes.episodeThumb)} aspectRatio={16 / 9} rounded={radius.sm} showTitle={false} />
+                  <PlainArt uri={ep.still ?? poster} name={ep.title} id={ep.id} kind="episode" width={scaled(sizes.episodeThumb)} aspectRatio={16 / 9} rounded={radius.sm} showTitle={false} />
                   {progress !== null ? (
                     <View style={s.track}>
                       <View style={[s.fill, { width: `${Math.round(progress * 100)}%` }]} />

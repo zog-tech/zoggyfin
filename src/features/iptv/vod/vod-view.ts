@@ -4,7 +4,10 @@
  */
 import type { Episode, FilmInfo, SeriesInfo, VodFavourite, VodItem, VodKind, VodPosition } from '@/iptv';
 
-import type { VodTileData } from './vod-tile';
+import type { PlainTileData } from '@/components/plain-tile';
+
+/** A plain tile of a film, a series or an episode. */
+export type VodTileData = PlainTileData & { kind: 'film' | 'series' | 'episode' };
 
 /** "2 h 1 min", "45 min". */
 export function runtimeText(seconds: number | undefined): string | null {

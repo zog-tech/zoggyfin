@@ -9,6 +9,31 @@ const base = process.env.BASE_URL || `http://localhost:${port}`;
 const manifest = JSON.parse(readFileSync(new URL('./zoggyfin-extension.json', import.meta.url), 'utf8'));
 manifest.baseUrl = base;
 const panel = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
+// A second sample, schema version 2: add http://localhost:8787/pages/zoggyfin-extension.json.
+const pagesManifest = JSON.parse(readFileSync(new URL('./pages-extension.json', import.meta.url), 'utf8'));
+pagesManifest.baseUrl = base;
+
+// Fake catalogue for the page sample: neutral titles, no pictures (the app draws generated art).
+const TOPICS = ['Nature', 'Cooking', 'Travel', 'Science', 'Music', 'Craft'];
+const samples = Array.from({ length: 95 }, (_, i) => {
+  const n = i + 1;
+  const minutes = 3 + (n % 40);
+  const entry = { id: `s${n}`, title: `Sample clip ${n}`, subtitle: `${minutes} min · ${TOPICS[n % TOPICS.length]}` };
+  if (n % 7 === 0) entry.badge = 'New';
+  if (n % 5 === 0) entry.progress = (n % 10) / 10 || 0.5;
+  // Every third entry has a detail page, the others play their media.
+  if (n % 3 === 0) entry.detail = `/pages/entries/s${n}`;
+  else entry.media = { id: `s${n}`, kind: n % 4 === 0 ? 'audio' : 'video', duration: minutes * 60, playback: `/pages/entries/s${n}/play` };
+  return entry;
+});
+
+// One page of a list. The cursor is the index of the first entry, as text.
+function pageOf(list, url, size) {
+  const start = Math.max(0, Number(url.searchParams.get('cursor') || 0) || 0);
+  const items = list.slice(start, start + size);
+  const next = start + size < list.length ? String(start + size) : null;
+  return { items, next };
+}
 
 const tasks = new Map(); // id -> { started, title }
 let seq = 0;
@@ -70,5 +95,21 @@ createServer(async (req, res) => {
     });
   }
   if (url.pathname === '/panel') return send(res, 200, panel, 'text/html; charset=utf-8');
+  // Schema version 2 page sample.
+  if (url.pathname === '/pages/zoggyfin-extension.json') return send(res, 200, pagesManifest);
+  if (url.pathname === '/pages/latest') return send(res, 200, { items: samples.slice(0, 12), next: null });
+  if (url.pathname === '/pages/queue') return send(res, 200, pageOf(samples.filter((e) => e.progress !== undefined), url, 5));
+  if (url.pathname === '/pages/all') return send(res, 200, pageOf(samples, url, 20));
+  if (url.pathname === '/pages/search') {
+    const q = (url.searchParams.get('query') || '').trim().toLowerCase();
+    const found = q ? samples.filter((e) => `${e.title} ${e.subtitle}`.toLowerCase().includes(q)) : [];
+    return send(res, 200, pageOf(found, url, 20));
+  }
+  const entry = /^\/pages\/entries\/(s\d+)$/.exec(url.pathname);
+  if (entry) {
+    const e = samples.find((x) => x.id === entry[1]);
+    if (!e) return send(res, 404, { error: 'No such entry' });
+    return send(res, 200, { title: e.title, eyebrow: 'Hello Pages', lines: [e.subtitle], description: 'A sample entry from the Hello Pages extension.' });
+  }
   send(res, 404, { error: 'Not found' });
 }).listen(port, () => console.log(`Hello extension on ${base}`));
