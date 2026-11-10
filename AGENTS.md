@@ -191,7 +191,7 @@ Play → session.ts finds the completed record (local.ts) → plays the file →
 - `registry/item-actions.ts`: `createRegistry()`, the `ItemAction` type and `actionsFor()`. An action whose `when` throws is hidden; it never breaks the sheet.
 - `registry/home-sections.ts`: Home renders every registered section in `order`.
 - Built-ins register through the same registries: `features/actions/builtin.ts` (orders in steps of 10) and `features/home/builtin-sections.tsx`.
-- `registry/music-home-sections.ts`: the music Home tab renders each section in `order`, with the library Id. Built-ins: `features/music/builtin-sections.tsx`; a section calls `useMusicHomeRow()` for the first TV focus and the long press menu.
+- `registry/music-home-sections.ts`: the music Home tab renders each section in `order`, with the library Id. Built-ins: `features/music/builtin-sections.tsx`; a section calls `useMusicHomeRow()` for the first TV focus and the long press menu. The `builtin.catalog` section (order 45) shows the rows of an optional server plugin with a music catalog (`GET /OnDemand/Home`, parsed in `api/ondemand.ts`); any failure means no plugin and shows nothing.
 - `features/actions/use-item-actions.ts` supplies the `AppActionApi` (play, favourite, download, delete and so on) to the sheet.
 - `extensions/runtime.ts` turns installed manifests (`schema.ts`) into item actions (`ext.<id>.…`), Home rows (order 45+) and share targets. Extensions are data only: no extension code runs in the app. Requests go only to the manifest's origin (`http.ts`, `match.ts`). See `docs/extensions.md`.
 
