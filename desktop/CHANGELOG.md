@@ -4,6 +4,15 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.14 (2026-11-09)
+
+- Music: songs play the original file instead of a converted stream, so seeking and tapping a lyric line work and songs no longer restart
+- Lyrics: the sung line fills word by word, right to left for Arabic, and the current line stays a third from the top
+- Music: swipe a song row to play it next or add it to the queue
+- Search: recent searches keep only what you used, and a longer search replaces its shorter start
+- Downloads: a song that the server adds to the library on first play downloads under its library entry
+- Fixes: many late or repeated results in Live TV, Servers, Admin, Playlists, Together and the player no longer undo a newer action
+
 ## 0.1.13 (2026-11-04)
 
 - Live TV: search shows an "On now" section with programmes that match your words and run now or start within the hour
