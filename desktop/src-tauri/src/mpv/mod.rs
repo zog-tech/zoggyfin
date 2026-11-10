@@ -102,7 +102,15 @@ pub fn mpv_command(state: State<'_, MpvState>, args: Vec<String>) -> Result<(), 
 #[tauri::command]
 pub fn mpv_set_property(state: State<'_, MpvState>, name: String, value: String) -> Result<(), String> {
     #[cfg(debug_assertions)]
-    eprintln!("[mpv] set {name} = {value}");
+    {
+        // Header values (`http-header-fields`) can hold a token: log the name only.
+        let shown = if name.contains("header") {
+            "<redacted>"
+        } else {
+            value.as_str()
+        };
+        eprintln!("[mpv] set {name} = {shown}");
+    }
     state.mpv()?.set(&name, &value)
 }
 
