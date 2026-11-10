@@ -64,6 +64,15 @@ interface Ctx {
   server: StreamServer;
 }
 
+/**
+ * A reload of the item that plays (another quality, audio or subtitle
+ * stream) keeps its play state: a title the user paused stays paused. One
+ * that loads, fails or plays goes on playing.
+ */
+function reloadPlays(st: { status: string; playing: boolean }): boolean {
+  return st.playing || st.status === 'loading' || st.status === 'error' || st.status === 'idle';
+}
+
 function context(): Ctx {
   const s = useSessionStore.getState().session;
   if (!s) throw new Error('Sign in to play.');
@@ -960,7 +969,7 @@ class VideoSession {
     a.start = reloadPosition({ live: external.live, played: this.extPlayed, enginePosition: this.engine.position, statePosition: st.position, attemptStart: a.start });
     a.candidates = qualityCandidates(a.stream, qualityId);
     a.next = 0;
-    a.autoplay = st.playing;
+    a.autoplay = reloadPlays(st);
     a.switchFrom = { qualityId: external.qualityId, played: this.extPlayed, fallback: false };
     // The new form starts at `a.start`; it counts as played again once it is ready.
     this.extPlayed = false;
@@ -1149,6 +1158,7 @@ class VideoSession {
         subtitleIndex: opts.subtitleIndex !== undefined ? opts.subtitleIndex : now.plan.subtitleIndex,
         bitrateChoice: opts.bitrateChoice !== undefined ? opts.bitrateChoice : now.bitrateChoice,
         forceStream: opts.forceStream,
+        autoplay: opts.autoplay !== undefined ? opts.autoplay : reloadPlays(st),
       });
     } catch (e) {
       console.warn('[player] reload failed', e);

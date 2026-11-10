@@ -197,6 +197,13 @@ describe('external titles in the video session', () => {
     expect(mockLoads[2].autoplay).not.toBe(false);
   });
 
+  it('a quality change before the first play (still loading) plays the new quality', async () => {
+    await videoSession().playExternal(request(source(full), 0));
+    expect(playerState().status).toBe('loading');
+    videoSession().setExternalQuality('720');
+    expect(mockLoads[1].autoplay).not.toBe(false);
+  });
+
   it('loads subtitle files through the source, never through the Jellyfin client', async () => {
     const src = source(full);
     await videoSession().playExternal(request(src));
