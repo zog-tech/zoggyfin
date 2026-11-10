@@ -9,8 +9,10 @@
  *   "See all" that opens the section on its own screen. Two infinite lists
  *   on one screen cannot both load more.
  * - A section never blocks the screen. Loading shows a placeholder, a
- *   failure a short note, and an empty row or preview is left out. On Home,
- *   loading and empty rows show nothing, as before.
+ *   failure a short note with "Try again". On a page, an empty section keeps
+ *   its title and says so (with the feed's `message` and `action` when it
+ *   has them), so a section never vanishes without a word. On Home, loading
+ *   and empty rows show nothing, as before.
  *
  * Tap order (docs/extensions.md): a Jellyfin item opens its page; else
  * `detail` opens the entry page; else `media` plays; else a `panel`; else a
@@ -44,7 +46,17 @@ export function sectionBody(state: { status: 'loading' | 'error' | 'ready'; coun
   if (state.count > 0) return 'entries';
   if (state.status === 'error') return 'failed';
   if (state.status === 'loading') return where === 'home' ? 'hidden' : 'placeholder';
-  return mode === 'infinite' && where === 'page' ? 'empty' : 'hidden';
+  return where === 'page' ? 'empty' : 'hidden';
+}
+
+/** The text of an empty section: the feed's own message, else a plain note. */
+export function emptyText(message: string | undefined): string {
+  return message ?? 'Nothing here yet.';
+}
+
+/** The panel button under an empty section's message: only where panels exist (not on TV). */
+export function emptyAction<A extends { panel: string }>(action: A | undefined, panels: boolean): A | null {
+  return action && panels ? action : null;
 }
 
 /** The note of a section that did not load. */

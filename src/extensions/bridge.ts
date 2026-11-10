@@ -1,22 +1,25 @@
 /**
  * The panel bridge. A panel page sends
  * `{ zoggyfin: 1, id, method, params }` with postMessage; the app answers
- * `{ zoggyfin: 1, id, result }` or `{ zoggyfin: 1, id, error }`. These nine
- * methods are all a panel can do in the app.
+ * `{ zoggyfin: 1, id, result }` or `{ zoggyfin: 1, id, error }`. These
+ * methods (`BRIDGE_METHODS`) are all a panel can do in the app.
  *
  * The schema version 2 methods keep the rules of the native paths:
  * - `playMedia`: the `playback` URL must be on the extension's origin, and
  *   the extension needs the `playback` permission and the user's grant
  *   (`playRefusal`). A picture on another origin is left out.
  * - `openEntry`: the `detail` URL must be on the extension's origin.
- * - `openPage`: the page must be one of the manifest's pages.
+ * - `openPage`: the page must be one of the manifest's pages. The app loads
+ *   the extension's feeds again first, so the page shows what the panel changed.
+ * - `refreshPage`: loads the feeds of this extension only (its pages, Home
+ *   rows and search results), not the rest of the app.
  * Panels are not on TV, so these methods are never the only way to content.
  *
  * Pure, so it is unit-tested.
  */
 import { urlOnOrigin } from './match';
 
-export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage'] as const;
+export const BRIDGE_METHODS = ['getContext', 'play', 'openItem', 'refreshLibrary', 'toast', 'close', 'playMedia', 'openEntry', 'openPage', 'refreshPage'] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
 export interface BridgeRequest {
@@ -50,6 +53,8 @@ export interface BridgeDeps {
   /** True when the manifest has this page. */
   hasPage(pageId: string): boolean;
   openPage(pageId: string): void;
+  /** Loads the feeds of this extension again. */
+  refreshPage(): void;
 }
 
 export interface BridgeMedia {
@@ -164,6 +169,9 @@ export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps):
         deps.openPage(page);
         break;
       }
+      case 'refreshPage':
+        deps.refreshPage();
+        break;
     }
     return { zoggyfin: 1, id: req.id, result };
   } catch (e) {

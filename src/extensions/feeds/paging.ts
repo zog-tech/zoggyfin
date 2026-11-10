@@ -20,6 +20,8 @@
  *
  * Pure, so it is unit-tested.
  */
+import type { QueryClient } from '@tanstack/react-query';
+
 import { scopeKey, type SessionScope } from '@/api/query-keys';
 import type { Gate } from '@/lib/async-gate';
 
@@ -89,6 +91,16 @@ export function flattenPages<T extends { entry: Pick<FeedEntry, 'key'> }>(pages:
 /** The key of all feeds of one extension (pull to refresh of its page). */
 export function extensionFeedsKey(scope: SessionScope, extId: string) {
   return [...scopeKey(scope), 'ext-feed', extId] as const;
+}
+
+/**
+ * Loads every feed of one extension again: its page sections, its Home rows
+ * and its search results share `extensionFeedsKey`. The feeds on screen
+ * load now; the others are marked stale, so they load when they show again
+ * (the 60 s `staleTime` no longer keeps the old data).
+ */
+export function refreshExtensionFeeds(qc: Pick<QueryClient, 'invalidateQueries'>, scope: SessionScope, extId: string): Promise<void> {
+  return qc.invalidateQueries({ queryKey: extensionFeedsKey(scope, extId) });
 }
 
 /**

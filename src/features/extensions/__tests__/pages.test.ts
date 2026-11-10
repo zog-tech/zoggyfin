@@ -2,7 +2,7 @@ import { readEntry, type FeedEntry } from '@/extensions/feeds';
 import { parseManifest, type Manifest } from '@/extensions/schema';
 
 import { firstParam, parseEntryRoute, resolveHomeRow, resolvePageRoute } from '../routes';
-import { entryTap, failedText, sectionBody, sectionMode, tileOfEntry } from '../section-view';
+import { emptyAction, emptyText, entryTap, failedText, sectionBody, sectionMode, tileOfEntry } from '../section-view';
 
 const base = 'https://media.example.org';
 
@@ -92,9 +92,19 @@ describe('section body', () => {
     expect(sectionBody({ status: 'loading', count: 0 }, 'infinite', 'page')).toBe('placeholder');
   });
 
-  it('hides an empty row or preview, and says so for the infinite section', () => {
-    expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'page')).toBe('hidden');
-    expect(sectionBody({ status: 'ready', count: 0 }, 'preview', 'page')).toBe('hidden');
+  it('says why a section is empty with the feed message, and offers its panel button only where panels exist', () => {
+    expect(emptyText(undefined)).toBe('Nothing here yet.');
+    expect(emptyText('Sign in to see your list.')).toBe('Sign in to see your list.');
+    const action = { title: 'Sign in', panel: 'account' };
+    expect(emptyAction(action, true)).toBe(action);
+    expect(emptyAction(action, false)).toBeNull();
+    expect(emptyAction(undefined, true)).toBeNull();
+  });
+
+  it('keeps an empty section on a page with its title, for every mode', () => {
+    // A page never drops a section without a word: an empty row or preview keeps its title and says so.
+    expect(sectionBody({ status: 'ready', count: 0 }, 'row', 'page')).toBe('empty');
+    expect(sectionBody({ status: 'ready', count: 0 }, 'preview', 'page')).toBe('empty');
     expect(sectionBody({ status: 'ready', count: 0 }, 'infinite', 'page')).toBe('empty');
   });
 });

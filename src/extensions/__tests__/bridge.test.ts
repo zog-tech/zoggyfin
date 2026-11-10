@@ -15,6 +15,7 @@ const deps = (over: { refusal?: string | null } = {}) => ({
   openEntry: jest.fn(),
   hasPage: jest.fn((id: string) => id === 'main'),
   openPage: jest.fn(),
+  refreshPage: jest.fn(),
 });
 
 describe('bridge', () => {
@@ -26,6 +27,13 @@ describe('bridge', () => {
     expect(readBridgeMessage({ id: 1, method: 'toast' })).toBeNull();
     expect(readBridgeMessage({ zoggyfin: 1, id: 1, method: 'eval' })).toBeNull();
     expect(readBridgeMessage('not json')).toBeNull();
+  });
+  it('reloads only the extension feeds with refreshPage', async () => {
+    const d = deps();
+    expect(await handleBridgeRequest({ id: 1, method: 'refreshPage', params: {} }, d)).toEqual({ zoggyfin: 1, id: 1, result: true });
+    expect(d.refreshPage).toHaveBeenCalledTimes(1);
+    expect(d.refreshLibrary).not.toHaveBeenCalled();
+    expect(readBridgeMessage({ zoggyfin: 1, id: 2, method: 'refreshPage' })).toEqual({ id: 2, method: 'refreshPage', params: {} });
   });
   it('checks the origin', () => {
     expect(sameOrigin('http://192.0.2.10:3000/panel', 'http://192.0.2.10:3000')).toBe(true);

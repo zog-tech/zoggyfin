@@ -19,7 +19,7 @@ import { readJson, writeJson } from '@/storage/json';
 import { homeSections } from '@/registry/home-sections';
 import { type ItemActionContext, itemActions } from '@/registry/item-actions';
 
-import type { DetailAction } from './feeds';
+import { type DetailAction, refreshExtensionFeeds } from './feeds';
 import { ExtensionError, FEED_TIMEOUT_MS, buildRequest, type Grants, type JellyfinAccount, parseOptions, send } from './http';
 import { type InstallSource, loadInstallRequest } from './install-request';
 import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match';
@@ -114,7 +114,22 @@ function refreshAll(): void {
   void queryClient.invalidateQueries({ queryKey: scopeKey({ serverId: s.serverId, userId: s.userId }) });
 }
 
-/** Refreshes the app's data now and twice more, while the server scans its library. */
+/**
+ * Loads every feed of one extension again, everywhere it shows (its pages,
+ * its Home rows, its search results). A panel's `refreshPage`, `openPage`
+ * and the close of a panel use it.
+ */
+export function refreshExtension(extId: string): void {
+  const s = session();
+  if (!s) return;
+  void refreshExtensionFeeds(queryClient, { serverId: s.serverId, userId: s.userId }, extId);
+}
+
+/**
+ * Refreshes the app's data now and twice more, while the server scans its
+ * library. The whole account scope is invalidated, so the feeds of every
+ * extension (`ext-feed` keys) and the entry pages (`ext-detail`) load again too.
+ */
 export function refreshLibrary(): void {
   refreshTimers.forEach(clearTimeout);
   refreshAll();

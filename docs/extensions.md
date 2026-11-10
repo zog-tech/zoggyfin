@@ -7,7 +7,7 @@ buttons on items, Home rows and a page.
 An extension is **data only**. The app reads a JSON manifest from your server and
 draws the contributions. No code from an extension runs in the app (App Store
 guideline 2.5.2): there is no `eval`, and the app downloads no scripts. A panel is
-a normal web page in a WebView or an iframe. It can only use the nine bridge
+a normal web page in a WebView or an iframe. It can only use the bridge
 methods below.
 
 Extensions work on iPhone, iPad, Android, web and the Mac app.
@@ -291,15 +291,25 @@ function zoggyfin(method, params = {}) {
 | `getContext` | – | `{ extension, settings, jellyfin, theme, platform }`. `jellyfin.token` is there only with `jellyfinToken`. |
 | `play` | `{ itemId }` | Plays the item. |
 | `openItem` | `{ itemId }` | Closes the panel and opens the item. |
-| `refreshLibrary` | – | Loads the app's data again. |
+| `refreshLibrary` | – | Loads the app's data again: the Jellyfin data, every extension feed (pages, Home rows, search results) and entry pages. Again after 8 s and 25 s. |
 | `toast` | `{ text }` | Shows a toast. |
 | `close` | – | Closes the panel. |
 | `playMedia` | `{ mediaId, playback, title?, image? }` | Plays the media, as a card with `media` does. `playback` (and `image`) must be on the extension's origin. Needs the `playback` permission, and the user's switch must be on; otherwise the answer is an error that says so. Schema version 2. |
 | `openEntry` | `{ detail, title? }` | Closes the panel and opens the entry page of `detail` (on the extension's origin). Schema version 2. |
-| `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. Schema version 2. |
+| `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. The app loads the extension's feeds again first, so the page shows what the panel changed. Schema version 2. |
+| `refreshPage` | – | Loads the feeds of this extension again (its pages, Home rows and search results), and nothing else. The panel stays open. |
 
 The app answers only messages from the extension's origin, and sends answers
 only to that origin.
+
+**After a change in a panel.** When a panel closes (by `close`, `openPage`,
+`openItem`, `openEntry`, the close button or Back), the app loads the feeds of
+that extension again. A panel that changes what the feeds show (for example a
+sign-in) can therefore close with `openPage` or `close`; it does not need
+`refreshLibrary`. Use `refreshPage` to reload the feeds while the panel stays
+open. The app sends feed requests itself, with the manifest `headers`; it
+never sends the panel's cookies. Keep a sign-in made in a panel on the
+extension's server, not only in a cookie of the panel page.
 
 ### CORS
 
@@ -395,6 +405,22 @@ reply is read entry by entry: a bad entry is left out, and the others stay.
 `next` is a cursor, not a URL. No `next`, `null` or `""` means the last page,
 so a version 1 feed is one page. At most 100 entries per page.
 
+**Why a feed is empty.** A feed with no entries can say why, and offer a
+button that opens one of the extension's panels:
+
+```json
+{ "items": [], "message": "Sign in to see your list.", "action": { "title": "Sign in", "panel": "account" } }
+```
+
+- `message`: plain text, 200 characters at most. It shows only when the feed
+  has no entries, on a page in place of "Nothing here yet.". Home rows stay
+  hidden when they are empty.
+- `action`: optional, only with `message`. `title` is 40 characters at most;
+  `panel` must be the id of a panel in the manifest, else the button is left
+  out. TV has no panels, so it shows the message only.
+- When the panel closes, the app loads the feeds again (see "After a change in
+  a panel").
+
 **Feed entry.** The version 1 fields stay. Version 2 adds:
 
 ```json
@@ -438,8 +464,11 @@ sections in order.
   `GET <search.feed>?query=<text>` (and `cursor` for more pages). The results
   replace the sections until the field is empty. A reply to an older text is
   never shown.
-- A section that fails shows "<name> is not available now." and the rest of
-  the page stays. On Home, a row that loads or is empty takes no room.
+- A section that fails shows its title, "<name> is not available now." and
+  "Try again"; the rest of the page stays. A section with no entries shows
+  its title, "Nothing here yet." (or the feed's `message`, see below) and
+  "Reload". A section never disappears from a page without a word. On Home,
+  a row that loads or is empty takes no room.
 - Pull to refresh (not on TV) loads every feed of the extension again.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are

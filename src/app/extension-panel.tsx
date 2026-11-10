@@ -1,11 +1,17 @@
 /**
  * An extension panel: the extension's own web page, over the app. The page
- * can only use the nine bridge methods (see extensions/bridge.ts). Media,
+ * can only use the bridge methods (see extensions/bridge.ts). Media,
  * entry pages and extension pages open through the same functions as a
  * tile (`openMedia`, `entryHref`, `pageHref`), with the same checks.
+ *
+ * What a panel changes (a sign-in, a setting on its server) shows at once:
+ * `openPage` and the close of the panel load the extension's feeds again
+ * (`refreshExtension`), so the page under the panel, its Home rows and a
+ * page opened from here never show the old answers. Without this, a feed
+ * younger than the 60 s `staleTime` kept its old data.
  */
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { getItem } from '@/api/jellyfin';
@@ -16,7 +22,7 @@ import { handleBridgeRequest } from '@/extensions/bridge';
 import { resolveOnOrigin } from '@/extensions/match';
 import { playRefusal } from '@/extensions/media/source';
 import { pagesOf } from '@/extensions/schema';
-import { currentAccount, refreshLibrary, templateContext } from '@/extensions/runtime';
+import { currentAccount, refreshExtension, refreshLibrary, templateContext } from '@/extensions/runtime';
 import { getExtension, useExtensions } from '@/extensions/store';
 import { render } from '@/extensions/template';
 import { ModalHeader } from '@/extensions/ui/modal-header';
@@ -38,6 +44,14 @@ export default function ExtensionPanelScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const close = useCallback(() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/(home)')), []);
+
+  // Back to the page under the panel (by close, Back or a swipe): its feeds load again.
+  useEffect(
+    () => () => {
+      if (extId) refreshExtension(extId);
+    },
+    [extId],
+  );
 
   const url = useMemo(() => {
     if (!ext || !panel) return null;
@@ -91,8 +105,12 @@ export default function ExtensionPanelScreen() {
         openPage: (pageId) => {
           if (!ext) return;
           const href = pageHref('(home)', ext.manifest.id, pageId);
+          refreshExtension(ext.manifest.id);
           close();
           setTimeout(() => router.push(href), 50);
+        },
+        refreshPage: () => {
+          if (ext) refreshExtension(ext.manifest.id);
         },
       }),
     [ext, scheme, player, api, userId, close],

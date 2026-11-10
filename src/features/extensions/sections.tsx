@@ -7,6 +7,7 @@
  * plain entry with media opens its menu (`entry-menu.tsx`).
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { router } from 'expo-router';
 import { type ComponentRef, type ReactElement, memo, useCallback, useContext, useMemo, useRef } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 
@@ -23,7 +24,7 @@ import { Delayed, SkeletonBlock } from '@/components/skeleton';
 import { GridSkeleton } from '@/components/states';
 import { Tile, tileAspect, tileHeight } from '@/components/tile';
 import { Touchable } from '@/components/touchable';
-import type { FeedEntry } from '@/extensions/feeds';
+import type { FeedAction, FeedEntry } from '@/extensions/feeds';
 import type { SectionSpec, Shape } from '@/extensions/schema';
 import { type FeedRow, type FeedState, useFeedSection } from '@/extensions/ui/use-feed';
 import { BillboardRows, showOnBillboard } from '@/features/tv/billboard';
@@ -31,12 +32,12 @@ import { tvFocusRest } from '@/features/tv/focus-settle';
 import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
 import { TvShelf } from '@/features/tv/shelf';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
-import { isTV } from '@/platform/tv';
+import { features, isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
 
 import { entryHasMenu, useEntryMenu } from './entry-menu';
 import { entryIsPressable, useOpenEntry } from './open-entry';
-import { failedText, LIST_PREVIEW, sectionBody, type SectionMode, tileOfEntry } from './section-view';
+import { emptyAction, emptyText, failedText, LIST_PREVIEW, sectionBody, type SectionMode, tileOfEntry } from './section-view';
 
 /** A plain tile that carries its feed row. */
 export interface EntryTileData extends PlainTileData {
@@ -261,14 +262,45 @@ function ListPreview({ extId, title, rows, onSeeAll, firstFocus }: { extId: stri
   );
 }
 
-/** A section that did not load: its title and a short note. It never blocks the screen. */
-export function FailedSection({ title, extensionName }: { title: string; extensionName: string }) {
+/** Opens a panel of the extension (the button of a feed's `message`). */
+function openPanel(extId: string, panel: string) {
+  router.push({ pathname: '/extension-panel', params: { ext: extId, panel } });
+}
+
+/** The buttons under an empty or failed section: the feed's panel button, then Try again. */
+function NoteButtons({ extId, action, onRetry, retryTitle }: { extId: string; action: FeedAction | null; onRetry?: () => void; retryTitle: string }) {
+  const l = useLayout();
+  if (!action && !onRetry) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: l.gutter, marginTop: spacing.sm }}>
+      {action ? <Button title={action.title} variant="small" onPress={() => openPanel(extId, action.panel)} /> : null}
+      {onRetry ? <Button title={retryTitle} icon="arrow.clockwise" variant="smallTonal" onPress={onRetry} /> : null}
+    </View>
+  );
+}
+
+/** A section that did not load: its title, a short note and, on a page, Try again. It never blocks the screen. */
+export function FailedSection({ extId, title, extensionName, onRetry }: { extId: string; title: string; extensionName: string; onRetry?: () => void }) {
   const s = useStyles(makeStyles);
   const l = useLayout();
   return (
     <View style={{ marginTop: l.sectionGap }}>
       <RowHeader title={title} />
       <Text style={[s.note, { paddingHorizontal: l.gutter }]}>{failedText(extensionName)}</Text>
+      <NoteButtons extId={extId} action={null} onRetry={onRetry} retryTitle="Try again" />
+    </View>
+  );
+}
+
+/** A page section whose feed has no entries: its title, the feed's message (or a plain note), its panel button and Reload. */
+function EmptySection({ extId, title, message, action, onRetry }: { extId: string; title: string; message?: string; action?: FeedAction; onRetry: () => void }) {
+  const s = useStyles(makeStyles);
+  const l = useLayout();
+  return (
+    <View style={{ marginTop: l.sectionGap }}>
+      <RowHeader title={title} />
+      <Text style={[s.note, { paddingHorizontal: l.gutter }]}>{emptyText(message)}</Text>
+      <NoteButtons extId={extId} action={emptyAction(action, features.extensionPanels)} onRetry={onRetry} retryTitle="Reload" />
     </View>
   );
 }
@@ -313,8 +345,10 @@ export function SectionBlock({
 }) {
   const feed = useFeedSection({ extId, feed: section.feed, refreshSeconds: section.refreshSeconds });
   const body = sectionBody({ status: feed.status, count: feed.rows.length }, mode, where);
-  if (body === 'hidden' || body === 'empty') return null;
-  if (body === 'failed') return <FailedSection title={section.title} extensionName={extensionName} />;
+  const retry = () => void feed.refresh();
+  if (body === 'hidden') return null;
+  if (body === 'empty') return <EmptySection extId={extId} title={section.title} message={feed.message} action={feed.action} onRetry={retry} />;
+  if (body === 'failed') return <FailedSection extId={extId} title={section.title} extensionName={extensionName} onRetry={where === 'page' ? retry : undefined} />;
   if (body === 'placeholder') return <RowPlaceholder title={section.title} shape={section.shape} />;
   if (mode === 'preview' && section.layout === 'list') return <ListPreview extId={extId} title={section.title} rows={feed.rows} onSeeAll={onSeeAll} firstFocus={firstFocus} />;
   return <EntryRow extId={extId} title={section.title} rows={feed.rows} shape={section.shape} onSeeAll={onSeeAll} firstFocus={firstFocus} />;
@@ -380,7 +414,12 @@ export function InfiniteEntries({
         <Button title="Try again" icon="arrow.clockwise" onPress={() => void feed.refresh()} preferredFocus={isTV && focusFirst} />
       </View>
     ) : (
-      <Text style={[s.note, s.center]}>{empty}</Text>
+      <View style={s.center}>
+        <Text style={s.centerText}>{feed.message ?? empty}</Text>
+        {emptyAction(feed.action, features.extensionPanels) && feed.action ? (
+          <Button title={feed.action.title} onPress={() => feed.action && openPanel(extId, feed.action.panel)} preferredFocus={isTV && focusFirst} />
+        ) : null}
+      </View>
     );
 
   const renderTile = useCallback(
