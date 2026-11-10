@@ -16,6 +16,7 @@
         "id": "main",
         "title": "Hello Pages",
         "icon": "play.rectangle",
+        "image": "/pages/art/main.png",
         "placement": {
           "tab": true,
           "library": true,
@@ -55,6 +56,7 @@
         "id": "tabs",
         "title": "Hello Tabs",
         "icon": "square.grid.2x2",
+        "image": "/pages/art/tabs.png",
         "placement": {
           "library": true,
           "home": [

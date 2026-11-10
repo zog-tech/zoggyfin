@@ -407,7 +407,7 @@ has one `row` section, no tab, no Library tile, and the section on Home.
 | Field | Notes |
 | --- | --- |
 | `permissions` | Adds `playback` (the app plays streams from the origin and sends progress) and `downloads` (the app saves files from the origin on the device). Both show on the confirm screen, each with its own switch (on by default). Turn one off there or on the extension's page in Settings to stop that use. A version 1 manifest cannot ask for them. |
-| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), `placement`, an optional `search`, and 1 to 8 `sections`, or `tabs` (see [Tabs](#tabs)), or both. |
+| `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), an optional `image` (the artwork of its Library tile, see below), `placement`, an optional `search`, and 1 to 8 `sections`, or `tabs` (see [Tabs](#tabs)), or both. |
 | `tabs` | 2 to 6 tabs. Each has `id`, `title`, 1 to 8 `sections` and an optional `search`. |
 | `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
 | `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
@@ -600,6 +600,11 @@ it did before.
   the mini player go on.
 - **TV.** The side menu lists at most two extension pages, before Settings:
   the tab page first, then the pages with `tab` or `library` in install order.
+- **Tile artwork.** `image` is a path under `baseUrl` (or a URL on its
+  origin; another origin is left out) of a picture for the page's Library
+  tile, 16:9 like the Jellyfin library tiles. It loads like an entry image:
+  no Jellyfin token, no manifest headers. The tile shows the `icon` while the
+  picture loads and when it fails. App versions without this field ignore it.
 - The tab and the side menu show the page `title` and `icon`. `icon` is an
   icon name of the app (`src/components/icon-names.ts`, for example `film`,
   `tv`, `music.note`, `play.fill`). Another name shows a grid icon.
@@ -863,6 +868,8 @@ Pages") or from the header of its "Latest samples" Home row:
   `options`; each answers with one file and its subtitles.
 - The page has `tab` and `library` in its `placement`: a tab on iPad, the web
   and the Mac app, a Library tile on phones, a side menu entry on TV.
+- Both pages have Library tile art (`/pages/art/<page>.png`, a colour ramp
+  that the server draws, so the repository holds no picture).
 - A second page, "Hello Tabs" (a Library tile), has three tabs: "Clips" (a
   row and a grid), "Up next" (a list) and "My list" (a grid with its own
   search). Its flat `sections` are the fallback for app versions without

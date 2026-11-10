@@ -134,6 +134,19 @@ describe('the Hello sample', () => {
     expect(parseManifest(flat).ok).toBe(true);
   });
 
+  it('each page has Library tile art: a small PNG on the origin', async () => {
+    const r = parseManifest(await get('/pages/zoggyfin-extension.json'));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.manifest.contributes.pages?.map((p) => p.image)).toEqual(['/pages/art/main.png', '/pages/art/tabs.png']);
+    for (const p of ['/pages/art/main.png', '/pages/art/tabs.png']) {
+      const res = await call(p);
+      expect(res.status).toBe(200);
+      expect(res.type).toBe('image/png');
+      expect(res.bytes).toBeGreaterThan(100);
+      expect(res.bytes).toBeLessThan(20_000);
+    }
+  });
+
   it('"My list" says why it is empty until the panel signs in, then lists entries', async () => {
     const empty = parseFeedPage(await get('/pages/mine'), BASE);
     expect(empty).toEqual({ entries: [], next: null, message: 'Sign in to see your list.', action: { title: 'Sign in', panel: 'account' } });

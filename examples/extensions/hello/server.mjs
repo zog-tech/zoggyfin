@@ -3,6 +3,7 @@
 // Then add http://localhost:8787 in Zoggyfin: Settings, Extensions.
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
 
 const port = Number(process.env.PORT || 8787);
 const base = process.env.BASE_URL || `http://localhost:${port}`;
@@ -15,6 +16,48 @@ pagesManifest.baseUrl = base;
 // The panel of the "My list" tab: a fake sign-in that the server keeps in memory.
 const accountPanel = readFileSync(new URL('./account-panel.html', import.meta.url), 'utf8');
 let signedIn = false;
+
+// Library tile art for the pages: a small PNG drawn here (a diagonal colour
+// ramp per page), so the repository holds no binary picture.
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function chunk(type, data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+}
+function rampPng(width, height, from, to) {
+  const rows = [];
+  for (let y = 0; y < height; y++) {
+    const row = Buffer.alloc(1 + width * 3);
+    for (let x = 0; x < width; x++) {
+      const t = (x / width + y / height) / 2;
+      for (let i = 0; i < 3; i++) row[1 + x * 3 + i] = Math.round(from[i] + (to[i] - from[i]) * t);
+    }
+    rows.push(row);
+  }
+  const head = Buffer.alloc(13);
+  head.writeUInt32BE(width, 0);
+  head.writeUInt32BE(height, 4);
+  head[8] = 8; // bit depth
+  head[9] = 2; // RGB
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))]);
+}
+const ART = {
+  main: rampPng(320, 180, [40, 70, 160], [120, 200, 220]),
+  tabs: rampPng(320, 180, [150, 50, 90], [240, 170, 90]),
+};
 // A 6 s test pattern with a tone (320x180 H.264 and AAC, made with ffmpeg's
 // testsrc and sine sources). Every sample entry plays this one file.
 const video = readFileSync(new URL('./media/sample.mp4', import.meta.url));
@@ -245,6 +288,11 @@ createServer(async (req, res) => {
       else saved.delete(id);
       return send(res, 200, { toast: b.on ? `${e.title} is saved` : `${e.title} is no longer saved`, state: { on: b.on } });
     }
+  }
+  const art = /^\/pages\/art\/(\w+)\.png$/.exec(url.pathname);
+  if (art && ART[art[1]]) {
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'max-age=3600' });
+    return res.end(ART[art[1]]);
   }
   if (url.pathname === '/pages/media/sample.mp4') return sendVideo(req, res);
   if (url.pathname === '/pages/media/sample.en.vtt') return send(res, 200, SUBTITLES, 'text/vtt; charset=utf-8');

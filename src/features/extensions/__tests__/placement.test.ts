@@ -25,6 +25,7 @@ interface PageIn {
   id: string;
   title?: string;
   icon?: string;
+  image?: string;
   tab?: boolean;
   library?: boolean;
   home?: string[];
@@ -42,6 +43,7 @@ function manifest(id: string, pages: PageIn[]): Manifest {
         id: p.id,
         title: p.title ?? `Title ${p.id}`,
         ...(p.icon ? { icon: p.icon } : null),
+        ...(p.image ? { image: p.image } : null),
         placement: { tab: p.tab ?? false, library: p.library ?? false, home: p.home ?? [] },
         sections: [{ id: 'latest', title: 'Latest', feed: '/api/latest' }],
       })),
@@ -71,6 +73,12 @@ describe('placementPlatform', () => {
 });
 
 describe('placePages', () => {
+  it('gives a Library tile the page image as a full URL on the origin, and drops one on another origin', () => {
+    const p = placePages('web', [ext('a', [{ id: 'one', library: true, image: '/art/one.png' }, { id: 'two', library: true, image: 'https://other.example.net/x.png' }, { id: 'three', library: true }])]);
+    expect(p.library.map((t) => t.image)).toEqual(['https://media.example.org/art/one.png', undefined, undefined]);
+    expect(p.library[1]).not.toHaveProperty('image');
+  });
+
   it('places nothing with no extension', () => {
     for (const p of ALL) expect(placePages(p, [])).toEqual(NO_PLACEMENT);
   });

@@ -66,6 +66,8 @@ export const pageSchema = z.object({
   title: label,
   /** An icon name of the app (`src/components/icon-names.ts`). Another name shows a default icon. */
   icon: z.string().max(60).optional(),
+  /** Artwork for the page's Library tile: a path under `baseUrl` or a URL on its origin (another origin is left out). */
+  image: path.optional(),
   placement: placementSchema.default({ tab: false, library: false, home: [] }),
   /** A search field on the page (on every tab that has none of its own). */
   search: searchSchema.optional(),
