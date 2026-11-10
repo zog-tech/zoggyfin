@@ -5,6 +5,7 @@ export function rec(over: Partial<DownloadRecord> = {}): DownloadRecord {
   return {
     schemaVersion: DOWNLOAD_SCHEMA_VERSION,
     itemId,
+    source: { kind: 'jellyfin' },
     serverId: 'server-1',
     userId: 'user-1',
     kind: 'audio',

@@ -5,6 +5,24 @@
  *
  * Look up a download by Jellyfin item id: `findDownload(itemId)`; its file is
  * `localMediaUri(record, documentsDir)` (also `localFileFor(itemId)`).
+ *
+ * Extension media (an extension's `media.download`), for the signed-in account:
+ *
+ *   downloadExtensionMedia({ extension, mediaId, download, title, subtitle?, image?,
+ *     duration?, option?, playback?, kind? }): Promise<{ ok: true } | { ok: false; error: string }>
+ *     Queues the file. `extension` is the manifest id or the installed extension.
+ *     Refuses (with a message, never a URL) when the `downloads` grant is off,
+ *     on the plain web build and TV, for a URL off the extension's origin, and
+ *     when the description has `options` and no `option` was passed.
+ *   extensionDownloadOptions({ extension, download }):
+ *     Promise<{ ok: true; options: DownloadOption[] } | { ok: false; error: string }>
+ *     The choices to show first. Empty `options`: one file, no choice needed.
+ *   extensionMediaState(records, extId, mediaId, account) / useExtensionDownload(extId, mediaId):
+ *     ExtensionMediaState for a button: none, queued, downloading(progress),
+ *     paused(progress), done, failed(error).
+ *   extensionLocalPlay({ extension, mediaId, startSeconds? }): ExternalPlayRequest | null
+ *     A completed download of the signed-in account, played from the device.
+ *   removeExtensionDownloads(extId) / extensionDownloadCount(extId): for the remove flow.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -12,18 +30,22 @@ import { useShallow } from 'zustand/react/shallow';
 import type { BaseItemDto } from '@/api/types';
 import { useSessionStore } from '@/auth/session-store';
 import { features } from '@/platform/tv';
+import type { ExternalPlayRequest } from '@/player/types';
 
 import { files } from './files';
 import { fileUri, localImageUri, localMediaUri } from './local';
 import { downloadManager, offerDownloadAgain } from './manager';
 import { isDownloadable } from './plan';
 import { downloadsState, statusOf, useDownloadsStore } from './store';
-import { buildLists, buildServerSections, type DownloadGroupView, forServer, onServer, type ServerSection } from './lists';
+import { buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, forServer, jellyfinOnly, onServer, type ServerSection, visibleTo } from './lists';
+import { type DownloadOption, type ExtensionDownloadInput, extensionMediaState, type ExtensionMediaState, extensionRecordId, isExtensionRecord, localPlayRequest } from './extension-media';
 import type { DownloadRecord, DownloadStatus } from './types';
 
-export type { DownloadCollection, DownloadRecord, DownloadState, DownloadStatus, LocalSubtitle } from './types';
+export type { DownloadCollection, DownloadRecord, DownloadSource, DownloadState, DownloadStatus, ExtensionDownloadSource, LocalSubtitle } from './types';
+export type { DownloadOption, ExtensionDownloadInput } from './extension-media';
+export { extensionMediaState, type ExtensionMediaState, extensionRecordId, isExtensionRecord } from './extension-media';
 export { DOWNLOAD_SCHEMA_VERSION } from './types';
-export { buildLists, buildServerSections, type DownloadGroupView, onServer, type ServerSection, searchDownloads } from './lists';
+export { buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, onServer, type ServerSection, searchDownloads, visibleTo } from './lists';
 
 export { DOWNLOAD_QUALITY_OPTIONS, isDownloadable } from './plan';
 export { etaSeconds, fraction, isFileMissing } from './state-machine';
@@ -131,24 +153,31 @@ export function useLocalImage(id: string | null | undefined, variant: 'poster' |
  * The Downloads tab lists: in progress (every server, queue order), and the
  * completed downloads of every server (`sections`: the active server first,
  * then by server, then by show or album). `groups` are the active server's
- * groups only. `appBytes` counts every server, for the storage bar.
+ * groups only. `extensions`: the signed-in account's extension downloads,
+ * one section per extension; another account's are hidden (`lists.ts`).
+ * `appBytes` counts every file on the device, for the storage bar.
  */
 export function useDownloadLists(): {
   inProgress: DownloadRecord[];
   groups: DownloadGroupView[];
   sections: ServerSection[];
+  extensions: ExtensionSection[];
   appBytes: number;
   activeCount: number;
 } {
   const records = useDownloadsStore((s) => s.records);
   const collections = useDownloadsStore((s) => s.collections);
   const serverId = useSessionStore((s) => s.session?.serverId ?? null);
+  const account = useSessionStore((s) => (s.session ? `${s.session.serverId}.${s.session.userId}` : null));
   return useMemo(() => {
-    const all = buildLists(records, collections);
-    const sections = buildServerSections(records, collections, serverId);
-    const groups = buildLists(forServer(records, serverId), forServer(collections, serverId)).groups;
-    return { inProgress: all.inProgress, activeCount: all.activeCount, appBytes: all.appBytes, groups, sections };
-  }, [records, collections, serverId]);
+    const appBytes = Object.values(records).reduce((n, r) => n + r.bytesDone, 0);
+    const all = buildLists(visibleTo(records, account), collections);
+    const jf = jellyfinOnly(records);
+    const sections = buildServerSections(jf, collections, serverId);
+    const groups = buildLists(forServer(jf, serverId), forServer(collections, serverId)).groups;
+    const extensions = buildExtensionSections(records, account);
+    return { inProgress: all.inProgress, activeCount: all.activeCount, appBytes, groups, sections, extensions };
+  }, [records, collections, serverId, account]);
 }
 
 const groupItems = new Map<string, BaseItemDto>();
@@ -213,4 +242,84 @@ export function useDiskSpace(): { free: number; total: number } | null {
 
 export function canDownload(item: BaseItemDto | undefined): boolean {
   return !!item && downloadsSupported && isDownloadable(item);
+}
+
+// ---- Extension media ---------------------------------------------------------------
+
+function activeAccount(): string | null {
+  const s = useSessionStore.getState().session;
+  return s ? `${s.serverId}.${s.userId}` : null;
+}
+
+/** The download state of one extension media entry, for its button (re-renders once per percent at most). */
+export function useExtensionDownload(extId: string | null | undefined, mediaId: string | null | undefined): ExtensionMediaState {
+  const account = useSessionStore((s) => (s.session ? `${s.session.serverId}.${s.session.userId}` : null));
+  return useDownloadsStore(
+    useShallow((s) => (extId && mediaId && downloadsSupported ? extensionMediaState(s.records, extId, mediaId, account) : ({ state: 'none' } as ExtensionMediaState))),
+  );
+}
+
+type ExtensionRef = string | { manifest: { id: string } };
+const extIdOf = (e: ExtensionRef) => (typeof e === 'string' ? e : e.manifest.id);
+
+/** A message with no URL or token in it. */
+function messageOf(e: unknown, fallback: string): string {
+  const text = e instanceof Error ? e.message : '';
+  return text && !/https?:|\/\/|token/i.test(text) ? text : fallback;
+}
+
+/** Queues an extension's media entry for download (see the top of this file). */
+export async function downloadExtensionMedia(
+  req: Omit<ExtensionDownloadInput, 'extension'> & { extension: ExtensionRef },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await downloadManager.downloadExtension({ ...req, extension: extIdOf(req.extension) }, downloadsSupported);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: messageOf(e, 'The download could not start.') };
+  }
+}
+
+/** The choices of an entry's download description (see the top of this file). */
+export async function extensionDownloadOptions(req: { extension: ExtensionRef; download: string }): Promise<{ ok: true; options: DownloadOption[] } | { ok: false; error: string }> {
+  try {
+    return { ok: true, options: await downloadManager.extensionOptions(extIdOf(req.extension), req.download, downloadsSupported) };
+  } catch (e) {
+    return { ok: false, error: messageOf(e, 'The extension did not send a download.') };
+  }
+}
+
+/**
+ * The player's request for a completed extension download of the signed-in
+ * account, from the device; null when there is none.
+ */
+export function extensionLocalPlay(req: { extension: string; mediaId: string; startSeconds?: number }): ExternalPlayRequest | null {
+  const r = findDownload(extensionRecordId(req.extension, req.mediaId));
+  const account = activeAccount();
+  if (!r || !account || !isExtensionRecord(r) || r.source.account !== account || r.state !== 'completed') return null;
+  // The extension wiring loads on first use, so a Jellyfin-only session never loads it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { appMediaDeps, reportOutbox } = require('@/extensions/media/play') as typeof import('@/extensions/media/play');
+  return localPlayRequest(
+    r,
+    downloadsState().documentsDir,
+    {
+      ...appMediaDeps,
+      savePosition: (id, position) => downloadManager.saveExtensionPosition(id, position),
+      queueReport: (acc, report) => reportOutbox.add(acc, report),
+    },
+    req.startSeconds,
+  );
+}
+
+/** The number of downloads an extension made for the signed-in account (asked before it is removed). */
+export function extensionDownloadCount(extId: string): number {
+  const account = activeAccount();
+  return Object.values(downloadsState().records).filter((r) => isExtensionRecord(r) && r.source.extId === extId && r.source.account === account).length;
+}
+
+/** Deletes the downloads an extension made for the signed-in account. */
+export async function removeExtensionDownloads(extId: string): Promise<void> {
+  const account = activeAccount();
+  if (account) await downloadManager.removeExtensionDownloads(extId, account);
 }
