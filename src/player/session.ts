@@ -34,10 +34,23 @@ import { ProgressReporter, type ProgressTransport, secondsToTicks, ticksToSecond
 import { normalizeSegments } from './segments';
 import { chooseTracks, rememberChoice, titleKey } from './track-prefs';
 import { loadTrackPrefs, saveTrackPrefs } from './track-prefs-store';
-import { setPlayerState, initialPlayerState, playerState, type LiveNow, type NowPlaying, type VodNow } from './store';
+import { setPlayerState, initialPlayerState, playerState, type ExternalNow, type LiveNow, type NowPlaying } from './store';
 import { audioOptions, audioSwitchNeedsStream, pickSource, planStream, playbackInfoBody, type StreamPlan, type StreamServer } from './stream';
 import { chaptersOf, pickTrickplay } from './timeline';
-import type { LivePlayRequest, LiveStreamChoice, PlayRequest, VodPlayRequest, VodRef } from './types';
+import type { ExternalPlayRequest, ExternalProgress, ExternalStream, LivePlayRequest, LiveStreamChoice, PlayRequest } from './types';
+import {
+  externalFailureText,
+  externalItem,
+  externalStart,
+  externalSubtitleLine,
+  externalSubtitleOptions,
+  externalTransport,
+  mainQualityId,
+  qualityCandidates,
+  reloadPosition,
+  subtitleLoader,
+  withStreamFacts,
+} from './external';
 import { parseVtt } from './vtt';
 import { type LiveRestarts, nextLiveRestart } from './live-restart';
 import { tsBridge } from '@/native/ts-bridge';
@@ -147,20 +160,8 @@ function liveArtwork(logo: string | null): string | undefined {
   return logo && /^https?:\/\//i.test(logo) ? logo : undefined;
 }
 
-/** The item the player screen, the mini player and the next-up card show for an IPTV film or episode. */
-function vodItem(ref: VodRef, providerId: string): BaseItemDto {
-  const item: BaseItemDto = { Id: `iptv-vod:${providerId}:${ref.kind}:${ref.id}`, Name: ref.title, Type: ref.kind === 'episode' ? 'Episode' : 'Movie' };
-  if (ref.kind === 'episode') {
-    item.SeriesName = ref.seriesName;
-    item.ParentIndexNumber = ref.season;
-    item.IndexNumber = ref.episode;
-  } else if (ref.year) item.ProductionYear = ref.year;
-  if (ref.duration) item.RunTimeTicks = secondsToTicks(ref.duration);
-  return item;
-}
-
 /** How often the position of a film or an episode is saved while it plays (ms). */
-const VOD_SAVE_MS = 10_000;
+const EXTERNAL_SAVE_MS = 10_000;
 
 /** The streams of the live channel that loads now, and the next one to try. */
 interface LiveAttempt {
@@ -173,6 +174,14 @@ interface LiveAttempt {
   bridgeId?: string;
   /** The stream played: a later failure restarts the channel by itself (`live-restart.ts`). */
   played?: boolean;
+}
+
+/** The external title that loads now: its stream forms, where it starts, and the source's answer. */
+interface ExternalAttempt extends LiveAttempt {
+  start: number;
+  stream: ExternalStream;
+  /** It played to the end (the last progress report is `finished`). */
+  ended: boolean;
 }
 
 interface LoadOptions {
@@ -195,11 +204,11 @@ class VideoSession {
   private liveAttempt: LiveAttempt | null = null;
   /** The recent automatic restarts of the live channel that plays. */
   private liveRestarts: LiveRestarts | null = null;
-  /** The IPTV film or episode that loads or plays, with its stream forms. */
-  private vodAttempt: (LiveAttempt & { start: number }) | null = null;
-  /** The film or episode has played: its position may be saved (a failed load must not wipe a saved one). */
-  private vodPlayed = false;
-  private vodSavedAt = 0;
+  /** The external title (IPTV film or episode, extension media) that loads or plays, with its stream forms. */
+  private extAttempt: ExternalAttempt | null = null;
+  /** The external title has played: its position may be saved (a failed load must not wipe a saved one). */
+  private extPlayed = false;
+  private extSavedAt = 0;
   /** IPTV: the saved track choice was applied to the stream that loads (once per kind and load). */
   private tracksApplied = { audio: false, subtitle: false };
 
@@ -219,7 +228,7 @@ class VideoSession {
   private async switchToDownload(itemId: string): Promise<void> {
     const st = playerState();
     const now = st.now;
-    if (!now || now.kind !== 'video' || now.live || now.vod || now.plan.isLocal || now.item.Id !== itemId) return;
+    if (!now || now.kind !== 'video' || now.live || now.external || now.plan.isLocal || now.item.Id !== itemId) return;
     if (st.status === 'error' || st.status === 'ended' || playRouter.active || controlGate.active) return;
     const r = downloaded(itemId);
     if (!r) return;
@@ -250,8 +259,8 @@ class VideoSession {
             this.liveFailed(e.error);
             break;
           }
-          if (st.now.vod) {
-            this.vodFailed(e.error);
+          if (st.now.external) {
+            this.externalFailed(e.error);
             break;
           }
           if (this.recoverAfterAddressSwitch()) break;
@@ -269,19 +278,19 @@ class VideoSession {
           setPlayerState({ playing: e.playing });
           this.reporter?.tick(e.playing ? 'Unpause' : 'Pause');
           if (e.playing && st.now.live && this.liveAttempt) this.liveAttempt.played = true;
-          if (st.now.vod) {
-            if (e.playing) this.vodPlayed = true;
-            else this.saveVod(false);
+          if (st.now.external) {
+            if (e.playing) this.extPlayed = true;
+            else this.saveExternal(false);
           }
         }
         break;
       case 'time':
         setPlayerState({ position: e.position, buffered: e.buffered });
-        if (st.now.vod && this.vodPlayed && e.position >= 5 && Date.now() - this.vodSavedAt >= VOD_SAVE_MS) this.saveVod(false);
+        if (st.now.external && this.extPlayed && e.position >= 5 && Date.now() - this.extSavedAt >= EXTERNAL_SAVE_MS) this.saveExternal(false);
         break;
       case 'duration':
         // A live stream has no length (some players report the size of the live window).
-        if (e.duration > 0 && !st.now.live) setPlayerState({ duration: e.duration });
+        if (e.duration > 0 && !st.now.live && !st.now.external?.live) setPlayerState({ duration: e.duration });
         break;
       case 'rate':
         setPlayerState({ rate: e.rate });
@@ -298,7 +307,10 @@ class VideoSession {
       case 'ended':
         if (st.now.live) setPlayerState({ status: 'error', error: 'The channel stopped sending.', playing: false });
         else {
-          if (st.now.vod) this.saveVod(true);
+          if (st.now.external) {
+            this.saveExternal(true);
+            if (this.extAttempt) this.extAttempt.ended = true;
+          }
           void this.onEnded();
         }
         break;
@@ -308,7 +320,7 @@ class VideoSession {
         break;
       case 'embedded':
         // Jellyfin items use the server's streams; only IPTV has no other list.
-        if (st.now.live || st.now.vod) this.onEmbedded(e.tracks);
+        if (st.now.live || st.now.external) this.onEmbedded(e.tracks);
         break;
     }
   };
@@ -316,10 +328,10 @@ class VideoSession {
   /** IPTV: the key the track choice of the title that plays is kept by (a series shares one). */
   private trackKey(): string | null {
     const now = playerState().now;
-    if (now?.vod) {
-      const ref = now.vod.items[now.vod.index];
+    if (now?.external) {
+      const ref = now.external.items[now.external.index];
       if (!ref) return null;
-      return titleKey(now.vod.source.providerId, ref.kind === 'episode' ? { kind: 'series', id: ref.seriesId ?? ref.id } : { kind: 'film', id: ref.id });
+      return titleKey(now.external.source.providerId, ref.kind === 'episode' ? { kind: 'series', id: ref.seriesId ?? ref.id } : { kind: 'film', id: ref.id });
     }
     const live = now?.live;
     const ch = live?.channels[live.index];
@@ -415,7 +427,7 @@ class VideoSession {
     const id = ++this.loadId;
     // A server item replaces a live channel: its TS bridge session (iOS) ends too.
     this.endLiveAttempt();
-    this.vodAttempt = null;
+    this.extAttempt = null;
     await this.finishCurrent();
     // A newer play (a channel, a film, another item) started during the last progress report.
     if (id !== this.loadId) return;
@@ -747,35 +759,36 @@ class VideoSession {
   }
 
   /**
-   * Plays an IPTV film or episode. The source gives the streams to try (the
-   * next one loads when one fails) and keeps the positions on the device.
-   * Seekable, with no Jellyfin item, no progress reports and no server calls.
-   * The episode after `index` in `items` is the next-up episode.
+   * Plays a title from outside Jellyfin: an IPTV film or episode, or an
+   * extension's media. The source gives the streams to try (the next one
+   * loads when one fails) and the optional extras: headers, qualities,
+   * subtitles, chapters, the next title, a progress transport, a live flag.
+   * No Jellyfin item and no Jellyfin calls. The title after `index` in
+   * `items`, else the stream's `next`, is the next-up title.
    */
-  async playVod(request: VodPlayRequest, opts: { keepPresentation?: boolean } = {}): Promise<void> {
+  async playExternal(request: ExternalPlayRequest, opts: { keepPresentation?: boolean; qualityId?: string | null } = {}): Promise<void> {
     const id = ++this.loadId;
     const presentation = opts.keepPresentation ? playerState().presentation : 'full';
     await this.finishCurrent();
     if (id !== this.loadId) return;
     this.lastRequest = null;
     this.endLiveAttempt();
-    this.vodAttempt = null;
-    this.vodPlayed = false;
-    this.vodSavedAt = Date.now();
+    this.extAttempt = null;
+    this.extPlayed = false;
+    this.extSavedAt = Date.now();
     const index = Math.min(Math.max(0, request.index), request.items.length - 1);
     const ref = request.items[index];
     if (!ref) return;
-    const providerId = request.source.providerId;
-    const vod: VodNow = { items: request.items, index, source: request.source };
+    const source = request.source;
+    const external: ExternalNow = { items: request.items, index, source, live: false, qualities: [], qualityId: null, mainQuality: null };
     const nextRef = request.items[index + 1];
-    const start = Math.max(0, request.startSeconds ?? 0);
     setPlayerState({
       ...initialPlayerState,
       rate: playerState().rate,
       presentation,
       now: {
         kind: 'video',
-        item: vodItem(ref, providerId),
+        item: externalItem(ref, source),
         queue: [],
         plan: livePlan('', false),
         segments: [],
@@ -783,88 +796,160 @@ class VideoSession {
         trickplay: null,
         bitrateChoice: null,
         bitrate: 0,
-        next: nextRef ? vodItem(nextRef, providerId) : null,
-        vod,
+        next: nextRef ? externalItem(nextRef, source) : null,
+        external,
       },
       status: 'loading',
-      position: start,
+      position: Math.max(0, request.startSeconds ?? 0),
       duration: ref.duration ?? 0,
     });
-    const stream = await request.source.resolve(ref);
+    let stream: ExternalStream;
+    try {
+      stream = await source.resolve(ref);
+    } catch {
+      // A source never throws; one that does says nothing a person can use (and may name a URL).
+      stream = { candidates: [], userAgent: null, unsupported: null };
+    }
     if (id !== this.loadId) return;
-    this.vodAttempt = { id, candidates: stream.candidates, next: 0, userAgent: stream.userAgent, unsupported: stream.unsupported, start };
-    if (!this.loadNextVod()) this.vodFailed(undefined);
+    const start = externalStart(request.startSeconds, stream);
+    const shown = withStreamFacts(ref, stream);
+    const items = request.items.map((x, i) => (i === index ? shown : x));
+    const live = !!stream.live;
+    const qualityId = opts.qualityId && stream.qualities?.some((q) => q.id === opts.qualityId) ? opts.qualityId : null;
+    const now = playerState().now;
+    if (now?.external) {
+      const nextShown = nextRef ?? stream.next;
+      setPlayerState({
+        now: {
+          ...now,
+          item: externalItem(shown, source),
+          chapters: live ? [] : (stream.chapters ?? []).map((c) => ({ name: c.title, start: c.start })),
+          next: nextShown ? externalItem(nextShown, source) : null,
+          plan: { ...now.plan, subtitles: externalSubtitleOptions(stream.subtitles) },
+          external: { ...now.external, items, live, qualities: stream.qualities ?? [], qualityId, mainQuality: mainQualityId(stream), ...(stream.skip ? { skip: stream.skip } : {}) },
+        },
+        position: start,
+        duration: live ? 0 : (shown.duration ?? 0),
+      });
+    }
+    this.extAttempt = {
+      id,
+      candidates: qualityCandidates(stream, qualityId),
+      next: 0,
+      userAgent: stream.userAgent,
+      unsupported: stream.unsupported,
+      start,
+      stream,
+      ended: false,
+    };
+    if (!this.loadNextExternal()) {
+      this.externalFailed(undefined);
+      return;
+    }
+    if (stream.progress) this.startExternalReporter(this.extAttempt, stream.progress, ref.id);
   }
 
-  /** Loads the next stream form of the film or episode. True when one loads. */
-  private loadNextVod(): boolean {
-    const a = this.vodAttempt;
+  /** The progress reporter of an external title (extension media): the source's transport at its interval. */
+  private startExternalReporter(a: ExternalAttempt, progress: ExternalProgress, mediaId: string): void {
+    const transport = externalTransport(progress, {
+      duration: () => (playerState().now?.external?.live ? 0 : playerState().duration),
+      quality: () => playerState().now?.external?.qualityId ?? null,
+      ended: () => a.ended,
+    });
+    this.reporter = new ProgressReporter(transport, this.snapshot, undefined, Math.max(1000, progress.intervalMs), () => undefined);
+    this.reporter.start({ itemId: mediaId, mediaSourceId: '', playSessionId: null, playMethod: 'DirectPlay', canSeek: !playerState().now?.external?.live });
+    this.watchAppState();
+  }
+
+  /** Loads the next stream form of the external title. True when one loads. */
+  private loadNextExternal(): boolean {
+    const a = this.extAttempt;
     const now = playerState().now;
-    const vod = now?.vod;
-    if (!a || !now || !vod || a.id !== this.loadId) return false;
+    const external = now?.external;
+    if (!a || !now || !external || a.id !== this.loadId) return false;
     const choice = a.candidates[a.next];
     if (!choice) return false;
     a.next++;
-    const ref = vod.items[vod.index];
-    const subtitle =
-      ref.kind === 'episode'
-        ? [ref.seriesName, ref.season !== undefined && ref.episode !== undefined ? `S${ref.season} E${ref.episode}` : null].filter(Boolean).join(' · ')
-        : ref.year
-          ? String(ref.year)
-          : '';
+    const ref = external.items[external.index];
     // A form that failed after it played a while: the next one starts where it stopped.
-    const start = this.vodPlayed ? this.engine.position || playerState().position : a.start;
-    setPlayerState({ now: { ...now, plan: { ...livePlan(choice.url, choice.isHls), playMethod: 'DirectPlay' } }, status: 'loading', error: null });
+    const start = reloadPosition({ live: external.live, played: this.extPlayed, enginePosition: this.engine.position, statePosition: playerState().position, attemptStart: a.start });
+    setPlayerState({ now: { ...now, plan: { ...now.plan, url: choice.url, isHls: choice.isHls, playMethod: 'DirectPlay' } }, status: 'loading', error: null });
     this.resetEmbedded();
     this.engine.load({
       uri: choice.url,
       isHls: choice.isHls,
       startSeconds: start,
       title: ref.title,
-      subtitle: subtitle || undefined,
+      subtitle: externalSubtitleLine(ref),
       artworkUri: liveArtwork(ref.poster),
       autoplay: true,
       userAgent: a.userAgent,
+      headers: a.stream.headers,
     });
     const rate = playerState().rate;
     if (rate !== 1) this.engine.setRate(rate);
     return true;
   }
 
-  /** A film or episode stream failed: try its next form, else show why. */
-  private vodFailed(error: string | undefined): void {
-    if (this.loadNextVod()) return;
-    const a = this.vodAttempt;
-    // The player's own error text can hold the stream URL (and the credentials in it): never show it.
-    const clean = error && !/https?:|\/\//i.test(error) ? error : null;
-    // A form that never started: the format is the likely reason. One that played and stopped: the player's reason.
-    const text = (this.vodPlayed ? clean : (a?.unsupported ?? clean)) ?? 'This title could not be played.';
-    setPlayerState({ status: 'error', error: text, playing: false });
+  /** An external stream failed: try its next form, else show why (never a URL). */
+  private externalFailed(error: string | undefined): void {
+    if (this.loadNextExternal()) return;
+    const a = this.extAttempt;
+    setPlayerState({ status: 'error', error: externalFailureText({ played: this.extPlayed, unsupported: a?.unsupported ?? null, error }), playing: false });
   }
 
-  /** Gives the source the position of the film or episode that plays. */
-  private saveVod(ended: boolean): void {
+  /** Gives the source the position of the external title that plays (not for a live stream). */
+  private saveExternal(ended: boolean): void {
     const st = playerState();
-    const vod = st.now?.vod;
-    if (!vod || !this.vodPlayed) return;
-    const ref = vod.items[vod.index];
+    const external = st.now?.external;
+    if (!external || external.live || !this.extPlayed || !external.source.savePosition) return;
+    const ref = external.items[external.index];
     if (!ref) return;
-    this.vodSavedAt = Date.now();
+    this.extSavedAt = Date.now();
     const position = this.engine.position || st.position;
     try {
-      vod.source.savePosition(ref, ended ? st.duration || position : position, st.duration, ended);
+      external.source.savePosition(ref, ended ? st.duration || position : position, st.duration, ended);
     } catch (e) {
       console.warn('[player] the position was not saved', e instanceof Error ? e.name : 'error');
     }
   }
 
-  /** Starts the film or episode again where it was (Try again, a reload). */
-  private restartVod(): void {
+  /** Starts the external title again where it was (Try again, a reload), with the chosen quality. */
+  private restartExternal(): void {
     const st = playerState();
-    const vod = st.now?.vod;
-    if (!vod) return;
-    const position = this.vodPlayed ? this.engine.position || st.position : (this.vodAttempt?.start ?? st.position);
-    void this.playVod({ items: vod.items, index: vod.index, source: vod.source, startSeconds: position }, { keepPresentation: true });
+    const external = st.now?.external;
+    if (!external) return;
+    const position = reloadPosition({
+      live: external.live,
+      played: this.extPlayed,
+      enginePosition: this.engine.position,
+      statePosition: st.position,
+      attemptStart: this.extAttempt?.start ?? null,
+    });
+    void this.playExternal(
+      { items: external.items, index: external.index, source: external.source, startSeconds: position },
+      { keepPresentation: true, qualityId: external.qualityId },
+    );
+  }
+
+  /**
+   * Plays another quality of the external title: that URL loads at the
+   * current position, with the same rate. The progress reporter goes on.
+   */
+  setExternalQuality(qualityId: string | null): void {
+    const st = playerState();
+    const now = st.now;
+    const external = now?.external;
+    const a = this.extAttempt;
+    if (!now || !external || !a || a.id !== this.loadId || (external.qualityId ?? external.mainQuality) === (qualityId ?? external.mainQuality)) return;
+    if (qualityId !== null && !external.qualities.some((q) => q.id === qualityId)) return;
+    a.start = reloadPosition({ live: external.live, played: this.extPlayed, enginePosition: this.engine.position, statePosition: st.position, attemptStart: a.start });
+    a.candidates = qualityCandidates(a.stream, qualityId);
+    a.next = 0;
+    // The new form starts at `a.start`; it counts as played again once it plays.
+    this.extPlayed = false;
+    setPlayerState({ now: { ...now, external: { ...external, qualityId } } });
+    if (!this.loadNextExternal()) this.externalFailed(undefined);
   }
 
   private async load(id: number, item: BaseItemDto, queue: BaseItemDto[], opts: LoadOptions): Promise<void> {
@@ -996,9 +1081,9 @@ class VideoSession {
       this.retryLive();
       return;
     }
-    if (st.now.vod) {
-      // An IPTV title has no server to ask for another form: start it again where it was.
-      this.restartVod();
+    if (st.now.external) {
+      // An external title has no server to ask for another form: start it again where it was.
+      this.restartExternal();
       return;
     }
     if (st.now.plan.isLocal) {
@@ -1032,7 +1117,7 @@ class VideoSession {
   retry(): void {
     const st = playerState();
     if (st.now?.live) this.retryLive();
-    else if (st.now?.vod) this.restartVod();
+    else if (st.now?.external) this.restartExternal();
     else if (st.now) void this.reload({});
     else if (this.lastRequest) void this.play(this.lastRequest);
   }
@@ -1055,7 +1140,7 @@ class VideoSession {
   seekTo(seconds: number): void {
     const { duration, now } = playerState();
     // Live: no seeking (the stream plays at the live edge).
-    if (now?.live) return;
+    if (now?.live || now?.external?.live) return;
     const target = Math.max(0, duration > 0 ? Math.min(seconds, duration - 0.5) : seconds);
     if (controlGate.intercept({ action: 'seek', position: target })) return;
     this.directSeek(target);
@@ -1134,6 +1219,10 @@ class VideoSession {
   async selectSubtitle(index: number | null): Promise<void> {
     const now = playerState().now;
     if (!now) return;
+    if (now.external) {
+      await this.selectExternalSubtitle(index);
+      return;
+    }
     const option = index === null ? null : now.plan.subtitles.find((s) => s.index === index);
     if (this.engineTracks(now.plan)) {
       // The engine draws every subtitle format itself (ASS styling, PGS pictures).
@@ -1165,6 +1254,25 @@ class VideoSession {
     await this.loadCues(option.index);
   }
 
+  /**
+   * An external title's WebVTT file (null: off). The app draws it on every
+   * engine; a subtitle inside the stream goes off while it shows.
+   */
+  private async selectExternalSubtitle(index: number | null): Promise<void> {
+    const now = playerState().now;
+    if (!now?.external) return;
+    const option = index === null ? null : now.plan.subtitles.find((s) => s.index === index);
+    setPlayerState({ cues: null });
+    this.setPlanSubtitle(option ? option.index : null);
+    if (!option) return;
+    const embedded = playerState().embedded;
+    if (embedded?.subtitleId && this.engine.embedded) {
+      this.engine.embedded.selectSubtitle(null);
+      setPlayerState({ embedded: { ...embedded, subtitleId: null } });
+    }
+    await this.loadCues(option.index);
+  }
+
   private setPlanSubtitle(index: number | null) {
     const now = playerState().now;
     if (!now) return;
@@ -1176,10 +1284,18 @@ class VideoSession {
     const now = playerState().now;
     const option = now?.plan.subtitles.find((s) => s.index === index);
     if (!option?.url) return;
+    const url = option.url;
+    const external = now?.external;
     try {
-      const { api } = context();
-      const text = /^(file|asset):/.test(option.url) ? ((await readLocalText(option.url)) ?? '') : await jf.getText(api, option.url);
-      if (playerState().now?.plan.subtitleIndex !== index) return;
+      // The Jellyfin client sends the Jellyfin token: only a Jellyfin item's subtitles load through it.
+      const loader = subtitleLoader(url, !!external);
+      const text =
+        loader === 'local'
+          ? ((await readLocalText(url)) ?? '')
+          : loader === 'source'
+            ? await (external?.source.loadText ? external.source.loadText(url) : plainText(url))
+            : await jf.getText(context().api, url);
+      if (playerState().now?.plan.subtitleIndex !== index || playerState().now?.item.Id !== now?.item.Id) return;
       setPlayerState({ cues: parseVtt(text) });
     } catch (e) {
       setPlayerState({ cues: null });
@@ -1205,13 +1321,19 @@ class VideoSession {
       this.zap(1);
       return;
     }
-    if (now?.vod) {
-      const vod = now.vod;
-      if (vod.index + 1 >= vod.items.length) return;
+    if (now?.external) {
+      const ext = now.external;
+      const following = ext.index + 1 < ext.items.length ? null : this.extAttempt?.stream.next;
+      if (ext.index + 1 >= ext.items.length && !following) return;
       // Moving on to the next episode (Play Now, the countdown, the remote's Next) counts as watched.
-      this.saveVod(true);
-      this.vodPlayed = false;
-      await this.playVod({ items: vod.items, index: vod.index + 1, source: vod.source, startSeconds: 0 }, { keepPresentation: true });
+      this.saveExternal(true);
+      if (this.extAttempt) this.extAttempt.ended = true;
+      this.extPlayed = false;
+      // The stream's own next title (extension media) starts a new list; the start is its resume point.
+      const request: ExternalPlayRequest = following
+        ? { items: [following], index: 0, source: ext.source }
+        : { items: ext.items, index: ext.index + 1, source: ext.source, startSeconds: 0 };
+      await this.playExternal(request, { keepPresentation: true });
       return;
     }
     if (!now?.next) return;
@@ -1248,15 +1370,22 @@ class VideoSession {
     const reporter = this.reporter;
     this.reporter = null;
     const position = this.engine.position || st.position;
-    // An IPTV title keeps its position on the device (never on the server).
-    if (st.now?.vod) this.saveVod(st.status === 'ended');
-    this.vodPlayed = false;
+    // An external title keeps its position with its source (never on the Jellyfin server).
+    if (st.now?.external) this.saveExternal(st.status === 'ended');
+    this.extPlayed = false;
     this.engine.unload();
     if (reporter) {
       await reporter.stop({ positionTicks: secondsToTicks(position), isPaused: true });
-      refreshAfterPlayback(st.now?.item);
+      if (!st.now?.external) refreshAfterPlayback(st.now?.item);
     }
   }
+}
+
+/** A subtitle file with no headers (an external source with no loader of its own). */
+async function plainText(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`The subtitles did not load (error ${res.status}).`);
+  return res.text();
 }
 
 /** Continue Watching, Next Up and the item page change after playback. */

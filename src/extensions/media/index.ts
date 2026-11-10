@@ -1,7 +1,8 @@
 /**
- * Extension media: the stream description, the progress report body and
- * the download description. All parsers are pure and apply the origin rule
- * of `match.ts`.
+ * Extension media: the stream description, the progress report body, the
+ * download description and the player's source for extension media. All
+ * parsers are pure and apply the origin rule of `match.ts`. The app wiring
+ * of the source is in `play.ts` (not exported here: it loads the runtime).
  */
 export {
   MAX_ALTERNATIVES,
@@ -22,3 +23,4 @@ export {
 } from './describe';
 export { REPORT_EVENTS, buildReport, type ReportBody, type ReportEvent, type ReportInput } from './report';
 export { MAX_DOWNLOAD_OPTIONS, MAX_DOWNLOAD_SUBTITLES, parseDownloadDescription, type DownloadDescription, type DownloadOption, type DownloadSubtitle } from './download';
+export { extensionSource, mediaItemId, mediaPlayRequest, safeText, skipDefaults, skipTitle, streamFromDescription, streamHeaders, type ExtensionMediaDeps } from './source';

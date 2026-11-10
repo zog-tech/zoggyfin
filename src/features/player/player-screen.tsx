@@ -32,7 +32,8 @@ import { nextUpPhase, nextUpStartsAt, skipPromptAt, skipPromptFor } from '@/play
 import { videoSession } from '@/player/session';
 import { useShowsPause } from '@/player/control-gate';
 import { playingVideo, transcodeReasonText, videoDetail, videoSummary } from '@/player/stream-info';
-import { type LiveNow, playerState, setPlayerState, usePlayerStore } from '@/player/store';
+import { type ExternalNow, type LiveNow, playerState, setPlayerState, usePlayerStore } from '@/player/store';
+import type { SubtitleOption } from '@/player/stream';
 import { ZAP_IDLE, zapDeadline, type ZapEvent, zapReducer, type ZapState, zapTakesBack } from '@/player/zap';
 import { channelSearchPending, requestChannelSearch } from '@/features/iptv/search-request';
 import { liveTvHref, liveTvTab } from '@/features/iptv/nav';
@@ -281,7 +282,7 @@ export function PlayerScreen() {
   );
   const onTap = useCallback(
     (x: number) =>
-      dispatchTap({ type: 'tap', zone: tapZone(x, width), live: !!playerState().now?.live, now: Date.now(), step: tapSteps, timing: TOUCH_TIMING }),
+      dispatchTap({ type: 'tap', zone: tapZone(x, width), live: !!playerState().now?.live || !!playerState().now?.external?.live, now: Date.now(), step: tapSteps, timing: TOUCH_TIMING }),
     [dispatchTap, width, tapSteps],
   );
   // The bubble shows the seconds of the whole run on one side.
@@ -322,8 +323,10 @@ export function PlayerScreen() {
   const s = videoSession();
   // Live TV (IPTV): no seeking, channel up and down, and a channel list.
   const live = now?.live ?? null;
-  // An IPTV film or episode: seekable like a server item, but no together, no server tracks and no quality choice.
-  const vod = now?.vod ?? null;
+  // A title from outside Jellyfin (an IPTV film or episode, extension media): no together and no server
+  // tracks; its quality menu is the source's list. A live one (extension media) does not seek.
+  const vod = now?.external ?? null;
+  const noSeek = !!live || !!vod?.live;
   const liveChannel = live ? (live.channels[live.index] ?? null) : null;
   // What runs now on the channel; the guide can arrive after the channel starts.
   const [liveTick, setLiveTick] = useState(0);
@@ -602,11 +605,11 @@ export function PlayerScreen() {
     if (hidden && side) {
       pairs.reset();
       console.log(`[tvkeys] key=${key} tap seek (controls hidden)`);
-      dispatchTap({ type: 'tap', zone: key, live: !!live, now: Date.now(), step: DPAD_STEPS, timing: REMOTE_TIMING });
+      dispatchTap({ type: 'tap', zone: key, live: noSeek, now: Date.now(), step: DPAD_STEPS, timing: REMOTE_TIMING });
       return;
     }
     // Controls hidden: rewind and fast forward seek at once, also as part of seek mode.
-    if (hidden && !live && (key === 'rewind' || key === 'fastForward')) {
+    if (hidden && !noSeek && (key === 'rewind' || key === 'fastForward')) {
       pairs.reset();
       console.log(`[tvkeys] key=${key} media seek (controls hidden)`);
       dispatchTap({ type: 'seek', side: key === 'rewind' ? 'left' : 'right', now: Date.now(), step: tapSteps, timing: REMOTE_TIMING });
@@ -739,7 +742,7 @@ export function PlayerScreen() {
     ? [liveChannel?.number != null ? String(liveChannel.number) : null, liveNow ?? liveChannel?.group ?? null].filter(Boolean).join(' · ') || null
     : now?.item.Type === 'Episode'
       ? [now.item.SeriesName, episodeLabel(now.item)].filter(Boolean).join(' · ')
-      : (chapter ?? (now?.item.ProductionYear ? String(now.item.ProductionYear) : null));
+      : (chapter ?? (now?.item.ProductionYear ? String(now.item.ProductionYear) : (vod?.items[vod.index]?.subtitle ?? null)));
 
   const loading = status === 'loading' || status === 'buffering' || (status === 'idle' && !error);
   const sideInset = Math.max(gutter, insets.left + spacing.sm, insets.right + spacing.sm);
@@ -748,7 +751,11 @@ export function PlayerScreen() {
   const embedded = usePlayerStore((x) => x.embedded);
   const showTracks = live ? hasTrackChoice(embedded) : true;
   const trackSections: SheetSection[] = live || vod
-    ? embeddedTrackSections(embedded, { audio: (id) => s.selectEmbeddedAudio(id), subtitle: (id) => s.selectEmbeddedSubtitle(id) })
+    ? [
+        ...embeddedTrackSections(embedded, { audio: (id) => s.selectEmbeddedAudio(id), subtitle: (id) => s.selectEmbeddedSubtitle(id) }),
+        // The source's own subtitle files (extension media), drawn by the app.
+        ...(vod && now?.plan.subtitles.length ? [externalSubtitleSection(now.plan.subtitles, now.plan.subtitleIndex, (i) => void s.selectSubtitle(i))] : []),
+      ]
     : now
     ? [
         {
@@ -812,14 +819,16 @@ export function PlayerScreen() {
   ].filter((r) => r !== null);
   const settingsSections: SheetSection[] = now
     ? [
-        ...(now.plan.isLocal || vod
+        ...(vod && vod.qualities.length
+          ? [externalQualitySection(vod, (id) => s.setExternalQuality(id))]
+          : now.plan.isLocal || vod
           ? [
               {
-                title: vod ? 'Quality · IPTV' : now.plan.fromPeer ? 'Quality · Nearby' : 'Quality · Downloaded',
+                title: vod ? `Quality · ${vod.source.label ?? 'IPTV'}` : now.plan.fromPeer ? 'Quality · Nearby' : 'Quality · Downloaded',
                 rows: [
                   {
                     key: 'local',
-                    label: vod ? "Plays the provider's file as it is" : now.plan.fromPeer ? "Streams the host's file" : 'Plays the file on this device',
+                    label: vod ? (vod.live ? "Plays the provider's live stream" : "Plays the provider's file as it is") : now.plan.fromPeer ? "Streams the host's file" : 'Plays the file on this device',
                     selected: true,
                     onPress: () => undefined,
                   },
@@ -939,7 +948,7 @@ export function PlayerScreen() {
           </Animated.View>
         ) : null}
         {/* Seek mode: only a thin progress line with the times; it fades out slowly after the run, a short tail. */}
-        {!visible && tapSeek.phase === 'seeking' && !live ? (
+        {!visible && tapSeek.phase === 'seeking' && !noSeek ? (
           <Animated.View
             entering={reduced ? undefined : FadeIn.duration(motion.duration.fast)}
             exiting={reduced ? undefined : FadeOut.duration(motion.duration.slow)}
@@ -999,7 +1008,7 @@ export function PlayerScreen() {
                   glyph={iconSize.xl}
                   onPress={() => zap(-1)}
                 />
-              ) : (
+              ) : noSeek ? null : (
               <RoundButton
                 onFocusChange={trackCenter}
                 nextFocusDown={barView}
@@ -1040,7 +1049,7 @@ export function PlayerScreen() {
                   glyph={iconSize.xl}
                   onPress={() => zap(1)}
                 />
-              ) : (
+              ) : noSeek ? null : (
               <RoundButton
                 onFocusChange={trackCenter}
                 nextFocusDown={barView}
@@ -1059,7 +1068,7 @@ export function PlayerScreen() {
           ) : null}
 
           <View style={[styles.bottom, { paddingBottom: bottomPad, paddingLeft: sideInset, paddingRight: sideInset }]} pointerEvents="box-none">
-            {now && !live ? (
+            {now && !noSeek ? (
               <PlayerScrubber
                 playing={playing}
                 chapters={now.chapters}
@@ -1230,6 +1239,30 @@ function PeekLine() {
 }
 
 /** Web: Lucide's rotate arrows have no number, so the seconds sit inside (SF Symbols include it). */
+/** The subtitle files of an external title: Off and each file. */
+function externalSubtitleSection(subtitles: readonly SubtitleOption[], selected: number | null, select: (index: number | null) => void): SheetSection {
+  return {
+    title: 'Subtitle files',
+    rows: [
+      { key: 'xoff', label: 'Off', selected: selected === null, onPress: () => select(null) },
+      ...subtitles.map((x) => ({ key: `x${x.index}`, label: x.label, detail: null, selected: x.index === selected, onPress: () => select(x.index) })),
+    ],
+  };
+}
+
+/** The source's quality list of an external title: a choice reloads that stream at the position. */
+function externalQualitySection(external: ExternalNow, select: (id: string | null) => void): SheetSection {
+  // The source's list may name its main stream ("Auto"): then the list is the whole menu.
+  const chosen = external.qualityId ?? external.mainQuality;
+  return {
+    title: `Quality · ${external.source.label ?? 'Source'}`,
+    rows: [
+      ...(external.mainQuality !== null ? [] : [{ key: 'qauto', label: 'Auto', selected: chosen === null, onPress: () => select(null) }]),
+      ...external.qualities.map((q) => ({ key: `q${q.id}`, label: q.label, selected: q.id === chosen, onPress: () => select(q.id) })),
+    ],
+  };
+}
+
 function SkipNumber({ seconds }: { seconds: number }) {
   if (Platform.OS !== 'web') return null;
   return (

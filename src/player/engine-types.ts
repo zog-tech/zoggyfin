@@ -29,6 +29,28 @@ export interface EngineSource {
    * expo-video and libmpv send it; a browser does not let a page set it.
    */
   userAgent?: string | null;
+  /**
+   * Request headers for the stream, its playlists and segments (an
+   * extension's manifest headers, its Jellyfin token with the grant).
+   * expo-video and libmpv send them on every request; on the web hls.js
+   * sends them, a plain file in a <video> element cannot. A `User-Agent`
+   * here wins over `userAgent`. Never log them: they can hold a token.
+   */
+  headers?: Record<string, string> | null;
+}
+
+/**
+ * The headers of a source as one map: `headers`, with `userAgent` as the
+ * `User-Agent` unless `headers` has one. Empty names and values are left
+ * out, and so are values with a line break (a header cannot carry one).
+ */
+export function sourceHeaders(source: Pick<EngineSource, 'headers' | 'userAgent'>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(source.headers ?? {})) {
+    if (k.trim() && typeof v === 'string' && v && !/[\r\n]/.test(v) && !/[\r\n:]/.test(k)) out[k.trim()] = v;
+  }
+  if (source.userAgent && !Object.keys(out).some((k) => k.toLowerCase() === 'user-agent')) out['User-Agent'] = source.userAgent;
+  return out;
 }
 
 /** A subtitle for an engine that draws subtitles itself. */
