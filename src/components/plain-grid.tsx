@@ -26,6 +26,8 @@ export function PlainGrid<T extends PlainTileData>({
   shape = 'poster',
   onEndReached,
   refreshControl,
+  renderTile,
+  headerFullWidth = false,
 }: {
   items: T[];
   onPress: (data: T) => void;
@@ -40,6 +42,10 @@ export function PlainGrid<T extends PlainTileData>({
   /** The list nears its end: load more. */
   onEndReached?: () => void;
   refreshControl?: ReactElement;
+  /** Draws a tile in place of `PlainTile` (an extension entry that is a Jellyfin item). */
+  renderTile?: (item: T, width: number, firstFocus: boolean) => ReactElement;
+  /** The header spans the full width (rows that keep their own gutter), not the grid's padded width. */
+  headerFullWidth?: boolean;
 }) {
   const l = useLayout();
   const bottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset: false });
@@ -51,7 +57,12 @@ export function PlainGrid<T extends PlainTileData>({
   // grown tile's ring touches the header.
   const bleed = l.tv ? tvFocusBleed(tileHeight(shape, tileWidth)) + spacing.lg : 0;
   const topPad = l.tv && !ListHeaderComponent ? bleed : spacing.sm;
-  const header = l.tv && ListHeaderComponent ? <View style={{ paddingBottom: bleed }}>{ListHeaderComponent}</View> : ListHeaderComponent;
+  const header =
+    ListHeaderComponent && (l.tv || headerFullWidth) ? (
+      <View style={{ paddingBottom: l.tv ? bleed : 0, marginHorizontal: headerFullWidth ? -gutter : 0 }}>{ListHeaderComponent}</View>
+    ) : (
+      ListHeaderComponent
+    );
   const aspect = tileAspect(shape);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -72,10 +83,14 @@ export function PlainGrid<T extends PlainTileData>({
           paddingLeft: ((index % columns) * gap) / columns,
           paddingRight: ((columns - 1 - (index % columns)) * gap) / columns,
         }}>
-        <PlainTile data={item} width={tileWidth} aspectRatio={aspect} onPress={press} onLongPress={longPress} firstFocus={l.tv && focusFirstTile && index === 0} />
+        {renderTile ? (
+          renderTile(item, tileWidth, l.tv && focusFirstTile && index === 0)
+        ) : (
+          <PlainTile data={item} width={tileWidth} aspectRatio={aspect} onPress={press} onLongPress={longPress} firstFocus={l.tv && focusFirstTile && index === 0} />
+        )}
       </View>
     ),
-    [columns, gap, tileWidth, aspect, press, longPress, l.tv, focusFirstTile],
+    [columns, gap, tileWidth, aspect, press, longPress, l.tv, focusFirstTile, renderTile],
   );
 
   return (

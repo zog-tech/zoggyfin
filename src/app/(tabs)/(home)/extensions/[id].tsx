@@ -10,8 +10,9 @@ import { EmptyState } from '@/components/states';
 import { OptionSheet } from '@/components/option-sheet';
 import { askText } from '@/extensions/prompts';
 import { currentAccount, loadManifest, prefill, requestInstall, templateContext } from '@/extensions/runtime';
-import { describePermission, safeHost, type SettingField } from '@/extensions/schema';
+import { describePermission, pagesOf, safeHost, type SettingField } from '@/extensions/schema';
 import { getExtension, removeExtension, setEnabled, setGrant, setValue, upsertExtension, useExtensions } from '@/extensions/store';
+import { pageHref } from '@/features/extensions/nav';
 import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchColors } from '@/features/settings/rows';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { confirmDestructive } from '@/lib/confirm';
@@ -20,6 +21,12 @@ import { features } from '@/platform/tv';
 import { mediaColors, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
+import { isIconName, type IconName } from '@/components/icon-names';
+
+/** A page's own icon when the app has it, else the default. */
+function pageIcon(name: string | undefined): IconName {
+  return name && isIconName(name) ? name : 'square.grid.2x2';
+}
 
 const NO_OPTIONS: Record<string, { value: string; label: string }[]> = {};
 
@@ -90,6 +97,9 @@ export default function ExtensionScreen() {
     if (v !== null) setValue(m.id, f, v);
   };
 
+  // Native pages of a v2 manifest (a v1 Home row is a page too, but it has no page of its own to open).
+  const pageRows = m.schemaVersion === 2 && ext.enabled ? pagesOf(m) : [];
+  const panels = features.extensionPanels ? (m.contributes.panels ?? []) : [];
   const pickerOptions = picker?.type === 'choice' ? (picker.options?.length ? picker.options : (options[picker.key] ?? [])) : [];
   const account = currentAccount();
 
@@ -145,9 +155,18 @@ export default function ExtensionScreen() {
             </Group>
           ) : null}
 
-          {features.extensionPanels && m.contributes.panels?.length ? (
+          {pageRows.length || panels.length ? (
             <Group title="Pages">
-              {m.contributes.panels.map((p, i, all) => (
+              {pageRows.map((p, i) => (
+                <SettingsRow
+                  key={`page:${p.id}`}
+                  icon={pageIcon(p.icon)}
+                  label={`Open ${p.title}`}
+                  onPress={() => router.push(pageHref('(home)', m.id, p.id))}
+                  last={i === pageRows.length - 1 && !panels.length}
+                />
+              ))}
+              {panels.map((p, i, all) => (
                 <SettingsRow key={p.id} icon="square.grid.2x2" label={p.title} onPress={() => router.push({ pathname: '/extension-panel', params: { ext: m.id, panel: p.id } })} last={i === all.length - 1} />
               ))}
             </Group>
