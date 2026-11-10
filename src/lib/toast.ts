@@ -64,3 +64,12 @@ export function toastDuration(m: Pick<ToastMessage, 'action'>, tv = false): numb
 export function toastTakesFocus(m: Pick<ToastMessage, 'action'>, tv: boolean, textFocused: boolean): boolean {
   return tv && !!m.action && !textFocused;
 }
+
+/**
+ * How a toast looks. On app screens it follows the app theme. In a player
+ * (an overlay host) it is over video, which is always dark: the glass is
+ * dark and the text light, also in the light app theme. Pure, so it is unit-tested.
+ */
+export function toastLook(overlay: boolean, c: { text: string; textOnMedia: string }): { glass: 'dark' | 'auto'; text: string } {
+  return overlay ? { glass: 'dark', text: c.textOnMedia } : { glass: 'auto', text: c.text };
+}
