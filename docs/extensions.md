@@ -604,7 +604,9 @@ it did before.
   origin; another origin is left out) of a picture for the page's Library
   tile, 16:9 like the Jellyfin library tiles. It loads like an entry image:
   no Jellyfin token, no manifest headers. The tile shows the `icon` while the
-  picture loads and when it fails. App versions without this field ignore it.
+  picture loads and when it fails. With an `image`, the caption is the page
+  title alone, as on a Jellyfin library tile; put the name in the picture if
+  you want it on the artwork too. App versions without this field ignore it.
 - The tab and the side menu show the page `title` and `icon`. `icon` is an
   icon name of the app (`src/components/icon-names.ts`, for example `film`,
   `tv`, `music.note`, `play.fill`). Another name shows a grid icon.

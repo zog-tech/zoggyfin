@@ -3,8 +3,9 @@
  * server's libraries as one more source, like the Live TV tile. It has no
  * server image: its art is the page's `image` (from the extension's origin,
  * loaded like an entry image, with no Jellyfin token), with the page's icon on
- * a quiet surface under it while it loads or when it fails. The page title
- * and the extension's name are in the caption. Which pages get a tile
+ * a quiet surface under it while it loads or when it fails. The caption is
+ * the page title (as on a Jellyfin library tile), and the extension's name
+ * under it for a tile without `image`. Which pages get a tile
  * is decided in placement.ts.
  */
 import { Image } from 'expo-image';
@@ -71,7 +72,8 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
         </View>
         {image ? <Image source={{ uri: image }} style={s.image} contentFit="cover" transition={150} recyclingKey={image} onError={() => setFailed(image)} accessible={false} /> : null}
       </View>
-      <TileCaption title={page.title} sub={page.extensionName} />
+      {/* With artwork the caption is the title alone, as on a Jellyfin library tile (same height in the grid). */}
+      <TileCaption title={page.title} sub={page.image ? undefined : page.extensionName} />
     </Touchable>
   );
 }
