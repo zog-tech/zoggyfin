@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 
 import { useChildren, useEpisodes, useNextUp, useSeasons, useSimilar } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
-import { ItemActionSheet } from '@/components/action-sheet';
+import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { ItemRow, RowHeader } from '@/components/item-row';
 import { ErrorState, LoadingState } from '@/components/states';
 import { shapeForList } from '@/components/tile';
@@ -147,6 +147,9 @@ export function SeasonDetail({ item, onRefresh }: ViewProps) {
   const seriesId = item.SeriesId ?? item.ParentId ?? undefined;
   const episodes = useEpisodes(seriesId, item.Id ?? undefined);
   const open = useOpenItem();
+  const l = useLayout();
+  // Long press, and right click on the web and the Mac app: the item actions. Not on TV.
+  const menu = useItemMenu();
   return (
     <DetailScaffold
       item={item}
@@ -164,7 +167,8 @@ export function SeasonDetail({ item, onRefresh }: ViewProps) {
       }
       rows={episodes.data}
       rowKey={(e, i) => e.Id ?? String(i)}
-      renderRow={(e) => <EpisodeRow item={e} onPress={open} />}
+      renderRow={(e) => <EpisodeRow item={e} onPress={open} onLongPress={l.tv ? undefined : menu.open} />}
+      footer={menu.sheet}
     />
   );
 }

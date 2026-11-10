@@ -19,7 +19,13 @@ first commit to today. All of it was built in the first weeks of the project.
   on a song row no longer turns the Music page or goes back from an album. Search results now
   open the song's actions with a long press too. Catalog songs (" ☁") are fetched when they play,
   not when they go into the queue.
-
+- **Item actions on tiles.** A long press on a tile in a Home row or a grid opens the item actions
+  (play, mark as played, favourite, download and more). On the web and in the Mac app a right click
+  does the same, and the browser's own image menu no longer shows. TV is unchanged.
+- **Right click everywhere in the Mac app.** Episode rows, artist rows, the search top result,
+  extension rows and download items also open their actions on a right click (and on a long press).
+  The Mac app no longer shows the browser menu (save image, reload) anywhere; text fields and
+  selected text keep cut, copy and paste.
 - **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
   mark runs on the UI thread, and the billboard and prefetch wait for 500 ms of rest. Home rows and
   sections mount as you reach them, the side menu slides over the page, screens change at once, and

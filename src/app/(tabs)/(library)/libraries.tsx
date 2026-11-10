@@ -26,6 +26,8 @@ export default function LibraryScreen() {
           items={live.items}
           renderTile={live.renderTile}
           shape="thumb"
+          // Library folders have no item actions worth a menu.
+          itemMenu={false}
           onRefresh={views.refetch}
           headerless
           ListEmptyComponent={<EmptyState icon="square.stack" title="No libraries" message="This account has no libraries yet." />}

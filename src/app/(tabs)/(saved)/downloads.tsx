@@ -406,6 +406,7 @@ function ChildRow({ record: r, group, index, last }: { record: DownloadRecord; g
   const player = usePlayer();
   const queueSwipe = useQueueSwipe();
   const queueable = r.kind === 'audio' && canQueue(r.item);
+  const open = useOpenDetail();
   const remove = async () => {
     const ok = await confirmDestructive(`Delete ${r.item.Name ?? 'this download'}?`, `This frees ${formatBytes(r.bytesDone)} on this device. Nothing changes on the server.`, 'Delete');
     if (ok) await downloads.remove(r.itemId);
@@ -420,13 +421,20 @@ function ChildRow({ record: r, group, index, last }: { record: DownloadRecord; g
       <Touchable
         kind="row"
         onPress={play}
+        onLongPress={open ? () => open(r.item) : undefined}
         accessibilityRole="button"
         accessibilityLabel={`${r.item.Name}, ${formatBytes(r.bytesDone)}`}
         accessibilityHint="Plays it"
-        accessibilityActions={[{ name: 'delete', label: 'Delete download' }, ...(queueable ? [{ name: ADD_TO_QUEUE_ACTION, label: 'Add to queue' }] : [])]}
+        accessibilityActions={[
+          { name: 'delete', label: 'Delete download' },
+          ...(queueable ? [{ name: ADD_TO_QUEUE_ACTION, label: 'Add to queue' }] : []),
+          ...(open ? [{ name: 'open', label: 'Open details' }] : []),
+        ]}
         onAccessibilityAction={(e) => {
-          if (queueable && queueSwipe.runAccessibility(e.nativeEvent.actionName, r.item)) return;
-          void remove();
+          const name = e.nativeEvent.actionName;
+          if (queueable && queueSwipe.runAccessibility(name, r.item)) return;
+          if (name === 'open') open?.(r.item);
+          else if (name === 'delete') void remove();
         }}
         style={({ pressed, hovered }) => [s.childRow, (pressed || hovered) && s.rowActive]}>
         <Text style={s.childNo}>{r.item.Type === 'Episode' ? `E${r.item.IndexNumber ?? index + 1}` : (r.item.IndexNumber ?? index + 1)}</Text>

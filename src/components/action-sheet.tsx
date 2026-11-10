@@ -1,3 +1,4 @@
+import { type ReactNode, useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
@@ -74,3 +75,21 @@ const makeStyles = createStyles((t: AppTheme) => ({
   body: { gap: spacing.md, paddingBottom: spacing.sm },
   cancel: { ...font(type.headline), color: t.c.text, flex: 1, textAlign: 'center' as const },
 }));
+
+/**
+ * One item action sheet for a row or a grid of tiles: `open(item)` shows it.
+ * The sheet mounts on the first open (a Home page has many rows) and then
+ * stays mounted, so it can play its exit animation. `open` is stable, for
+ * memo tiles.
+ */
+export function useItemMenu(): { open: (item: BaseItemDto) => void; sheet: ReactNode } {
+  const [item, setItem] = useState<BaseItemDto>();
+  const [visible, setVisible] = useState(false);
+  const open = useCallback((it: BaseItemDto) => {
+    setItem(it);
+    setVisible(true);
+  }, []);
+  const close = useCallback(() => setVisible(false), []);
+  const sheet = item ? <ItemActionSheet item={item} visible={visible} onClose={close} /> : null;
+  return { open, sheet };
+}
