@@ -21,7 +21,7 @@ import { type IconName, isIconName } from '@/components/icon-names';
 import type { DetailAction, DetailDescription, FeedEntry, MediaKind, MediaRef } from '@/extensions/feeds';
 import { hasGrant } from '@/extensions/grants';
 import type { Grants } from '@/extensions/http';
-import type { Manifest, SectionSpec } from '@/extensions/schema';
+import type { Manifest, SectionSpec, Shape } from '@/extensions/schema';
 import type { MediaPlayRequest } from '@/player/types';
 
 /** The icon of a button whose icon name the app does not know. */
@@ -80,6 +80,17 @@ export function playRequestOf(extId: string, src: PlayableSource, startSeconds?:
   if (media.duration !== undefined) req.duration = media.duration;
   if (startSeconds !== undefined) req.startSeconds = startSeconds;
   return req;
+}
+
+/**
+ * The shape of the picture on the entry page: the detail's own `shape`, else
+ * from the media kind (video: `thumb`, 16:9; audio: `square`). An entry with
+ * no media keeps the poster (2:3).
+ */
+export function detailShape(d: Pick<DetailDescription, 'shape' | 'media'>): Shape {
+  if (d.shape) return d.shape;
+  if (!d.media) return 'poster';
+  return d.media.kind === 'audio' ? 'square' : 'thumb';
 }
 
 /** True when the progress means "started, not finished": Resume and Start over show. */
@@ -219,6 +230,8 @@ export interface DetailView {
   eyebrow?: string;
   poster: string | null;
   backdrop: string | null;
+  /** The shape of `poster`. */
+  shape: Shape;
   lines: string[];
   description?: string;
   kind: MediaKind;
@@ -255,6 +268,7 @@ export function detailView(d: DetailDescription, toggles: ToggleMap, opts: { can
     title: d.title,
     poster: d.imageUrl ?? null,
     backdrop: d.backdropUrl ?? null,
+    shape: detailShape(d),
     lines: d.lines,
     kind: d.media?.kind ?? 'video',
     primary: playable ? { label: started ? 'Resume' : 'Play', progress: started ? (d.progress as number) : null } : null,

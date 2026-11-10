@@ -135,6 +135,27 @@ export const ANDROID_SYMBOLS = {
   keyboard: 'keyboard',
   'textformat.size': 'format_size',
   paintpalette: 'palette',
+  /** Generic glyphs for extension buttons (thumbs, bell, clock, bookmark, star, eye, flag, share). */
+  'hand.thumbsup': 'thumb_up_off_alt',
+  'hand.thumbsup.fill': 'thumb_up',
+  'hand.thumbsdown': 'thumb_down_off_alt',
+  'hand.thumbsdown.fill': 'thumb_down',
+  bell: 'notifications_none',
+  'bell.fill': 'notifications',
+  'bell.slash': 'notifications_off',
+  clock: 'schedule',
+  'clock.fill': 'access_time_filled',
+  bookmark: 'bookmark_border',
+  'bookmark.fill': 'bookmark',
+  star: 'star_border',
+  'star.fill': 'star',
+  eye: 'visibility',
+  'eye.slash': 'visibility_off',
+  flag: 'flag',
+  'square.and.arrow.up': 'ios_share',
+  'play.rectangle.fill': 'smart_display',
+  'xmark.circle': 'cancel',
+  'hand.raised': 'pan_tool',
 } as const satisfies Record<string, AndroidSymbol>;
 
 export type IconName = keyof typeof ANDROID_SYMBOLS;

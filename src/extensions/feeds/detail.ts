@@ -4,6 +4,8 @@
  *
  * Rules:
  * - `title` is required; without it the reply is not a detail and throws.
+ * - `shape` (`poster`, `thumb` or `square`) is the shape of `image`; when left out,
+ *   the app picks it from the media kind (`detailShape`).
  * - Every other field, action, line and section is read on its own; a bad
  *   one is left out.
  *   An action or a section id used twice keeps the first.
@@ -19,7 +21,7 @@ import { z } from 'zod';
 
 import { ExtensionError } from '../http';
 import { urlOnOrigin } from '../match';
-import { confirmSchema, id, inputSchema, label, requestSchema } from '../schema/common';
+import { confirmSchema, id, inputSchema, label, requestSchema, SHAPES, type Shape } from '../schema/common';
 import { MAX_SECTIONS_PER_PAGE, sectionSchema, type SectionSpec } from '../schema/v2';
 import { type MediaRef, readMediaRef } from './entry';
 
@@ -65,6 +67,8 @@ export interface DetailDescription {
   /** Full URLs on the extension's origin. */
   imageUrl?: string;
   backdropUrl?: string;
+  /** The shape of `imageUrl`. */
+  shape?: Shape;
   /** Short facts under the title, for example "12 min". */
   lines: string[];
   description?: string;
@@ -92,6 +96,8 @@ export function parseDetail(data: unknown, baseUrl: string): DetailDescription {
   if (imageUrl) out.imageUrl = imageUrl;
   const backdropUrl = urlOnOrigin(baseUrl, pick(pictureSchema, d.backdrop));
   if (backdropUrl) out.backdropUrl = backdropUrl;
+  const shape = pick(z.enum(SHAPES), d.shape);
+  if (shape) out.shape = shape;
   const description = pick(descriptionSchema, d.description);
   if (description) out.description = description;
   const progress = pick(progressSchema, d.progress);

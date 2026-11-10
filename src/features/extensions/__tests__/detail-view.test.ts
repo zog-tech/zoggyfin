@@ -5,6 +5,7 @@ import {
   canDownload,
   DEFAULT_ACTION_ICON,
   detailPlayable,
+  detailShape,
   detailView,
   dropSettled,
   entryMenu,
@@ -92,6 +93,40 @@ describe('detailView', () => {
     expect(iconOrDefault('heart')).toBe('heart');
     expect(iconOrDefault('rm -rf')).toBe(DEFAULT_ACTION_ICON);
     expect(iconOrDefault(undefined)).toBe(DEFAULT_ACTION_ICON);
+  });
+});
+
+describe('the shape of the picture', () => {
+  const shapeOf = (over: Record<string, unknown>) => detailView(parseDetail({ ...raw, ...over }, base), {}, { canDownload: true }).shape;
+
+  it('is a thumb for a video, a square for audio, a poster with no media', () => {
+    expect(shapeOf({})).toBe('thumb');
+    expect(shapeOf({ media: { id: 'a1', kind: 'audio', playback: '/api/a1/play' } })).toBe('square');
+    expect(shapeOf({ media: undefined })).toBe('poster');
+  });
+
+  it('takes the detail shape before the media kind', () => {
+    expect(shapeOf({ shape: 'poster' })).toBe('poster');
+    expect(shapeOf({ shape: 'square', media: undefined })).toBe('square');
+    expect(detailShape({ shape: 'thumb' })).toBe('thumb');
+  });
+
+  it('ignores a shape the app does not know', () => {
+    expect(parseDetail({ ...raw, shape: 'wide' }, base).shape).toBeUndefined();
+    expect(shapeOf({ shape: 'wide' })).toBe('thumb');
+  });
+});
+
+describe('icons of extension buttons', () => {
+  it('keeps the common names and falls back only for unknown ones', () => {
+    const actions = ['hand.thumbsup', 'hand.thumbsup.fill', 'bell', 'clock', 'bookmark', 'no.such.icon'].map((icon, i) => ({
+      id: `a${i}`,
+      title: `Action ${i}`,
+      icon,
+      request: { method: 'POST', path: `/api/e1/a${i}` },
+    }));
+    const v = detailView(parseDetail({ ...raw, actions }, base), {}, { canDownload: false });
+    expect(v.buttons.filter((b) => b.key.startsWith('a')).map((b) => b.icon)).toEqual(['hand.thumbsup', 'hand.thumbsup.fill', 'bell', 'clock', 'bookmark', DEFAULT_ACTION_ICON]);
   });
 });
 

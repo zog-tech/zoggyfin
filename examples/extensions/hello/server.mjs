@@ -130,6 +130,8 @@ function detailOf(e) {
   const d = {
     title: e.title,
     eyebrow: 'Hello Pages',
+    // A 16:9 picture: the app shows it whole (a video entry is a `thumb` unless the detail says otherwise).
+    image: '/pages/art/main.png',
     lines: [e.subtitle],
     description: 'A sample entry from the Hello Pages extension. Play shows a short test pattern. Save is an on/off button that the sample server remembers until it stops.',
     media: e.media,

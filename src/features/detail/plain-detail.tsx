@@ -9,13 +9,19 @@
  * poster and the actions in a left column. It takes plain data only (no
  * Jellyfin item, no item actions).
  *
+ * The picture follows `shape`: a poster is 2:3 (the default); a thumb is the
+ * whole 16:9 picture, wide; a square is 1:1. A wide or square picture is
+ * never cropped to 2:3, and it replaces the backdrop hero when the backdrop
+ * is the same picture. The round actions sit in one row: centred while they
+ * fit, else the row scrolls from the left gutter with no scroll bar.
+ *
  * TV: Play takes the first focus; with no Play, the first round action. The
  * D-pad order is Play, the round actions, then the content below.
  */
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { type IconName, isIconName } from '@/components/icon-names';
@@ -23,6 +29,7 @@ import { PlainArt, type PlainKind } from '@/components/plain-art';
 import { Overview, RoundAction } from '@/features/detail/detail-scaffold';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
+import type { Shape } from '@/extensions/schema/common';
 import { createStyles, type AppTheme, font, radius, scaled, scriptStyle, sizes, spacing, type, useLayout, useStyles, useTheme, withAlpha } from '@/theme';
 
 /** The icon of a round action whose icon name the app does not know. */
@@ -39,6 +46,12 @@ export interface PlainAction {
   onPress: () => void;
 }
 
+/** The shape of the picture on the page. */
+export type PlainShape = Shape;
+
+/** The aspect ratio (width over height) of each picture shape. */
+export const SHAPE_ASPECT: Record<PlainShape, number> = { poster: 2 / 3, thumb: 16 / 9, square: 1 };
+
 export interface PlainDetailProps {
   kind: PlainKind;
   id: string;
@@ -46,6 +59,8 @@ export interface PlainDetailProps {
   eyebrow?: string | null;
   poster: string | null;
   backdrop: string | null;
+  /** The shape of `poster`: `poster` (2:3, the default), `thumb` (16:9) or `square`. */
+  shape?: PlainShape;
   /** Short facts, shown on one line with " · " between them. */
   lines: string[];
   overview?: string | null;
@@ -79,7 +94,7 @@ export function PlainDetail({ children, ...props }: PlainDetailProps & { childre
  * list (an extension entry whose last section is a grid or a list), which
  * takes the header as its list header.
  */
-export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, lines, overview, credits, primary, actions, status }: PlainDetailProps) {
+export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, shape = 'poster', lines, overview, credits, primary, actions, status }: PlainDetailProps) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();
@@ -98,8 +113,20 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
     </View>
   ) : null;
 
+  // The picture: a poster stays 2:3. A wide or square picture shows whole (the poster, else the backdrop),
+  // and the backdrop hero is left out when it would be the same picture again.
+  const aspect = SHAPE_ASPECT[shape];
+  const picture = shape === 'poster' ? poster : (poster ?? backdrop);
+  const heroUri = shape === 'poster' || (twoColumn && backdrop && backdrop !== picture) ? backdrop : null;
+
+  // One row. On a phone it bleeds to the screen edges and pads by the gutter, so the first action starts at the gutter.
+  const rowInset = twoColumn ? spacing.sm : l.gutter;
   const actionsRow = (
-    <View style={[s.actions, !twoColumn && s.actionsCenter]}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[s.actionsScroll, { marginHorizontal: -rowInset }]}
+      contentContainerStyle={[s.actions, { paddingHorizontal: rowInset }, !twoColumn && s.actionsCenter, isTV && s.actionsTV]}>
       {actions.map((a, i) => (
         <RoundAction
           key={a.key ?? a.label}
@@ -110,7 +137,7 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
           firstFocus={isTV && !primary && i === 0}
         />
       ))}
-    </View>
+    </ScrollView>
   );
 
   const text = (
@@ -132,9 +159,9 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
     </View>
   );
 
-  const hero = backdrop ? (
+  const hero = heroUri ? (
     <View style={[s.hero, { height: heroH }]}>
-      <PlainArt uri={backdrop} name={title} id={id} kind={kind} width={l.contentWidth} aspectRatio={l.contentWidth / heroH} rounded={0} showTitle={false} />
+      <PlainArt uri={heroUri} name={title} id={id} kind={kind} width={l.contentWidth} aspectRatio={l.contentWidth / heroH} rounded={0} showTitle={false} />
       <LinearGradient colors={[withAlpha(c.bg, 0), withAlpha(c.bg, 0), c.bg]} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
     </View>
   ) : null;
@@ -143,14 +170,14 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
   if (twoColumn) {
     const leftWidth = Math.round((pageWidth - l.gutter * 2) * 0.32);
     // TV: the poster is at most 45 % of the screen height, so Play shows whole when the page opens.
-    const posterWidth = Math.min(leftWidth, 260, isTV ? Math.round(l.height * 0.45 * (2 / 3)) : Infinity);
+    const posterWidth = Math.min(leftWidth, shape === 'poster' ? 260 : shape === 'thumb' ? 360 : 300, isTV ? Math.round(l.height * 0.45 * aspect) : Infinity);
     header = (
       <View>
         {hero}
         <View style={[s.columns, { width: pageWidth, paddingHorizontal: l.gutter, marginTop: hero ? -heroH * 0.5 : isTV ? spacing.xxl : spacing.huge }]}>
           <View style={[s.left, { width: leftWidth }]}>
             <View style={s.raised}>
-              <PlainArt uri={poster} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={2 / 3} />
+              <PlainArt uri={picture} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={aspect} />
             </View>
             <View style={{ width: Math.min(leftWidth, 280), gap: spacing.lg }}>
               {play}
@@ -162,13 +189,15 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
       </View>
     );
   } else {
-    const posterWidth = Math.round(Math.min(l.contentWidth * 0.42, scaled(180)));
+    // A poster is a small centred box; a thumb fills the content width; a square is a centred box.
+    const posterWidth =
+      shape === 'thumb' ? Math.round(Math.min(l.contentWidth - l.gutter * 2, sizes.readableWidth)) : Math.round(Math.min(l.contentWidth * (shape === 'square' ? 0.6 : 0.42), scaled(shape === 'square' ? 260 : 180)));
     header = (
       <View>
         {hero}
         <View style={[s.body, { paddingHorizontal: l.gutter, marginTop: hero ? -scaled(90) : spacing.lg }]}>
           <View style={[s.raised, s.selfCenter]}>
-            <PlainArt uri={poster} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={2 / 3} />
+            <PlainArt uri={picture} name={title} id={id} kind={kind} width={posterWidth} aspectRatio={aspect} />
           </View>
           {text}
         </View>
@@ -196,6 +225,10 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   credit: { ...font(type.footnote), color: c.text2 },
   resumeTrack: { height: sizes.resumeBar, borderRadius: 2, backgroundColor: c.surface3, marginTop: spacing.md, marginHorizontal: spacing.xxxl, overflow: 'hidden' as const },
   resumeFill: { height: '100%' as const, backgroundColor: c.accent },
-  actions: { flexDirection: 'row' as const, alignSelf: 'stretch' as const, gap: spacing.xl, marginTop: spacing.xs },
+  // The scroll view takes the row's height only; the content grows to the view's width, so it centres while it fits.
+  actionsScroll: { flexGrow: 0, marginTop: spacing.xs },
+  actions: { flexGrow: 1, gap: spacing.xl },
   actionsCenter: { justifyContent: 'center' as const },
+  // TV: room above and below for the focus scale and ring.
+  actionsTV: { paddingVertical: spacing.md },
 }));

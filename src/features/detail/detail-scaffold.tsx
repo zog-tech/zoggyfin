@@ -665,7 +665,8 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   resumeFill: { height: '100%' as const, backgroundColor: c.accent },
   actions: { flexDirection: 'row' as const, alignSelf: 'stretch' as const, gap: spacing.xl, marginTop: spacing.xs },
   actionsCenter: { justifyContent: 'center' as const },
-  roundWrap: { alignItems: 'center' as const, gap: 6, minWidth: scaled(56) },
+  // A long label ends in an ellipsis at maxWidth, so one action never pushes the others off the row.
+  roundWrap: { alignItems: 'center' as const, gap: 6, minWidth: scaled(56), maxWidth: scaled(104) },
   round: {
     width: scaled(sizes.iconButton),
     height: scaled(sizes.iconButton),

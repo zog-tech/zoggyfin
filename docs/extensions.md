@@ -658,6 +658,7 @@ Times are seconds, to 0.1 s. `duration` is not sent for a live stream, and
   "eyebrow": "Example Media",
   "image": "/img/e123.jpg",
   "backdrop": "/img/e123-wide.jpg",
+  "shape": "thumb",
   "lines": ["12 min", "2 days ago"],
   "description": "Plain text.",
   "media": { "id": "e123", "kind": "video", "playback": "/api/entries/e123/play" },
@@ -676,6 +677,10 @@ Times are seconds, to 0.1 s. `duration` is not sent for a live stream, and
 ```
 
 - `title` is required. Any other bad field is left out on its own.
+- `shape` is the shape of `image`: `poster` (2:3), `thumb` (16:9) or `square`. When it is
+  left out, a video entry is a `thumb`, an audio entry a `square`, and an entry with no
+  `media` a `poster`. The app shows the whole picture in that shape and never crops a
+  `thumb` to 2:3.
 - At most 6 `lines` and 6 `actions`, and 8 `sections`.
 - An action takes `inputs` and `confirm`, as an item action does. With
   `state`, it is an on/off button; `{{action.next}}` is the state it asks for.
@@ -695,15 +700,19 @@ is ignored.
 **The entry page.** A card with `detail` opens the entry page. The app loads
 the detail description (8 s at most) and shows:
 
-- The backdrop, the poster (`image`), the eyebrow, the title and the `lines`
-  on one line. The description shows three lines and "More".
+- The picture (`image`, in its `shape`), the eyebrow, the title and the `lines`
+  on one line. A `poster` shows with the backdrop above it. A `thumb` or `square` shows
+  whole, and the backdrop shows only on wide screens and only when it is another picture. The description shows three lines and "More".
 - Play, or Resume with a bar when `progress` is more than 0 and less than 1.
   Play needs `media.playback`. Resume plays from the stream description's
   `resume`; "Start over" plays from 0.
 - Download when `media.download` is set, the user's downloads switch is on,
   and the device saves files (not TV and not the plain web).
-- The buttons of `actions`. `icon` is an icon name of the app
+- The buttons of `actions`, in one row. The row is centred while it fits and scrolls
+  sideways when it does not. A long title ends in an ellipsis. `icon` is an icon name of the app
   (`src/components/icon-names.ts`); an unknown name shows a default icon.
+  The app knows common button names, for example `hand.thumbsup`, `bell`, `clock`, `bookmark`,
+  `star`, `eye`, `flag` and `square.and.arrow.up`, each with a `.fill` form where it makes sense.
 - The `sections`, as on a page. A row is the default. A last `grid` or `list`
   scrolls with the page and asks for more. A `grid` or `list` that is not last
   shows its first entries with no "See all".
