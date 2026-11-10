@@ -1,19 +1,25 @@
 /**
  * Where extension pages live: `ext/[ext]/[page]` and
- * `ext/[ext]/entry/[entry]`, shared by the Home, Library and Search stacks
- * (`src/app/(tabs)/(home,library,search)/ext/`), so a page stays in the tab
- * that opened it. A page opened from Settings or a Home row is in Home.
+ * `ext/[ext]/entry/[entry]`, shared by the Home, Library, Search and
+ * extension tab stacks (`src/app/(tabs)/(home,library,search,ext)/ext/`), so
+ * a page stays in the tab that opened it. A page opened from Settings or a
+ * Home row is in Home. The `(ext)` tab shows the page that fills the tab slot
+ * (`placement.ts`) at `(ext)/ext-tab`.
  */
 import { type Href, useSegments } from 'expo-router';
 
-export type ExtGroup = '(home)' | '(library)' | '(search)';
+export type ExtGroup = '(home)' | '(library)' | '(search)' | '(ext)';
 
-const GROUPS: readonly ExtGroup[] = ['(home)', '(library)', '(search)'];
+const GROUPS: readonly ExtGroup[] = ['(ext)', '(home)', '(library)', '(search)'];
+
+/** The group of a route's segments, or Home. */
+export function extGroupOf(segments: readonly string[]): ExtGroup {
+  return segments.find((s): s is ExtGroup => (GROUPS as readonly string[]).includes(s)) ?? '(home)';
+}
 
 /** The stack the user is in, for pushes that stay in it. */
 export function useExtGroup(): ExtGroup {
-  const segments = useSegments() as string[];
-  return segments.find((s): s is ExtGroup => (GROUPS as readonly string[]).includes(s)) ?? '(home)';
+  return extGroupOf(useSegments() as string[]);
 }
 
 /** An extension page; with `section`, that section on its own ("See all"). */
@@ -32,4 +38,9 @@ export function entryHref(group: ExtGroup, extId: string, entry: { key: string; 
   const params: Record<string, string> = { ext: extId, entry: entry.key, detail: entry.detail };
   if (entry.title) params.title = entry.title;
   return { pathname: `/(tabs)/${group}/ext/[ext]/entry/[entry]`, params } as unknown as Href;
+}
+
+/** The pathname (no groups) of a page, as `usePathname()` gives it: the TV side menu marks its entry with it. */
+export function pagePathname(extId: string, pageId: string): string {
+  return `/ext/${extId}/${pageId}`;
 }

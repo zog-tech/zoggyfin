@@ -23,6 +23,7 @@ import type { SectionSpec, Shape } from '@/extensions/schema';
 import { useExtensions } from '@/extensions/store';
 import { useFeedSearch, useFeedSection } from '@/extensions/ui/use-feed';
 import { TvScrollView } from '@/features/tv/page-scroll';
+import { useRootScreenOptions } from '@/lib/stack-options';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { isTV } from '@/platform/tv';
@@ -33,12 +34,17 @@ import { resolvePageRoute } from './routes';
 import { InfiniteEntries, SectionBlock } from './sections';
 import { sectionMode } from './section-view';
 
-export function PageScreen({ extId, pageId, sectionId }: { extId: string; pageId: string; sectionId?: string }) {
+/**
+ * `tabRoot`: the page is the first page of the extension tab, so it has the
+ * tab root options (no title bar, `AGENTS.md` §6) and the headerless spinner.
+ */
+export function PageScreen({ extId, pageId, sectionId, tabRoot = false }: { extId: string; pageId: string; sectionId?: string; tabRoot?: boolean }) {
   const s = useStyles(makeStyles);
+  const root = useRootScreenOptions();
   const ext = useExtensions((st) => st.list.find((e) => e.manifest.id === extId));
   const route = resolvePageRoute(ext?.manifest, { page: pageId, section: sectionId });
   const title = route ? (route.section?.title ?? route.page.title) : 'Extension';
-  const head = <Stack.Screen options={{ title }} />;
+  const head = <Stack.Screen options={tabRoot ? { ...root, title } : { title }} />;
 
   if (!ext) {
     return (
@@ -68,7 +74,7 @@ export function PageScreen({ extId, pageId, sectionId }: { extId: string; pageId
     <>
       {head}
       <View style={s.page}>
-        <PageBody extId={extId} extensionName={ext.manifest.name} pageId={route.page.id} title={title} sections={route.sections} search={route.section ? undefined : route.page.search} standalone={!!route.section} />
+        <PageBody extId={extId} extensionName={ext.manifest.name} pageId={route.page.id} title={title} sections={route.sections} search={route.section ? undefined : route.page.search} standalone={!!route.section} tabRoot={tabRoot} />
       </View>
     </>
   );
@@ -82,6 +88,7 @@ function PageBody({
   sections,
   search,
   standalone,
+  tabRoot,
 }: {
   extId: string;
   extensionName: string;
@@ -90,6 +97,7 @@ function PageBody({
   sections: SectionSpec[];
   search?: { feed: string; placeholder?: string };
   standalone: boolean;
+  tabRoot: boolean;
 }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
@@ -103,7 +111,7 @@ function PageBody({
 
   const refresh = useCallback(() => qc.refetchQueries({ queryKey: extensionFeedsKey(scope, extId), type: 'active' }), [qc, scope, extId]);
   const pull = usePullRefresh(refresh);
-  useRefreshSpinner(pull.refreshing);
+  useRefreshSpinner(pull.refreshing, tabRoot);
   const refreshControl = !isTV && pull.onRefresh ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={refreshTint(c.text2)} /> : undefined;
 
   const last = sections.length - 1;
