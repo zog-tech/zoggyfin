@@ -16,7 +16,7 @@ import type { IconName } from '@/components/icon-names';
 import type { Grants } from '@/extensions/http';
 import { chosenGrants, SWITCHED_GRANTS } from '@/extensions/install-request';
 import { cancelInstallRequest, confirmInstallRequest, install, pendingCandidates, type Candidate, useInstallRequest } from '@/extensions/runtime';
-import { describePermission, type Manifest, safeHost } from '@/extensions/schema';
+import { describePermission, type Manifest, pagesOf, safeHost } from '@/extensions/schema';
 import { ModalHeader } from '@/extensions/ui/modal-header';
 import { Group, makeSettingsStyles, webSwitchColors } from '@/features/settings/rows';
 import { toast } from '@/lib/toast';
@@ -108,7 +108,10 @@ function contributions(m: Manifest): string[] {
   if (k.itemActions?.length) out.push(`Buttons on items: ${names(k.itemActions)}`);
   if (k.homeSections?.length) out.push(`Home rows: ${names(k.homeSections)}`);
   if (k.shareTargets?.length) out.push(`Shared links: ${names(k.shareTargets)}`);
-  if (k.panels?.length) out.push(`Pages: ${names(k.panels)}`);
+  // Pages that get their own place in the app: the user must know before a tab or a tile appears.
+  const placed = pagesOf(m).filter((p) => p.placement?.tab || p.placement?.library);
+  if (placed.length) out.push(`App pages (a tab or a Library tile): ${names(placed)}`);
+  if (k.panels?.length) out.push(`Web pages: ${names(k.panels)}`);
   if (k.settings?.length) out.push(`${k.settings.length} ${k.settings.length === 1 ? 'setting' : 'settings'}, filled in for you`);
   return out;
 }
