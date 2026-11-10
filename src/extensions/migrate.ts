@@ -8,6 +8,8 @@
  *   fetched options to every account saved on the device. With no saved
  *   account, the list waits in `unclaimed` and the first account that signs
  *   in takes it. No install is lost.
+ * - Grants keep their values. The grants added with schema version 2
+ *   (`playback`, `downloads`) are on when the manifest asks for them.
  * - Secret settings stay in the secure store under `ext.<id>.<key>`; the
  *   names do not change, so the copied `•` markers still find them.
  * - A saved manifest goes through `parseManifest` again, so a v1-era shape
@@ -17,6 +19,7 @@
  *
  * Pure, so it is unit-tested.
  */
+import { readGrants } from './grants';
 import { parseManifest, SKIP_MODES, type Manifest, type SkipMode } from './schema';
 import { type AccountExtensions, type ChoiceOptions, EMPTY_ACCOUNT_EXTENSIONS, type InstalledExtension, type Values } from './types';
 
@@ -54,12 +57,11 @@ function readInstalled(raw: unknown): InstalledExtension | null {
   if (!isObject(raw) || !str(raw.manifestUrl)) return null;
   const manifest = readSavedManifest(raw.manifest);
   if (!manifest) return null;
-  const g = isObject(raw.grants) ? raw.grants : {};
   const ext: InstalledExtension = {
     manifestUrl: raw.manifestUrl,
     manifest,
     enabled: raw.enabled !== false,
-    grants: { itemPath: g.itemPath === true, jellyfinToken: g.jellyfinToken === true },
+    grants: readGrants(raw.grants, manifest.permissions),
     installedAt: typeof raw.installedAt === 'number' && Number.isFinite(raw.installedAt) ? raw.installedAt : 0,
   };
   if (str(raw.tab)) ext.tab = raw.tab;

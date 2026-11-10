@@ -16,6 +16,7 @@ import { ActionRow, Group, InfoRow, makeSettingsStyles, SettingsRow, webSwitchCo
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { confirmDestructive } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
+import { grantKeyOf } from '@/extensions/grants';
 import { features } from '@/platform/tv';
 import { mediaColors, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
@@ -108,13 +109,14 @@ export default function ExtensionScreen() {
             {m.permissions.map((p, i) => {
               const d = describePermission(p, m);
               const last = i === m.permissions.length - 1;
-              if (p === 'network') return <InfoRow key={p} icon="globe" label={d.title} value="" last={last} />;
-              const key = p === 'itemPath' ? 'itemPath' : 'jellyfinToken';
+              // Each permission has its own grant; one with no grant (network) is a plain row.
+              const key = grantKeyOf(p);
+              if (!key) return <InfoRow key={p} icon="globe" label={d.title} value="" last={last} />;
               const on = ext.grants[key];
               return (
                 <SettingsRow
                   key={p}
-                  icon={p === 'itemPath' ? 'folder' : 'lock.fill'}
+                  icon={p === 'itemPath' ? 'folder' : p === 'playback' ? 'play.fill' : p === 'downloads' ? 'arrow.down.circle' : 'lock.fill'}
                   label={d.title}
                   onPress={() => setGrant(m.id, key, !on)}
                   role="switch"

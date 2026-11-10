@@ -53,18 +53,31 @@ export const useInstallRequest = create<InstallRequest>(() => EMPTY);
 
 /**
  * The grants the confirm screen starts with. An update keeps the installed
- * token choice; an extension from the account starts from the account's
- * grants; a new one asks for every permission the manifest names (the
- * token on, so the install needs no other step). A grant is never on
- * without its permission.
+ * choices (the file path grant has no switch there and turns on again, as
+ * before); an extension from the account starts from the account's grants;
+ * a new one is on for every permission the manifest names, so the install
+ * needs no other step. A grant is never on without its permission.
  */
 export function initialGrants(c: Pick<Candidate, 'manifest' | 'installed' | 'fromAccount'>): Grants {
   const perms = c.manifest.permissions;
   const account = c.installed ? undefined : c.fromAccount?.grants;
+  const kept = (k: 'jellyfinToken' | 'playback' | 'downloads') => perms.includes(k) && (c.installed?.grants[k] ?? account?.[k] ?? true);
   return {
     itemPath: perms.includes('itemPath') && (account?.itemPath ?? true),
-    jellyfinToken: perms.includes('jellyfinToken') && (c.installed?.grants.jellyfinToken ?? account?.jellyfinToken ?? true),
+    jellyfinToken: kept('jellyfinToken'),
+    playback: kept('playback'),
+    downloads: kept('downloads'),
   };
+}
+
+/** The grants that have a switch on the confirm screen. */
+export const SWITCHED_GRANTS = ['jellyfinToken', 'playback', 'downloads'] as const;
+
+/** The grants to install with: the screen's switches over the start values, never one without its permission. */
+export function chosenGrants(c: Pick<Candidate, 'manifest' | 'installed' | 'fromAccount'>, choice: Partial<Grants> | undefined): Grants {
+  const g = initialGrants(c);
+  for (const k of SWITCHED_GRANTS) if (choice?.[k] !== undefined) g[k] = !!choice[k] && c.manifest.permissions.includes(k);
+  return g;
 }
 
 /** The extensions the screen still offers: loaded and not added yet. */

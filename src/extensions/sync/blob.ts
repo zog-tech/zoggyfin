@@ -48,6 +48,7 @@ import {
   stampsOf,
 } from '@/lib/account-blob';
 
+import type { Grants } from '../http';
 import { SKIP_MODES, type Manifest, type SkipMode } from '../schema';
 import type { AccountExtensions, InstalledExtension, Values } from '../types';
 
@@ -65,7 +66,7 @@ export const extChunks = chunkCodec('ext');
 export interface SyncedExtension {
   manifestUrl: string;
   enabled: boolean;
-  grants: { itemPath: boolean; jellyfinToken: boolean };
+  grants: Grants;
   /** The settings the user set that are not secret. */
   settings: Values;
   /** The page shown as a tab. */
@@ -124,7 +125,7 @@ export function syncedOf(local: LocalExtensions, id: string): SyncedExtension | 
   const out: SyncedExtension = {
     manifestUrl: e.manifestUrl,
     enabled: e.enabled,
-    grants: { itemPath: !!e.grants.itemPath, jellyfinToken: !!e.grants.jellyfinToken },
+    grants: { itemPath: !!e.grants.itemPath, jellyfinToken: !!e.grants.jellyfinToken, playback: !!e.grants.playback, downloads: !!e.grants.downloads },
     settings: syncedSettings(e.manifest, local.values[id]),
     addedAt: e.installedAt,
   };
@@ -394,7 +395,8 @@ function syncedValue(_id: string, v: unknown): SyncedExtension | null {
   const out: SyncedExtension = {
     manifestUrl: v.manifestUrl,
     enabled: v.enabled !== false,
-    grants: { itemPath: g.itemPath === true, jellyfinToken: g.jellyfinToken === true },
+    // A grant the entry does not name yet (`playback`, `downloads`) is on: it counts only with its permission.
+    grants: { itemPath: g.itemPath === true, jellyfinToken: g.jellyfinToken === true, playback: g.playback !== false, downloads: g.downloads !== false },
     settings,
     addedAt: isNum(v.addedAt) ? v.addedAt : 0,
   };

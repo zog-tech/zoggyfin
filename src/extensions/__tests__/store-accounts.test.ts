@@ -31,7 +31,7 @@ import type { InstalledExtension } from '../types';
 const A = 'srv1.userA';
 const B = 'srv1.userB';
 
-const ext = (id: string, at = 1): InstalledExtension => ({ manifestUrl: `http://192.0.2.10/${id}.json`, manifest: { ...manifest(), id }, enabled: true, grants: { itemPath: false, jellyfinToken: false }, installedAt: at });
+const ext = (id: string, at = 1): InstalledExtension => ({ manifestUrl: `http://192.0.2.10/${id}.json`, manifest: { ...manifest(), id }, enabled: true, grants: { itemPath: false, jellyfinToken: false, playback: false, downloads: false }, installedAt: at });
 const ids = () => extensionsState().list.map((e) => e.manifest.id);
 const saved = () => JSON.parse(mockKv.get('extensions.v2') ?? 'null');
 

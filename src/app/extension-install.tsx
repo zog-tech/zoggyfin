@@ -12,7 +12,9 @@ import { ActivityIndicator, ScrollView, Switch, Text, View } from 'react-native'
 
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
-import { initialGrants } from '@/extensions/install-request';
+import type { IconName } from '@/components/icon-names';
+import type { Grants } from '@/extensions/http';
+import { chosenGrants, SWITCHED_GRANTS } from '@/extensions/install-request';
 import { cancelInstallRequest, confirmInstallRequest, install, pendingCandidates, type Candidate, useInstallRequest } from '@/extensions/runtime';
 import { describePermission, type Manifest, safeHost } from '@/extensions/schema';
 import { ModalHeader } from '@/extensions/ui/modal-header';
@@ -28,10 +30,10 @@ export default function ExtensionInstallScreen() {
   // Extensions already added in this request leave the screen.
   const entries = all.filter((e) => !e.done);
   const ready = pendingCandidates(all);
-  // The token permission: shown with its own switch, pre-set by `initialGrants` (on for a new
-  // extension, the account's value for one from the account). What the user sets here wins.
-  const [tokenChoice, setToken] = useState<Record<string, boolean>>({});
-  const token: Record<string, boolean> = Object.fromEntries(ready.map((cand) => [cand.manifest.id, tokenChoice[cand.manifest.id] ?? initialGrants(cand).jellyfinToken]));
+  // The token, playback and download permissions each have a switch, pre-set by `initialGrants`
+  // (on for a new extension, the account's value for one from the account). What the user sets here wins.
+  const [choice, setChoice] = useState<Record<string, Partial<Grants>>>({});
+  const grants: Record<string, Grants> = Object.fromEntries(ready.map((cand) => [cand.manifest.id, chosenGrants(cand, choice[cand.manifest.id])]));
 
   const close = () => {
     cancelInstallRequest();
@@ -41,7 +43,7 @@ export default function ExtensionInstallScreen() {
 
   const confirm = async () => {
     const r = await confirmInstallRequest((cand) =>
-      install(cand, { itemPath: initialGrants(cand).itemPath, jellyfinToken: !!token[cand.manifest.id] && cand.manifest.permissions.includes('jellyfinToken') }),
+      install(cand, chosenGrants(cand, choice[cand.manifest.id])),
     );
     if (r.kind === 'done') {
       toast(r.names.length === 1 ? `${r.names[0]} is on` : `${r.names.length} extensions are on`, { icon: 'checkmark' });
@@ -60,7 +62,12 @@ export default function ExtensionInstallScreen() {
         <View style={st.inner}>
           {entries.map((e) =>
             e.candidate ? (
-              <Summary key={e.input} cand={e.candidate} token={!!token[e.candidate.manifest.id]} setToken={(v) => setToken((t) => ({ ...t, [e.candidate!.manifest.id]: v }))} />
+              <Summary
+                key={e.input}
+                cand={e.candidate}
+                grants={grants[e.candidate.manifest.id] ?? chosenGrants(e.candidate, undefined)}
+                setGrant={(k, v) => setChoice((all) => ({ ...all, [e.candidate!.manifest.id]: { ...all[e.candidate!.manifest.id], [k]: v } }))}
+              />
             ) : e.error ? (
               <Group key={e.input} title={safeHost(e.input)}>
                 <View style={s.errorRow}>
@@ -106,7 +113,9 @@ function contributions(m: Manifest): string[] {
   return out;
 }
 
-function Summary({ cand, token, setToken }: { cand: Candidate; token: boolean; setToken: (v: boolean) => void }) {
+const PERMISSION_ICONS: Partial<Record<string, IconName>> = { network: 'globe', itemPath: 'folder', playback: 'play.fill', downloads: 'arrow.down.circle' };
+
+function Summary({ cand, grants, setGrant }: { cand: Candidate; grants: Grants; setGrant: (k: (typeof SWITCHED_GRANTS)[number], v: boolean) => void }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const m = cand.manifest;
@@ -129,13 +138,13 @@ function Summary({ cand, token, setToken }: { cand: Candidate; token: boolean; s
       <Group title="Permissions">
         {perms.map(({ p, title, detail, sensitive }, i) => (
           <View key={p} style={[s.perm, i < perms.length - 1 && s.line, sensitive && s.sensitive]}>
-            <Icon name={sensitive ? 'exclamationmark.triangle' : p === 'network' ? 'globe' : 'folder'} size={scaled(iconSize.sm)} color={sensitive ? c.danger : c.text2} />
+            <Icon name={sensitive ? 'exclamationmark.triangle' : (PERMISSION_ICONS[p] ?? 'folder')} size={scaled(iconSize.sm)} color={sensitive ? c.danger : c.text2} />
             <View style={{ flex: 1, gap: spacing.xxs }}>
               <Text style={[s.permTitle, sensitive && { color: c.danger }]}>{title}</Text>
               <Text style={s.muted}>{detail}</Text>
             </View>
-            {p === 'jellyfinToken' ? (
-              <Switch value={token} onValueChange={setToken} trackColor={{ true: c.accent, false: c.surface3 }} thumbColor={mediaColors.white} {...webSwitchColors} accessibilityLabel={title} />
+            {p === 'jellyfinToken' || p === 'playback' || p === 'downloads' ? (
+              <Switch value={grants[p]} onValueChange={(v) => setGrant(p, v)} trackColor={{ true: c.accent, false: c.surface3 }} thumbColor={mediaColors.white} {...webSwitchColors} accessibilityLabel={title} />
             ) : null}
           </View>
         ))}

@@ -5,7 +5,7 @@
  */
 import { claimAccount, EXTENSIONS_SCHEMA_VERSION, installedElsewhere, loadExtensionsData, readAccountExtensions, readSavedManifest } from '../migrate';
 import { pagesOf } from '../schema';
-import { manifest, raw } from '../test-utils/fixtures';
+import { manifest, raw, rawV2 } from '../test-utils/fixtures';
 
 const A = 'srv1.userA';
 const B = 'srv1.userB';
@@ -16,8 +16,8 @@ function v1Payload() {
   const { pages: _p, ...contributes } = manifest().contributes;
   return {
     list: [
-      { manifestUrl: 'http://192.0.2.10:3000/zoggyfin-extension.json', manifest: { ...manifest(), contributes }, enabled: true, grants: { itemPath: true, jellyfinToken: false }, installedAt: 1_700_000_000_000 },
-      { manifestUrl: 'http://192.0.2.20/x.json', manifest: { ...manifest(), id: 'org.example.off', contributes: {} }, enabled: false, grants: { itemPath: false, jellyfinToken: true }, installedAt: 1_700_000_100_000 },
+      { manifestUrl: 'http://192.0.2.10:3000/zoggyfin-extension.json', manifest: { ...manifest(), contributes }, enabled: true, grants: { itemPath: true, jellyfinToken: false, playback: false, downloads: false }, installedAt: 1_700_000_000_000 },
+      { manifestUrl: 'http://192.0.2.20/x.json', manifest: { ...manifest(), id: 'org.example.off', contributes: {} }, enabled: false, grants: { itemPath: false, jellyfinToken: true, playback: false, downloads: false }, installedAt: 1_700_000_100_000 },
     ],
     values: { 'com.example.hello': { apiKey: '•', user: 'Jane Doe', loud: false } },
     auto: { 'com.example.hello': { folder: 'videos' } },
@@ -33,8 +33,8 @@ describe('loadExtensionsData', () => {
     for (const key of [A, B, C]) {
       const a = data.accounts[key];
       expect(a.list.map((e) => [e.manifest.id, e.enabled, e.grants])).toEqual([
-        ['com.example.hello', true, { itemPath: true, jellyfinToken: false }],
-        ['org.example.off', false, { itemPath: false, jellyfinToken: true }],
+        ['com.example.hello', true, { itemPath: true, jellyfinToken: false, playback: false, downloads: false }],
+        ['org.example.off', false, { itemPath: false, jellyfinToken: true, playback: false, downloads: false }],
       ]);
       expect(a.values['com.example.hello']).toEqual({ apiKey: '•', user: 'Jane Doe', loud: false });
       expect(a.auto['com.example.hello']).toEqual({ folder: 'videos' });
@@ -78,6 +78,27 @@ describe('loadExtensionsData', () => {
     expect(a.options).toEqual({ 'com.example.hello': { folder: [{ value: 'v', label: 'V' }] } });
     for (const junk of [undefined, null, 'text', 42, [], { list: 'x' }]) expect(() => loadExtensionsData(null, junk, [A])).not.toThrow();
     expect(() => loadExtensionsData({ schemaVersion: 2, accounts: 'x', unclaimed: 5 }, null, [A])).not.toThrow();
+  });
+
+  it('keeps the grants of existing installs; the new grants are on only for manifests that ask for them', () => {
+    const v2Manifest = manifest();
+    const media = { ...rawV2 };
+    const { data } = loadExtensionsData(
+      null,
+      {
+        list: [
+          { manifestUrl: 'http://192.0.2.10/hello.json', manifest: v2Manifest, enabled: true, grants: { itemPath: false, jellyfinToken: true }, installedAt: 1 },
+          { manifestUrl: 'https://media.example.org/zoggyfin-extension.json', manifest: media, enabled: true, grants: { itemPath: false, jellyfinToken: false }, installedAt: 2 },
+          { manifestUrl: 'https://media.example.org/b.json', manifest: { ...media, id: 'org.example.chosen' }, enabled: true, grants: { itemPath: false, jellyfinToken: false, playback: false, downloads: true }, installedAt: 3 },
+        ],
+      },
+      [A],
+    );
+    expect(data.accounts[A].list.map((e) => e.grants)).toEqual([
+      { itemPath: false, jellyfinToken: true, playback: false, downloads: false },
+      { itemPath: false, jellyfinToken: false, playback: true, downloads: true },
+      { itemPath: false, jellyfinToken: false, playback: false, downloads: true },
+    ]);
   });
 
   it('keeps an install whose saved manifest no longer parses', () => {

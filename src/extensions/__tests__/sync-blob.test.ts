@@ -34,7 +34,7 @@ const T0 = 1_800_000_000_000;
 const HELLO = 'com.example.hello';
 
 function ext(id: string, installedAt = 100, over: Partial<InstalledExtension> = {}): InstalledExtension {
-  return { manifestUrl: `http://192.0.2.10/${id}.json`, manifest: { ...manifest(), id }, enabled: true, grants: { itemPath: false, jellyfinToken: true }, installedAt, ...over };
+  return { manifestUrl: `http://192.0.2.10/${id}.json`, manifest: { ...manifest(), id }, enabled: true, grants: { itemPath: false, jellyfinToken: true, playback: false, downloads: false }, installedAt, ...over };
 }
 
 function device(list: InstalledExtension[] = [], values: LocalExtensions['values'] = {}): { local: LocalExtensions; meta: ExtSyncMeta } {
@@ -109,7 +109,7 @@ describe('extension account sync', () => {
   });
 
   /** The account with the extension from the first device, and a second device that was offered it. */
-  function offered(grants = { itemPath: true, jellyfinToken: true }) {
+  function offered(grants = { itemPath: true, jellyfinToken: true, playback: false, downloads: false }) {
     const a = device([ext(HELLO, 100, { grants, tab: 'latest' })], { [HELLO]: { user: 'Jane Doe', apiKey: '•' } });
     a.meta = { ...EMPTY_EXT_META, seeded: true };
     const account = sync(a, null, T0).blob;
@@ -125,13 +125,13 @@ describe('extension account sync', () => {
   }
 
   it('an install of an offered extension takes the account settings and grants, and sends nothing back', () => {
-    const { c, account, offer, installWith } = offered({ itemPath: true, jellyfinToken: false });
-    expect(offer.val.grants).toEqual({ itemPath: true, jellyfinToken: false });
+    const { c, account, offer, installWith } = offered({ itemPath: true, jellyfinToken: false, playback: false, downloads: false });
+    expect(offer.val.grants).toEqual({ itemPath: true, jellyfinToken: false, playback: false, downloads: false });
     installWith(offer.val.grants);
     const rc = sync(c, account, T0 + 4);
     expect(rc.pushed).toBe(false);
     const got = c.local.list[0];
-    expect(got.grants).toEqual({ itemPath: true, jellyfinToken: false });
+    expect(got.grants).toEqual({ itemPath: true, jellyfinToken: false, playback: false, downloads: false });
     expect(got.tab).toBe('latest');
     expect(got.installedAt).toBe(100);
     expect(c.local.values[HELLO]).toEqual({ user: 'Jane Doe' });
@@ -140,7 +140,7 @@ describe('extension account sync', () => {
 
   it('a grant the user turns off on the confirm screen stays off after the next pull, and goes to the account', () => {
     const { c, account, installWith } = offered();
-    installWith({ itemPath: true, jellyfinToken: false });
+    installWith({ itemPath: true, jellyfinToken: false, playback: false, downloads: false });
     const r = sync(c, account, T0 + 4);
     expect(r.pushed).toBe(true);
     expect(c.local.list[0].grants.jellyfinToken).toBe(false);
@@ -158,15 +158,29 @@ describe('extension account sync', () => {
 
   it('a newer grant change on another device still applies after the choice on the screen', () => {
     const { a, c, account, installWith } = offered();
-    installWith({ itemPath: true, jellyfinToken: false });
+    installWith({ itemPath: true, jellyfinToken: false, playback: false, downloads: false });
     let blob = sync(c, account, T0 + 4).blob;
     blob = sync(a, blob, T0 + 5).blob;
     expect(a.local.list[0].grants.jellyfinToken).toBe(false);
     // Later, the first device turns the token grant on again.
-    a.local = { ...a.local, list: [{ ...a.local.list[0], grants: { itemPath: true, jellyfinToken: true } }] };
+    a.local = { ...a.local, list: [{ ...a.local.list[0], grants: { itemPath: true, jellyfinToken: true, playback: false, downloads: false } }] };
     blob = sync(a, blob, T0 + 100).blob;
     sync(c, blob, T0 + 101);
     expect(c.local.list[0].grants.jellyfinToken).toBe(true);
+  });
+
+  it('syncs the playback and download grants like the others', () => {
+    const a = device([ext(HELLO)]);
+    a.meta = { ...EMPTY_EXT_META, seeded: true };
+    let account = sync(a, null, T0).blob;
+    const b = device([ext(HELLO)]);
+    b.meta = { ...EMPTY_EXT_META, seeded: true };
+    account = sync(b, account, T0 + 1).blob;
+    a.local = { ...a.local, list: [{ ...a.local.list[0], grants: { ...a.local.list[0].grants, playback: true, downloads: false } }] };
+    account = sync(a, account, T0 + 10).blob;
+    expect(account.extensions[HELLO].val?.grants).toEqual({ itemPath: false, jellyfinToken: true, playback: true, downloads: false });
+    sync(b, account, T0 + 11);
+    expect(b.local.list[0].grants).toEqual({ itemPath: false, jellyfinToken: true, playback: true, downloads: false });
   });
 
   it('a removal on one device removes the extension on the others, with no offer', () => {
@@ -238,7 +252,7 @@ describe('extension account sync', () => {
 describe('reading and writing the blob', () => {
   it('splits a large blob into chunks and reads it back', () => {
     const big: ExtSyncBlob = { schemaVersion: 1, extensions: {}, skip: {} };
-    for (let i = 0; i < 150; i++) big.extensions[`org.example.e${i}`] = { at: T0 + i, val: { manifestUrl: `https://media.example.org/${i}/zoggyfin-extension.json`, enabled: true, grants: { itemPath: false, jellyfinToken: false }, settings: { note: 'x'.repeat(1500) }, addedAt: i } };
+    for (let i = 0; i < 150; i++) big.extensions[`org.example.e${i}`] = { at: T0 + i, val: { manifestUrl: `https://media.example.org/${i}/zoggyfin-extension.json`, enabled: true, grants: { itemPath: false, jellyfinToken: false, playback: false, downloads: false }, settings: { note: 'x'.repeat(1500) }, addedAt: i } };
     const text = extBlobText(big)!;
     const small = chunkCodec('ext', 50_000);
     const prefs = small.encode(text);
@@ -270,7 +284,7 @@ describe('reading and writing the blob', () => {
       skip: { 'a:intro': { at: 1, val: 'auto' }, 'a:bad': { at: 1, val: 'sometimes' }, nolabel: { at: 1, val: 'off' } },
     });
     expect(Object.keys(b!.extensions).sort()).toEqual(['gone', 'good']);
-    expect(b!.extensions.good.val).toEqual({ manifestUrl: 'https://media.example.org/m.json', enabled: true, grants: { itemPath: false, jellyfinToken: false }, settings: { a: 'b' }, tab: 'main', addedAt: 0 });
+    expect(b!.extensions.good.val).toEqual({ manifestUrl: 'https://media.example.org/m.json', enabled: true, grants: { itemPath: false, jellyfinToken: false, playback: true, downloads: true }, settings: { a: 'b' }, tab: 'main', addedAt: 0 });
     expect(Object.keys(b!.skip)).toEqual(['a:intro']);
     expect(migrateExtBlob({ extensions: {} })).toBeNull();
     expect(migrateExtBlob('x')).toBeNull();
