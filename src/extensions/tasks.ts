@@ -15,6 +15,8 @@ export interface Task {
   phase: TaskPhase;
   message?: string;
   startedAt: number;
+  /** The account that started it (`<serverId>.<userId>`). */
+  account?: string;
 }
 
 interface TasksState {
@@ -29,6 +31,18 @@ function patch(key: string, p: Partial<Task>): void {
 
 function drop(key: string): void {
   useTasks.setState((st) => ({ tasks: st.tasks.filter((t) => t.key !== key) }));
+}
+
+/**
+ * An account switch: the tasks of other accounts leave the list, which also
+ * stops their polls (a poll ends when its task is gone). They stay saved and
+ * resume when that account is back.
+ */
+export function stopTasksExcept(account: string | null): void {
+  useTasks.setState((st) => {
+    const tasks = st.tasks.filter((t) => !t.account || t.account === account);
+    return tasks.length === st.tasks.length ? st : { tasks };
+  });
 }
 
 export function clearFinishedTasks(): void {
@@ -55,11 +69,12 @@ export const KEEP_FINISHED_MS = 10_000;
 let seq = 0;
 
 /** Starts to follow a task. Returns its key. */
-export function startTask(ref: TaskRef, ext: { id: string; name: string }, deps: PollDeps): string {
+export function startTask(ref: TaskRef, ext: { id: string; name: string; account?: string }, deps: PollDeps): string {
   const timer = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
   const now = deps.now ?? Date.now;
   const key = `${ext.id}:${ref.id ?? ref.statusUrl}:${++seq}`;
   const task: Task = { key, extensionId: ext.id, extensionName: ext.name, title: ref.title, progress: null, phase: 'running', startedAt: now() };
+  if (ext.account) task.account = ext.account;
   // The same task again (same id) replaces the old entry.
   useTasks.setState((st) => ({ tasks: [...st.tasks.filter((t) => !(ref.id && t.extensionId === ext.id && t.key.startsWith(`${ext.id}:${ref.id}:`))), task] }));
   const interval = Math.max(1, ref.intervalSeconds ?? 2) * 1000;

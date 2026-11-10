@@ -25,13 +25,19 @@ import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match
 import { askChoice, askConfirm, askText, type ChoiceOption } from './prompts';
 import { applyRefresh, handleActionResponse, type ResponseEffects, type TaskRef, toastText } from './response';
 import { type InputSpec, type ItemActionSpec, type Manifest, parseManifest, type RequestSpec, type ShareTargetSpec } from './schema';
+import { followSession } from './session-binding';
 import { type AccountFacts, effectiveValues, extensionsState, getExtension, type InstalledExtension, setAuto, upsertExtension, useExtensions } from './store';
-import { startTask } from './tasks';
+import { plannedContributions, registrationSignature } from './registration';
+import { forgetSavedTask, readSavedTasks, rememberTask, TASKS_KEY, tasksToResume } from './saved-tasks';
+import { startTask, stopTasksExcept, useTasks } from './tasks';
 import { render, usesName, type TemplateContext } from './template';
 
 // ---------------------------------------------------------------------------
 // Account
 // ---------------------------------------------------------------------------
+
+// The store shows the signed-in account's extensions from the first render on.
+followSession();
 
 let isAdmin = false;
 let adminFor = '';
@@ -122,42 +128,43 @@ function effectsFor(ext: InstalledExtension): ResponseEffects {
   };
 }
 
-// Running tasks are saved, so the app follows them again after a restart (or a page reload on web).
-const TASKS_KEY = 'extensions.tasks.v1';
-type SavedTask = { extId: string; ref: TaskRef; at: number };
-const savedTasks = () => readJson<SavedTask[]>(TASKS_KEY, []);
-function forgetTask(extId: string, ref: TaskRef) {
-  writeJson(TASKS_KEY, savedTasks().filter((t) => !(t.extId === extId && t.ref.statusUrl === ref.statusUrl)));
-}
+// Running tasks are saved per account, so the app follows them again after a restart (or a page reload on web).
+const savedTasks = () => readSavedTasks(readJson<unknown>(TASKS_KEY, []));
 
 export function followTask(ext: InstalledExtension, ref: TaskRef, at = Date.now()): string {
   const extId = ext.manifest.id;
-  writeJson(TASKS_KEY, [...savedTasks().filter((t) => !(t.extId === extId && t.ref.statusUrl === ref.statusUrl)), { extId, ref, at }].slice(-20));
-  return startTask(ref, { id: extId, name: ext.manifest.name }, {
+  const account = extensionsState().account;
+  if (account) writeJson(TASKS_KEY, rememberTask(savedTasks(), { extId, ref, at, account }));
+  return startTask(ref, { id: extId, name: ext.manifest.name, account: account ?? undefined }, {
     fetchStatus: (url) => extensionRequest(getExtension(extId) ?? ext, { method: 'GET', path: url }, templateContext(ext), FEED_TIMEOUT_MS),
     onDone: (status, task) => {
-      forgetTask(extId, ref);
+      if (account) writeJson(TASKS_KEY, forgetSavedTask(savedTasks(), extId, ref.statusUrl, account));
       toast(toastText(status.toast) ?? `${task.title}: done`, { icon: 'checkmark' });
       applyRefresh(status.refresh, effectsFor(ext));
     },
     onFailed: (message, task) => {
-      forgetTask(extId, ref);
+      if (account) writeJson(TASKS_KEY, forgetSavedTask(savedTasks(), extId, ref.statusUrl, account));
       toast(`${task.title}: ${message}`, { icon: 'exclamationmark.triangle' });
     },
   });
 }
 
-let resumed = false;
-
-/** Follows the saved tasks again, once per app start. Tasks older than a day are dropped. */
+/**
+ * Follows the saved tasks of the signed-in account again (at start and after
+ * an account switch), and stops following the tasks of other accounts: their
+ * status requests would carry the wrong account. Tasks older than a day are
+ * dropped.
+ */
 function resumeTasks(): void {
-  if (resumed) return;
-  resumed = true;
-  const fresh = savedTasks().filter((t) => Date.now() - t.at < 24 * 60 * 60 * 1000);
-  writeJson(TASKS_KEY, fresh);
-  for (const t of fresh) {
+  const account = extensionsState().account;
+  stopTasksExcept(account);
+  if (!account) return;
+  const { resume, keep } = tasksToResume(savedTasks(), account, Date.now());
+  writeJson(TASKS_KEY, keep);
+  const running = new Set(useTasks.getState().tasks.map((t) => t.key.split(':').slice(0, -1).join(':')));
+  for (const t of resume) {
     const ext = getExtension(t.extId);
-    if (ext?.enabled) followTask(ext, t.ref, t.at);
+    if (ext?.enabled && !running.has(`${t.extId}:${t.ref.id ?? t.ref.statusUrl}`)) followTask(ext, t.ref, t.at);
   }
 }
 
@@ -383,54 +390,62 @@ export function installFromInvite(urls: string[]): Promise<void> {
 let unregister: (() => void)[] = [];
 let lastSignature = '';
 
-function signature(list: InstalledExtension[]): string {
-  return JSON.stringify(list.filter((e) => e.enabled).map((e) => [e.manifest, e.grants]));
-}
-
-/** Registers the contributions of the enabled extensions. Runs again when the list changes. */
+/**
+ * Registers the contributions of the signed-in account's enabled
+ * extensions. Runs again when the list changes or another account signs in.
+ */
 export function syncRegistrations(sectionComponent: (extId: string, sectionId: string) => React.ComponentType): void {
-  const list = extensionsState().list;
-  const sig = signature(list);
+  const st = extensionsState();
+  const sig = registrationSignature(st.account, st.list);
   if (sig === lastSignature) return;
   lastSignature = sig;
   unregister.forEach((u) => u());
   unregister = [];
-  list
-    .filter((e) => e.enabled)
-    .sort((a, b) => a.installedAt - b.installedAt)
-    .forEach((ext, i) => {
-      const id = ext.manifest.id;
-      (ext.manifest.contributes.itemActions ?? []).forEach((a, j) => {
-        unregister.push(
-          itemActions.register({
-            id: `ext.${id}.${a.id}`,
-            title: a.title,
-            icon: iconOf(a.icon, 'square.grid.2x2'),
-            order: 60 + i * 5 + j / 100,
-            destructive: a.destructive,
-            when: (ctx: ItemActionContext) => {
-              const cur = getExtension(id) ?? ext;
-              const item = itemContext(cur, ctx.item, ctx.facts);
-              // An action that needs a fact still loading stays hidden until it arrives.
-              return matchesWhen(a.when, { type: ctx.item.Type, mediaType: ctx.item.MediaType, libraryName: item.libraryName || null, path: 'path' in item ? item.path || null : null });
-            },
-            run: (ctx: ItemActionContext) => {
-              const cur = getExtension(id) ?? ext;
-              return runFlow(cur, a, { item: itemContext(cur, ctx.item, ctx.facts) });
-            },
-          }),
-        );
-      });
-      (ext.manifest.contributes.homeSections ?? []).forEach((sec, j) => {
-        unregister.push(homeSections.register({ id: `ext.${id}.${sec.id}`, order: 45 + i + j / 10, component: sectionComponent(id, sec.id) }));
-      });
-    });
+  for (const c of plannedContributions(st.list)) {
+    const id = c.extId;
+    const ext = st.list.find((e) => e.manifest.id === id) as InstalledExtension;
+    if (c.kind === 'homeSection') {
+      unregister.push(homeSections.register({ id: c.id, order: c.order, component: sectionComponent(id, c.sectionId) }));
+      continue;
+    }
+    const a = c.action;
+    unregister.push(
+      itemActions.register({
+        id: c.id,
+        title: a.title,
+        icon: iconOf(a.icon, 'square.grid.2x2'),
+        order: c.order,
+        destructive: a.destructive,
+        when: (ctx: ItemActionContext) => {
+          const cur = getExtension(id) ?? ext;
+          const item = itemContext(cur, ctx.item, ctx.facts);
+          // An action that needs a fact still loading stays hidden until it arrives.
+          return matchesWhen(a.when, { type: ctx.item.Type, mediaType: ctx.item.MediaType, libraryName: item.libraryName || null, path: 'path' in item ? item.path || null : null });
+        },
+        run: (ctx: ItemActionContext) => {
+          const cur = getExtension(id) ?? ext;
+          return runFlow(cur, a, { item: itemContext(cur, ctx.item, ctx.facts) });
+        },
+      }),
+    );
+  }
 }
 
-/** Starts the runtime: registers now and on every change. Returns a stop function. */
+/**
+ * Starts the runtime: registers now and on every change of the list or the
+ * account. On an account switch it also follows that account's saved tasks.
+ * Returns a stop function.
+ */
 export function startExtensions(sectionComponent: (extId: string, sectionId: string) => React.ComponentType): () => void {
+  followSession();
   syncRegistrations(sectionComponent);
   void refreshAccountFacts();
   resumeTasks();
-  return useExtensions.subscribe(() => syncRegistrations(sectionComponent));
+  return useExtensions.subscribe((st, prev) => {
+    syncRegistrations(sectionComponent);
+    if (st.account !== prev.account) {
+      void refreshAccountFacts();
+      resumeTasks();
+    }
+  });
 }
