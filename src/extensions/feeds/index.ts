@@ -19,6 +19,7 @@ export {
   nextCursor,
   normalizeQuery,
   refreshExtensionFeeds,
+  isExtensionFeedKey,
   withFeedParams,
   type FeedParams,
   type LoadedPage,

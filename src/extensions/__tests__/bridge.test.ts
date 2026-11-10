@@ -13,7 +13,7 @@ const deps = (over: { refusal?: string | null; network?: boolean; opened?: boole
   playRefusal: jest.fn(() => over.refusal ?? null),
   playMedia: jest.fn(),
   openEntry: jest.fn(),
-  hasPage: jest.fn((id: string) => id === 'main'),
+  hasPage: jest.fn((id: string, tab?: string) => id === 'main' && (!tab || tab === 'mine')),
   openPage: jest.fn(),
   refreshPage: jest.fn(),
   hasNetwork: jest.fn(() => over.network ?? true),
@@ -29,6 +29,15 @@ describe('bridge', () => {
     expect(readBridgeMessage({ id: 1, method: 'toast' })).toBeNull();
     expect(readBridgeMessage({ zoggyfin: 1, id: 1, method: 'eval' })).toBeNull();
     expect(readBridgeMessage('not json')).toBeNull();
+  });
+  it('opens a page, with an optional tab of that page', async () => {
+    const d = deps();
+    expect((await handleBridgeRequest({ id: 1, method: 'openPage', params: { page: 'main', tab: 'mine' } }, d)).result).toBe(true);
+    expect(d.openPage).toHaveBeenLastCalledWith('main', 'mine');
+    await handleBridgeRequest({ id: 2, method: 'openPage', params: { page: 'main' } }, d);
+    expect(d.openPage).toHaveBeenLastCalledWith('main');
+    expect((await handleBridgeRequest({ id: 3, method: 'openPage', params: { page: 'main', tab: 'nope' } }, d)).error).toBe('tab is not a tab of this page');
+    expect(d.openPage).toHaveBeenCalledTimes(2);
   });
   it('reloads only the extension feeds with refreshPage', async () => {
     const d = deps();

@@ -1,7 +1,7 @@
 import { parseManifest } from '@/extensions/schema';
 import { rawV2 } from '@/extensions/test-utils/fixtures';
 
-import { initialTabIndex, rememberTab, resetRememberedTabs, tabSearch } from '../page-tabs';
+import { initialTabIndex, onTabRequest, rememberTab, requestTab, resetRememberedTabs, tabSearch } from '../page-tabs';
 import { resolveHomeRow, resolvePageRoute } from '../routes';
 
 const sec = (id: string) => ({ id, title: id, feed: `/api/${id}` });
@@ -31,6 +31,16 @@ describe('page tabs', () => {
   it('opens on the first tab when the remembered one is gone after an update', () => {
     rememberTab('ext', 'main', 'gone');
     expect(initialTabIndex(tabs, 'ext', 'main')).toBe(0);
+  });
+
+  it('a tab request tells the open pages and is remembered for a page that opens next', () => {
+    const seen: string[] = [];
+    const stop = onTabRequest((e, p, t) => seen.push(`${e}/${p}/${t}`));
+    requestTab('ext', 'main', 'b');
+    stop();
+    requestTab('ext', 'main', 'c');
+    expect(seen).toEqual(['ext/main/b']);
+    expect(initialTabIndex(tabs, 'ext', 'main')).toBe(2);
   });
 
   it('uses the tab search, else the page search', () => {

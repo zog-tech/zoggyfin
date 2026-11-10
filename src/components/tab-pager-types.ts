@@ -10,5 +10,7 @@ export interface TabPagerProps {
   /** Renders a page. Pages mount on first visit and stay mounted. */
   renderPage: (tab: PagerTab, index: number) => ReactNode;
   initialIndex?: number;
+  /** Selects a page from outside (a new `seq` selects again). */
+  select?: { index: number; seq: number };
   onIndexChange?: (index: number) => void;
 }

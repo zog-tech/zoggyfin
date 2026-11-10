@@ -9,8 +9,9 @@
  *   the extension needs the `playback` permission and the user's grant
  *   (`playRefusal`). A picture on another origin is left out.
  * - `openEntry`: the `detail` URL must be on the extension's origin.
- * - `openPage`: the page must be one of the manifest's pages. The app loads
- *   the extension's feeds again first, so the page shows what the panel changed.
+ * - `openPage`: the page must be one of the manifest's pages; `tab`, when
+ *   given, one of its tabs. The app goes back to the page when it is already
+ *   under the panel, else opens it; the feeds load once when the panel closes.
  * - `refreshPage`: loads the feeds of this extension only (its pages, Home
  *   rows and search results), not the rest of the app.
  * - `openExternal`: an `https` URL with no user name or password, opened in
@@ -54,9 +55,9 @@ export interface BridgeDeps {
   playMedia(media: BridgeMedia): Promise<void> | void;
   /** Opens an entry page; `detail` is a full URL on the origin. */
   openEntry(entry: { detail: string; title?: string }): void;
-  /** True when the manifest has this page. */
-  hasPage(pageId: string): boolean;
-  openPage(pageId: string): void;
+  /** True when the manifest has this page (and, with `tabId`, this tab on it). */
+  hasPage(pageId: string, tabId?: string): boolean;
+  openPage(pageId: string, tabId?: string): void;
   /** Loads the feeds of this extension again. */
   refreshPage(): void;
   /** True when the extension has the `network` permission. */
@@ -195,7 +196,10 @@ export async function handleBridgeRequest(req: BridgeRequest, deps: BridgeDeps):
       case 'openPage': {
         const page = textParam(req.params, 'page', 64);
         if (!page || !deps.hasPage(page)) throw new Error('page is not a page of this extension');
-        deps.openPage(page);
+        const tab = textParam(req.params, 'tab', 64);
+        if (tab && !deps.hasPage(page, tab)) throw new Error('tab is not a tab of this page');
+        if (tab) deps.openPage(page, tab);
+        else deps.openPage(page);
         break;
       }
       case 'refreshPage':

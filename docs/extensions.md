@@ -308,12 +308,12 @@ function zoggyfin(method, params = {}) {
 | `getContext` | – | `{ extension, settings, jellyfin, theme, platform }`. `jellyfin.token` is there only with `jellyfinToken`. |
 | `play` | `{ itemId }` | Plays the item. |
 | `openItem` | `{ itemId }` | Closes the panel and opens the item. |
-| `refreshLibrary` | – | Loads the app's data again: the Jellyfin data, every extension feed (pages, Home rows, search results) and entry pages. Again after 8 s and 25 s. |
+| `refreshLibrary` | – | Loads the app's data again: the Jellyfin data, the feeds of other extensions and entry pages, now and again after 8 s and 25 s. The calling extension's feeds load once, when the panel closes. |
 | `toast` | `{ text }` | Shows a toast. |
 | `close` | – | Closes the panel. |
 | `playMedia` | `{ mediaId, playback, title?, image? }` | Plays the media, as a card with `media` does. `playback` (and `image`) must be on the extension's origin. Needs the `playback` permission, and the user's switch must be on; otherwise the answer is an error that says so. Schema version 2. |
 | `openEntry` | `{ detail, title? }` | Closes the panel and opens the entry page of `detail` (on the extension's origin). Schema version 2. |
-| `openPage` | `{ page }` | Closes the panel and opens one of the manifest's pages. The app loads the extension's feeds again first, so the page shows what the panel changed. Schema version 2. |
+| `openPage` | `{ page, tab? }` | Closes the panel and shows one of the manifest's pages. When the page is already open under the panel (in the same tab, or as the root of the extension tab), the app goes back to it; else it opens it. `tab`: the id of one of the page's tabs to select (an unknown id is an error). The feeds load again once, when the panel closes. Schema version 2. |
 | `refreshPage` | – | Loads the feeds of this extension again (its pages, Home rows and search results), and nothing else. The panel stays open. |
 | `openExternal` | `{ url }` | Opens `url` in the system browser (web and the Mac app: a new browser tab). `url` must use `https` and must not hold a user name or a password; another URL is an error. Needs the `network` permission (every extension has it). The answer is `{ "opened": true }` or `{ "opened": false }`. There is no confirm, as for a feed card's `link`. On the web, a blocked popup still answers `true`. |
 
@@ -330,10 +330,10 @@ panel. A page on another origin that loads in the panel cannot use the bridge.
 
 **After a change in a panel.** When a panel closes (by `close`, `openPage`,
 `openItem`, `openEntry`, the close button or Back), the app loads the feeds of
-that extension again. A panel that changes what the feeds show (for example a
-sign-in) can therefore close with `openPage` or `close`; it does not need
-`refreshLibrary`. Use `refreshPage` to reload the feeds while the panel stays
-open. The app sends feed requests itself, with the manifest `headers`; it
+that extension again, once per feed. A panel that changes what the feeds show
+(for example a sign-in) can therefore close with `openPage` or `close`; it
+does not need `refreshLibrary`. Use `refreshPage` to reload the feeds while
+the panel stays open (they load once more when it closes). The app sends feed requests itself, with the manifest `headers`; it
 never sends the panel's cookies. Keep a sign-in made in a panel on the
 extension's server, not only in a cookie of the panel page.
 

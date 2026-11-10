@@ -36,6 +36,26 @@ export function tabSearch(tab: Pick<TabSpec, 'search'>, page: Pick<PageSpec, 'se
   return tab.search ?? page.search;
 }
 
+type TabListener = (extId: string, pageId: string, tabId: string) => void;
+const listeners = new Set<TabListener>();
+
+/**
+ * Asks a page to show a tab (a panel's `openPage` with `tab`): remembers it,
+ * so a page that opens next starts there, and tells the open pages.
+ */
+export function requestTab(extId: string, pageId: string, tabId: string): void {
+  rememberTab(extId, pageId, tabId);
+  listeners.forEach((fn) => fn(extId, pageId, tabId));
+}
+
+/** Calls `fn` for each tab request. Returns a stop function. */
+export function onTabRequest(fn: TabListener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
 /** For tests: forgets every remembered tab. */
 export function resetRememberedTabs(): void {
   lastTab.clear();

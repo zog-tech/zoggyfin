@@ -12,7 +12,7 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
-import { type ReactElement, useCallback, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { useApi } from '@/api/use-api';
@@ -33,7 +33,7 @@ import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme, webInput } from '@/theme';
 
 import { pageHref, useExtGroup } from './nav';
-import { initialTabIndex, rememberTab, tabSearch } from './page-tabs';
+import { initialTabIndex, onTabRequest, rememberTab, tabSearch } from './page-tabs';
 import { resolvePageRoute } from './routes';
 import { InfiniteEntries, SectionBlock } from './sections';
 import { sectionMode } from './section-view';
@@ -99,12 +99,24 @@ function TabbedPage({ extId, extensionName, page, title, tabRoot }: { extId: str
   const tabs = page.tabs ?? [];
   const [initial] = useState(() => initialTabIndex(tabs, extId, page.id));
   const pagerTabs = tabs.map((t) => ({ key: t.id, title: t.title }));
+  // A panel's openPage with a tab selects it on this page (the same screen, not a new copy).
+  const [select, setSelect] = useState<{ index: number; seq: number } | undefined>(undefined);
+  useEffect(
+    () =>
+      onTabRequest((e, p, tabId) => {
+        if (e !== extId || p !== page.id) return;
+        const index = (page.tabs ?? []).findIndex((t) => t.id === tabId);
+        if (index >= 0) setSelect((cur) => ({ index, seq: (cur?.seq ?? 0) + 1 }));
+      }),
+    [extId, page.id, page.tabs],
+  );
   return (
     <>
       {isTV ? <Text style={[s.tvTitle, s.tvTabsTitle, { paddingHorizontal: l.gutter }]}>{title}</Text> : null}
       <TabPager
         tabs={pagerTabs}
         initialIndex={initial}
+        select={select}
         onIndexChange={(i) => {
           const tab = tabs[i];
           if (tab) rememberTab(extId, page.id, tab.id);

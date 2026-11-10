@@ -100,7 +100,13 @@ export function extensionFeedsKey(scope: SessionScope, extId: string) {
  * (the 60 s `staleTime` no longer keeps the old data).
  */
 export function refreshExtensionFeeds(qc: Pick<QueryClient, 'invalidateQueries'>, scope: SessionScope, extId: string): Promise<void> {
-  return qc.invalidateQueries({ queryKey: extensionFeedsKey(scope, extId) });
+  // A load that already runs is kept, not started again, so one panel flow loads each feed once.
+  return qc.invalidateQueries({ queryKey: extensionFeedsKey(scope, extId) }, { cancelRefetch: false });
+}
+
+/** True for a query key of one extension's feeds (any scope). */
+export function isExtensionFeedKey(key: readonly unknown[], extId: string): boolean {
+  return key[3] === 'ext-feed' && key[4] === extId;
 }
 
 /**

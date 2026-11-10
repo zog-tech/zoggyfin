@@ -19,7 +19,7 @@ import { readJson, writeJson } from '@/storage/json';
 import { homeSections } from '@/registry/home-sections';
 import { type ItemActionContext, itemActions } from '@/registry/item-actions';
 
-import { type DetailAction, refreshExtensionFeeds } from './feeds';
+import { type DetailAction, isExtensionFeedKey, refreshExtensionFeeds } from './feeds';
 import { ExtensionError, FEED_TIMEOUT_MS, buildRequest, type Grants, type JellyfinAccount, parseOptions, send } from './http';
 import { type InstallSource, loadInstallRequest } from './install-request';
 import { findLink, manifestCandidates, matchesHosts, matchesWhen } from './match';
@@ -109,10 +109,11 @@ export async function fetchOptions(ext: InstalledExtension, path: string, ctx: T
 
 let refreshTimers: ReturnType<typeof setTimeout>[] = [];
 
-function refreshAll(): void {
+function refreshAll(exceptFeedsOf?: string): void {
   const s = session();
   if (!s) return;
-  void queryClient.invalidateQueries({ queryKey: scopeKey({ serverId: s.serverId, userId: s.userId }) });
+  const predicate = exceptFeedsOf ? (q: { queryKey: readonly unknown[] }) => !isExtensionFeedKey(q.queryKey, exceptFeedsOf) : undefined;
+  void queryClient.invalidateQueries({ queryKey: scopeKey({ serverId: s.serverId, userId: s.userId }), predicate });
 }
 
 /**
@@ -131,10 +132,10 @@ export function refreshExtension(extId: string): void {
  * library. The whole account scope is invalidated, so the feeds of every
  * extension (`ext-feed` keys) and the entry pages (`ext-detail`) load again too.
  */
-export function refreshLibrary(): void {
+export function refreshLibrary(opts: { exceptFeedsOf?: string } = {}): void {
   refreshTimers.forEach(clearTimeout);
-  refreshAll();
-  refreshTimers = [8_000, 25_000].map((ms) => setTimeout(refreshAll, ms));
+  refreshAll(opts.exceptFeedsOf);
+  refreshTimers = [8_000, 25_000].map((ms) => setTimeout(() => refreshAll(opts.exceptFeedsOf), ms));
 }
 
 function effectsFor(ext: InstalledExtension): ResponseEffects {
