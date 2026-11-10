@@ -289,7 +289,7 @@ function ServerDownloads({ section, titled }: { section: ServerSection; titled: 
   const remove = async () => {
     const ok = await confirmDestructive(
       `Delete the downloads of ${name}?`,
-      `${section.count} ${section.count === 1 ? 'item' : 'items'} (${formatBytes(section.bytes)}) are removed from this device. Nothing changes on the server.`,
+      `${section.count} ${section.count === 1 ? 'item' : 'items'} (${formatBytes(section.bytes)}) ${section.count === 1 ? 'is' : 'are'} removed from this device. Nothing changes on the server.`,
       'Delete',
     );
     if (ok) await removeServerDownloads(section.serverId);

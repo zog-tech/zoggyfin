@@ -1,4 +1,4 @@
-import { toastDuration, toastTakesFocus } from '../toast';
+import { toastLook, toastDuration, toastTakesFocus } from '../toast';
 
 const action = { label: 'Undo', onPress: () => undefined };
 
@@ -26,5 +26,17 @@ describe('toast focus (TV)', () => {
   it('leaves the focus alone off TV and for toasts with no action', () => {
     expect(toastTakesFocus({ action }, false, false)).toBe(false);
     expect(toastTakesFocus({}, true, false)).toBe(false);
+  });
+});
+
+describe('toast look', () => {
+  const c = { text: '#111111', textOnMedia: '#FFFFFF' };
+
+  it('follows the app theme on app screens', () => {
+    expect(toastLook(false, c)).toEqual({ glass: 'auto', text: '#111111' });
+  });
+
+  it('is dark with light text in a player (over video, in any app theme)', () => {
+    expect(toastLook(true, c)).toEqual({ glass: 'dark', text: '#FFFFFF' });
   });
 });

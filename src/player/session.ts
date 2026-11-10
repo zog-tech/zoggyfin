@@ -64,6 +64,15 @@ interface Ctx {
   server: StreamServer;
 }
 
+/**
+ * A reload of the item that plays (another quality, audio or subtitle
+ * stream) keeps its play state: a title the user paused stays paused. One
+ * that loads, fails or plays goes on playing.
+ */
+function reloadPlays(st: { status: string; playing: boolean }): boolean {
+  return st.playing || st.status === 'loading' || st.status === 'error' || st.status === 'idle';
+}
+
 function context(): Ctx {
   const s = useSessionStore.getState().session;
   if (!s) throw new Error('Sign in to play.');
@@ -184,6 +193,10 @@ interface ExternalAttempt extends LiveAttempt {
   stream: ExternalStream;
   /** It played to the end (the last progress report is `finished`). */
   ended: boolean;
+  /** The next form plays at once (false: a quality change while paused stays paused). */
+  autoplay?: boolean;
+  /** A quality change loads: the quality to go back to when the new one fails, and whether the title had played. */
+  switchFrom?: { qualityId: string | null; played: boolean; fallback: boolean };
 }
 
 interface LoadOptions {
@@ -273,7 +286,10 @@ class VideoSession {
           // (Try again, a reload, the next item) sets 'loading' before the engine loads.
           break;
         } else if (e.status === 'loading') setPlayerState({ status: st.status === 'loading' ? 'loading' : 'buffering' });
-        else if (e.status === 'ready') setPlayerState({ status: 'ready' });
+        else if (e.status === 'ready') {
+          setPlayerState({ status: 'ready' });
+          if (st.now.external) this.externalSwitched();
+        }
         break;
       case 'playing':
         if (e.playing !== st.playing) {
@@ -886,7 +902,7 @@ class VideoSession {
       title: ref.title,
       subtitle: externalSubtitleLine(ref),
       artworkUri: liveArtwork(ref.poster),
-      autoplay: true,
+      autoplay: a.autoplay !== false,
       userAgent: a.userAgent,
       headers: a.stream.headers,
     });
@@ -897,6 +913,7 @@ class VideoSession {
 
   /** An external stream failed: try its next form, else show why (never a URL). */
   private externalFailed(error: string | undefined): void {
+    if (this.backFromFailedQuality()) return;
     if (this.loadNextExternal()) return;
     const a = this.extAttempt;
     setPlayerState({ status: 'error', error: externalFailureText({ played: this.extPlayed, unsupported: a?.unsupported ?? null, error }), playing: false });
@@ -938,7 +955,9 @@ class VideoSession {
 
   /**
    * Plays another quality of the external title: that URL loads at the
-   * current position, with the same rate. The progress reporter goes on.
+   * current position, with the same rate and the same play state (a paused
+   * title stays paused). The progress reporter goes on. When the new quality
+   * fails before it plays, the previous one loads again (`backFromFailedQuality`).
    */
   setExternalQuality(qualityId: string | null): void {
     const st = playerState();
@@ -950,10 +969,43 @@ class VideoSession {
     a.start = reloadPosition({ live: external.live, played: this.extPlayed, enginePosition: this.engine.position, statePosition: st.position, attemptStart: a.start });
     a.candidates = qualityCandidates(a.stream, qualityId);
     a.next = 0;
-    // The new form starts at `a.start`; it counts as played again once it plays.
+    a.autoplay = reloadPlays(st);
+    a.switchFrom = { qualityId: external.qualityId, played: this.extPlayed, fallback: false };
+    // The new form starts at `a.start`; it counts as played again once it is ready.
     this.extPlayed = false;
-    setPlayerState({ now: { ...now, external: { ...external, qualityId } } });
+    setPlayerState({ now: { ...now, external: { ...external, qualityId } }, position: a.start });
     if (!this.loadNextExternal()) this.externalFailed(undefined);
+  }
+
+  /**
+   * The quality the user chose failed before it was ready: the previous
+   * quality loads again at the same position, and a toast says so. Once only:
+   * when the previous one fails too, the other stream forms follow.
+   */
+  private backFromFailedQuality(): boolean {
+    const a = this.extAttempt;
+    const now = playerState().now;
+    const external = now?.external;
+    const from = a?.switchFrom;
+    if (!a || !from || from.fallback || !now || !external || a.id !== this.loadId) return false;
+    const label = (id: string | null) => external.qualities.find((q) => q.id === (id ?? external.mainQuality))?.label;
+    const failed = label(external.qualityId);
+    const previous = label(from.qualityId);
+    a.switchFrom = { ...from, fallback: true };
+    a.candidates = qualityCandidates(a.stream, from.qualityId);
+    a.next = 0;
+    setPlayerState({ now: { ...now, external: { ...external, qualityId: from.qualityId } } });
+    if (!this.loadNextExternal()) return false;
+    toast(failed && previous ? `${failed} could not play. ${previous} plays again.` : 'This quality could not play. The previous quality plays again.');
+    return true;
+  }
+
+  /** The new quality is ready: the title counts as played again if it had played before the change. */
+  private externalSwitched(): void {
+    const a = this.extAttempt;
+    if (!a?.switchFrom || a.id !== this.loadId) return;
+    if (a.switchFrom.played) this.extPlayed = true;
+    a.switchFrom = undefined;
   }
 
   private async load(id: number, item: BaseItemDto, queue: BaseItemDto[], opts: LoadOptions): Promise<void> {
@@ -1106,6 +1158,7 @@ class VideoSession {
         subtitleIndex: opts.subtitleIndex !== undefined ? opts.subtitleIndex : now.plan.subtitleIndex,
         bitrateChoice: opts.bitrateChoice !== undefined ? opts.bitrateChoice : now.bitrateChoice,
         forceStream: opts.forceStream,
+        autoplay: opts.autoplay !== undefined ? opts.autoplay : reloadPlays(st),
       });
     } catch (e) {
       console.warn('[player] reload failed', e);

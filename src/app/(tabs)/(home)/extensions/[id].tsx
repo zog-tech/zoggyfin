@@ -114,8 +114,12 @@ export default function ExtensionScreen() {
     // Its downloads are the user's files: ask before they go. Kept ones stay in Downloads and still play.
     const saved = extensionDownloadCount(m.id);
     if (saved > 0) {
-      const words = saved === 1 ? 'download' : 'downloads';
-      if (await confirmDestructive(`Delete its ${saved} ${words} too?`, `The ${words} of ${m.name} on this device are removed. Keep them to watch them later.`, 'Delete')) {
+      const one = saved === 1;
+      const words = one ? 'download' : 'downloads';
+      const body = one
+        ? `The download of ${m.name} on this device is removed. Keep it to watch it later.`
+        : `The downloads of ${m.name} on this device are removed. Keep them to watch them later.`;
+      if (await confirmDestructive(`Delete its ${saved} ${words} too?`, body, 'Delete')) {
         await removeExtensionDownloads(m.id);
       }
     }

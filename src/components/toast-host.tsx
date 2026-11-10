@@ -9,7 +9,7 @@ import { Glass } from '@/features/player/glass';
 import { focusActivePage, focusView } from '@/features/tv/focus';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { isNativeTV, isTV } from '@/platform/tv';
-import { toastDuration, toastTakesFocus, useToastStore } from '@/lib/toast';
+import { toastDuration, toastLook, toastTakesFocus, useToastStore } from '@/lib/toast';
 import { createStyles, type AppTheme, font, iconSize, motion, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
 
 import { Icon } from './icon';
@@ -42,6 +42,8 @@ export function ToastHost({ overlay = false, offset = 0 }: { overlay?: boolean; 
   const l = useLayout();
   const s = useStyles(makeStyles);
   const { c } = useTheme();
+  // In a player the toast is over video: dark glass and light text in any app theme.
+  const look = toastLook(overlay, c);
   const actionRef = useRef<ComponentRef<typeof View> | null>(null);
   // The toast whose action has the focus (a toast that replaces it starts unfocused).
   const [focusedId, setFocusedId] = useState<number | null>(null);
@@ -115,10 +117,10 @@ export function ToastHost({ overlay = false, offset = 0 }: { overlay?: boolean; 
         {/* The fade-out sits on a wrapper, so it does not fight the swipe style's opacity. */}
         <Animated.View key={current.id} exiting={FadeOut.duration(motion.duration.fast)}>
           <Animated.View style={[s.shadow, style]}>
-          <Glass variant="regular" scheme="auto" style={s.capsule}>
+          <Glass variant="regular" scheme={look.glass} style={s.capsule}>
             <View style={s.row} accessibilityLiveRegion="polite" accessibilityRole={Platform.OS === 'web' ? 'alert' : undefined}>
-              {current.icon ? <Icon name={current.icon} size={scaled(iconSize.sm)} color={c.text} /> : null}
-              <Text style={s.text} numberOfLines={2}>
+              {current.icon ? <Icon name={current.icon} size={scaled(iconSize.sm)} color={look.text} /> : null}
+              <Text style={[s.text, { color: look.text }]} numberOfLines={2}>
                 {current.text}
               </Text>
               {current.action ? (
