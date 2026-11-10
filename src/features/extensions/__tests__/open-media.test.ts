@@ -9,8 +9,16 @@ import { openMedia, runEntryMenu } from '../open-entry';
 const mockPlayMedia = jest.fn();
 const mockToast = jest.fn();
 const mockPush = jest.fn();
+const mockOptions = jest.fn();
+const mockDownload = jest.fn();
+const mockAskChoice = jest.fn();
 const mockExtensions = new Map<string, InstalledExtension>();
 
+jest.mock('@/downloads', () => ({
+  extensionDownloadOptions: (...a: unknown[]) => mockOptions(...a),
+  downloadExtensionMedia: (...a: unknown[]) => mockDownload(...a),
+}));
+jest.mock('@/extensions/prompts', () => ({ askChoice: (...a: unknown[]) => mockAskChoice(...a) }));
 jest.mock('@/player', () => ({ playMedia: (...a: unknown[]) => mockPlayMedia(...a) }));
 jest.mock('@/lib/toast', () => ({ toast: (...a: unknown[]) => mockToast(...a) }));
 jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a) }, useSegments: () => [] }));
@@ -37,6 +45,9 @@ beforeEach(() => {
   mockPlayMedia.mockReset();
   mockToast.mockReset();
   mockPush.mockReset();
+  mockOptions.mockReset().mockResolvedValue({ ok: true, options: [] });
+  mockDownload.mockReset().mockResolvedValue({ ok: true });
+  mockAskChoice.mockReset();
   mockExtensions.clear();
 });
 
@@ -78,16 +89,32 @@ describe('long press menu rows', () => {
       params: { ext: 'org.example.media', entry: 'e1', detail: `${BASE}/api/e1`, title: 'An entry' },
     });
     runEntryMenu('org.example.media', entry, 'download', '(home)');
-    await Promise.resolve();
-    expect(mockToast).toHaveBeenCalledWith('Downloads arrive in a later update', expect.anything());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockDownload).toHaveBeenCalledWith(expect.objectContaining({ mediaId: 'm1', download: `${BASE}/api/e1/download`, title: 'An entry' }));
+    expect(mockToast).toHaveBeenCalledWith('Downloading An entry', expect.anything());
   });
 });
 
-describe('downloadMedia (stub)', () => {
-  it('shows the note for an entry and for a detail', async () => {
+describe('downloadMedia', () => {
+  it('starts the download of an entry and does nothing without a download URL', async () => {
     const ext = installed({ playback: true, downloads: true });
     await downloadMedia(ext, entry);
     await downloadMedia(ext, { title: 'A detail', lines: [], actions: [], sections: [] });
-    expect(mockToast).toHaveBeenCalledTimes(2);
+    expect(mockDownload).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for a quality when the description has options', async () => {
+    mockOptions.mockResolvedValueOnce({ ok: true, options: [{ id: '720', label: '720p' }] });
+    mockAskChoice.mockResolvedValueOnce('720');
+    await downloadMedia(installed({ playback: true, downloads: true }), entry);
+    expect(mockDownload).toHaveBeenCalledWith(expect.objectContaining({ option: '720' }));
+  });
+
+  it('shows the error and starts nothing when the description fails', async () => {
+    mockOptions.mockResolvedValueOnce({ ok: false, error: 'Not available now' });
+    await downloadMedia(installed({ playback: true, downloads: true }), entry);
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith('Not available now', expect.anything());
   });
 });
