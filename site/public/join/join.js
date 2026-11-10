@@ -11,7 +11,8 @@
   // A new invite link in the same tab changes only the fragment: read it again.
   window.addEventListener('hashchange', function () { location.reload(); });
 
-  var payload = (location.hash || '').slice(1);
+  // The app puts a dot after every 200 characters, so Messages links all of it (payload.ts LINK_CHUNK).
+  var payload = (location.hash || '').slice(1).replace(/\./g, '');
   var invite = J.readInvite(payload);
   if (!invite) {
     $('title').textContent = 'This invite does not open';

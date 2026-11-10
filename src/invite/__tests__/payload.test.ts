@@ -122,7 +122,7 @@ describe('links', () => {
 
   it('finds the payload in a link, a scheme link or a whole message', () => {
     const link = inviteLink(invite);
-    const payload = link.split('#')[1];
+    const payload = encodeInvite(invite);
     expect(payloadFromText(link)).toBe(payload);
     expect(payloadFromText(`zoggyfin://join#${payload}`)).toBe(payload);
     expect(payloadFromText(`zoggyfin://join/${payload}`)).toBe(payload);
@@ -162,7 +162,7 @@ describe('the 7-day expiry', () => {
     const link = inviteLink({ ...invite, expiresAt });
     const m = inviteMessage({ ...invite, expiresAt }, link);
     expect(m).toBe(`Sam invited you to watch on Family Media. Open this link to join: ${link}\nThis link works until October 27, 2026.`);
-    expect(payloadFromText(m)).toBe(link.split('#')[1]);
+    expect(payloadFromText(m)).toBe(encodeInvite({ ...invite, expiresAt }));
   });
 
   it('tells the person what to do with an expired invite', () => {
@@ -196,5 +196,37 @@ describe('address list', () => {
     expect(needsTunnel([{ url: 'http://100.64.0.1', label: 'tailscale' }, { url: 'https://a.example', label: 'internet' }])).toBeNull();
     expect(needsTunnel([{ url: 'http://10.0.0.5', label: 'home' }])).toBeNull();
     expect(needsTunnel([])).toBeNull();
+  });
+});
+
+describe('long links (Apple link finder)', () => {
+  const long: Invite = {
+    ...invite,
+    addresses: [{ url: 'https://jellyfin.long-server-name.example.com', label: 'internet' }],
+    extensions: ['https://extensions.example.com/zoggyfin-extension.json'],
+    expiresAt: Date.UTC(2026, 10, 16),
+  };
+
+  it('breaks the payload with a dot at least every 200 characters, never at the end', () => {
+    const link = inviteLink(long);
+    const fragment = link.slice(link.indexOf('#') + 1);
+    expect(fragment.length).toBeGreaterThan(300);
+    for (const run of fragment.split('.')) expect(run.length).toBeLessThanOrEqual(200);
+    expect(fragment.endsWith('.')).toBe(false);
+  });
+
+  it('reads the dotted link back, in a message and as a payload', () => {
+    const link = inviteLink(long);
+    const payload = payloadFromText(inviteMessage(long, link));
+    expect(payload).toBe(encodeInvite(long));
+    expect(decodeInvite(link.slice(link.indexOf('#') + 1))).toEqual(decodeInvite(encodeInvite(long)));
+  });
+
+  it('drops a full stop after the link', () => {
+    expect(payloadFromText(`Join: ${inviteLink(long)}.`)).toBe(encodeInvite(long));
+  });
+
+  it('still reads an old link with no dots', () => {
+    expect(payloadFromText(`https://zoggyfin.zog-tech.com/join#${encodeInvite(long)}`)).toBe(encodeInvite(long));
   });
 });

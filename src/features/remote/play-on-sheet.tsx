@@ -96,7 +96,8 @@ function PlayOnSheet() {
 }
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
-  scroll: { maxHeight: 480 },
+  // The list takes the height the sheet gives it and scrolls past that.
+  scroll: { flexGrow: 0, flexShrink: 1 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.md },
   flex: { flex: 1, minWidth: 0 },
   meta: { ...font(type.footnote), color: c.text2 },

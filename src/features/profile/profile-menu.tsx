@@ -82,6 +82,7 @@ export function ProfileMenu({ visible, onClose }: { visible: boolean; onClose: (
 }
 
 function ProfileMenuOpen({ onClose }: { onClose: () => void }) {
+  const s = useStyles(makeStyles);
   const { rows, session, roomOpen } = useMenuState();
   const [accounts, setAccounts] = useState(false);
   const close = (then?: () => void) => {
@@ -119,7 +120,7 @@ function ProfileMenuOpen({ onClose }: { onClose: () => void }) {
   if (POPOVER) return <Popover onClose={() => close()}>{body}</Popover>;
   return (
     <Sheet visible title={null} onClose={() => close()} doneLabel="Done">
-      <TvScrollView style={{ maxHeight: 620 }} contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
+      <TvScrollView style={s.sheetScroll} contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
         {body}
       </TvScrollView>
     </Sheet>
@@ -268,6 +269,8 @@ function Popover({ onClose, children }: { onClose: () => void; children: ReactNo
 }
 
 const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
+  // The list takes the height the sheet gives it (80% of the window) and scrolls past that; a fixed height cut it short on tall phones.
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
   header: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

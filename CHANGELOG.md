@@ -176,6 +176,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Invite links open in full from Messages.** iPhone Messages linked only `…/join`, because it stops a
+  link before a long run of letters. The link now has a dot every 200 characters; the app and the
+  /join page remove them. Old links still work.
+- **Sheets fill the screen.** A sheet opened from a tab page (the profile menu, item actions) had a blank
+  band at the bottom and cut its list short. It now uses the whole height and scrolls.
+- **Smoother TV navigation.** Focus moves on Android TV and Fire TV do no extra work: the focus
 - **Seeking with the remote or a double tap no longer opens the full controls.** On Android TV
   and Fire TV with the controls hidden, a double Left or Right starts a seek run: each further press
   seeks 10 s at once, and rewind and fast forward do the same. On phones, tablets and touch screens,
