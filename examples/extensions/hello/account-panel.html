@@ -17,6 +17,7 @@
 <button id="signin">Sign in</button>
 <button id="signout">Sign out</button>
 <button id="reload">refreshPage</button>
+<button id="help">openExternal</button>
 <button id="close">close</button>
 <pre id="out"></pre>
 <script>
@@ -69,6 +70,10 @@
     await zoggyfin('refreshPage');
   });
   document.getElementById('reload').onclick = run(() => zoggyfin('refreshPage'));
+  // A help page outside the app: the system browser, https only.
+  document.getElementById('help').onclick = run(async () => {
+    out.textContent = JSON.stringify(await zoggyfin('openExternal', { url: 'https://example.org/' }));
+  });
   document.getElementById('close').onclick = run(() => zoggyfin('close'));
 </script>
 </body>
