@@ -14,6 +14,7 @@ import {
   settleToggle,
   type ToggleMap,
   toggleOn,
+  withActionState,
 } from '../detail-view';
 import { parseEntryRoute } from '../routes';
 
@@ -218,5 +219,31 @@ describe('entry route', () => {
     expect(parseEntryRoute({ ext: 'x', entry: 'e1', detail: 'https://other.example.net/api/e1' }, base)).toBeNull();
     expect(parseEntryRoute({ ext: 'x', entry: 'e1', detail: '//other.example.net/x' }, base)).toBeNull();
     expect(parseEntryRoute({ ext: 'x', entry: 'e1', detail: '/api/e1' }, undefined)).toBeNull();
+  });
+});
+
+describe('withActionState', () => {
+  const d = parseDetail(
+    {
+      title: 'An entry',
+      actions: [
+        { id: 'save', title: 'Save', state: { on: false, onTitle: 'Saved' }, request: { method: 'POST', path: '/save' } },
+        { id: 'share', title: 'Share', request: { method: 'POST', path: '/share' } },
+      ],
+    },
+    base,
+  );
+
+  it('writes the confirmed state of an on/off button into the detail', () => {
+    const out = withActionState(d, 'save', true);
+    expect(out.actions[0].state?.on).toBe(true);
+    expect(out.actions[1]).toBe(d.actions[1]);
+    expect(d.actions[0].state?.on).toBe(false);
+  });
+
+  it('returns the same detail when nothing changes', () => {
+    expect(withActionState(d, 'save', false)).toBe(d);
+    expect(withActionState(d, 'share', true)).toBe(d);
+    expect(withActionState(d, 'missing', true)).toBe(d);
   });
 });

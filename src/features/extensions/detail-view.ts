@@ -172,6 +172,23 @@ export function settleToggle(map: ToggleMap, id: string, token: number, next: bo
 }
 
 /**
+ * The detail with the confirmed state of an on/off button written in. The
+ * page puts it into the query cache after a press: a reload or a reopen
+ * while the cached detail is still fresh then shows the confirmed state,
+ * not the state from before the press. Returns the same detail when
+ * nothing changes.
+ */
+export function withActionState(d: DetailDescription, id: string, on: boolean): DetailDescription {
+  let changed = false;
+  const actions = d.actions.map((a) => {
+    if (a.id !== id || !a.state || a.state.on === on) return a;
+    changed = true;
+    return { ...a, state: { ...a.state, on } };
+  });
+  return changed ? { ...d, actions } : d;
+}
+
+/**
  * A fresh detail arrived: the buttons with no running request show the
  * detail's state again. Returns the same map when nothing changes.
  */

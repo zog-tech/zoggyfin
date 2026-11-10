@@ -40,7 +40,7 @@ import { createKeyedGate } from '@/lib/async-gate';
 import { features } from '@/platform/tv';
 import { createStyles, type AppTheme, radius, scaled, spacing, useLayout, useStyles } from '@/theme';
 
-import { canDownload, type DetailButton, detailPlayable, detailView, dropSettled, pressToggle, settleToggle, type ToggleMap } from './detail-view';
+import { canDownload, type DetailButton, detailPlayable, detailView, dropSettled, pressToggle, settleToggle, type ToggleMap, withActionState } from './detail-view';
 import { downloadMedia } from './download-entry';
 import { openMedia } from './open-entry';
 import { type EntryRoute, parseEntryRoute } from './routes';
@@ -141,8 +141,13 @@ function EntryDetail({ ext, route }: { ext: InstalledExtension; route: EntryRout
       // Cancelled in a prompt: the button never changed.
       if (token < 0) return;
       setToggles((m) => settleToggle(m, action.id, token, next, out.status === 'done' ? { ok: true, on: out.reply?.state?.on } : { ok: false }));
+      // The cached detail keeps the confirmed state, so a reload shows it too. Only the newest press writes it.
+      if (out.status === 'done' && gate.current(action.id, token)) {
+        const on = out.reply?.state?.on ?? next;
+        qc.setQueryData<DetailDescription>(key, (old) => (old ? withActionState(old, action.id, on) : old));
+      }
     },
-    [extId, ext, gate, refreshEntry, refreshPage],
+    [extId, ext, gate, refreshEntry, refreshPage, qc, key],
   );
 
   if (!q.data) {
