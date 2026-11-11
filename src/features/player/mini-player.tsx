@@ -176,8 +176,10 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   openAreaTV: { alignSelf: 'center' },
   open: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   text: { flex: 1, minWidth: 0 },
-  title: { ...font(type.tileTitle), color: c.text },
-  sub: { ...font(type.caption1), color: c.text2 },
+  // Both lines start at the art. Without a fixed side, an Arabic or Hebrew title aligns to the right
+  // (the web sets dir="auto", Android uses the first strong letter) while the artist stays on the left.
+  title: { ...font(type.tileTitle), color: c.text, textAlign: 'left' },
+  sub: { ...font(type.caption1), color: c.text2, textAlign: 'left' },
   button: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   buttonSmall: { width: 32, height: 44, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 0, height: 2, overflow: 'hidden', borderRadius: 1 },
