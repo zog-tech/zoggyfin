@@ -4,6 +4,14 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.15 (2026-11-10)
+
+- Music: a Home tab with recently played, mixes, new releases, playlists and genres, plus catalog rows such as trending songs when the server offers them
+- Right click opens the item actions on tiles, rows, search results and downloads; the browser menu no longer shows
+- Extensions: pages with rows, grids and search, shown as a tab, and an extension's media plays and downloads
+- Sheets use the whole window height and scroll
+- Mini player: an Arabic title now starts on the left, in line with the artist
+
 ## 0.1.14 (2026-11-09)
 
 - Music: songs play the original file instead of a converted stream, so seeking and tapping a lyric line work and songs no longer restart
