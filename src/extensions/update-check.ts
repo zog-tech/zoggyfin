@@ -1,13 +1,14 @@
 /**
  * Updates of installed extensions: what a newer manifest needs, and a quiet
- * check at app start and at most once per 6 hours while the app is in use.
+ * check at app start and at most once per 15 minutes while the app is in use.
  *
  * Rules:
- * - An update needs the user's consent (the confirm screen) when it asks for
- *   a permission the installed manifest did not have, or when a page asks
- *   for a place (a tab or a Library tile) it did not ask for before. Any
- *   other change (new `tabs`, sections, settings, a new `version`) applies
- *   by itself.
+ * - An update needs the user's consent (the confirm screen) only when it asks
+ *   for a permission the installed manifest did not have: a permission gives
+ *   the extension new access. Any other change applies by itself: new pages,
+ *   a page that asks for a new place (a tab or a Library tile), `tabs`,
+ *   sections, settings, a new `version`. A place gives no access, and the
+ *   user can still hide a page or turn the extension off.
  * - The quiet check applies such an update at once. An update that needs
  *   consent is never applied and never opens a screen: the extension gets a
  *   row in Settings → Extensions ("Update available") and one toast per
@@ -26,14 +27,14 @@ import { readJson, writeJson } from '@/storage/json';
 
 import { pagesOf, type Manifest, type Permission } from './schema';
 
-export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const TOASTED_KEY = 'extensions.updateToasts.v1';
 
 export interface UpdatePlan {
   /** `none`: the same manifest. `apply`: applies by itself. `consent`: needs the confirm screen. */
   kind: 'none' | 'apply' | 'consent';
   newPermissions: Permission[];
-  /** Ids of pages that ask for a tab or a Library tile they did not ask for before. */
+  /** Ids of pages that ask for a tab or a Library tile they did not ask for before (information only: they need no consent). */
   newlyPlaced: string[];
 }
 
@@ -52,11 +53,11 @@ export function updatePlan(installed: Manifest, next: Manifest): UpdatePlan {
     return (now.tab && !was?.tab) || (now.library && !was?.library);
   }).map(([id]) => id);
   const same = JSON.stringify(installed) === JSON.stringify(next);
-  const kind = newPermissions.length || newlyPlaced.length ? 'consent' : same ? 'none' : 'apply';
+  const kind = newPermissions.length ? 'consent' : same ? 'none' : 'apply';
   return { kind, newPermissions, newlyPlaced };
 }
 
-/** True when the last check is 6 hours old or more (or there was none). */
+/** True when the last check is 15 minutes old or more (or there was none). */
 export function dueForCheck(lastAt: number | undefined, now: number): boolean {
   return lastAt === undefined || now - lastAt >= UPDATE_CHECK_INTERVAL_MS;
 }
@@ -159,7 +160,7 @@ export interface UpdateCheckWiring {
 
 /**
  * Checks at start (once an account is signed in), on each new account, and
- * then at most once per 6 hours while the app is in use: a timer looks every
+ * then at most once per 15 minutes while the app is in use: a timer looks every
  * 15 minutes, and a return to the foreground looks too.
  */
 export function startUpdateChecks(w: UpdateCheckWiring): () => void {

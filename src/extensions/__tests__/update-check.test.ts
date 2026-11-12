@@ -30,19 +30,22 @@ describe('updatePlan', () => {
     expect(updatePlan(base, next)).toMatchObject({ kind: 'consent', newPermissions: ['jellyfinToken'] });
   });
 
-  it('asks for consent for a page that asks for a new place', () => {
+  it('applies a page that asks for a new place, with no confirm', () => {
     const quiet = withPages([{ ...page, placement: { home: [] } }]);
     const placedLater = withPages([{ ...page, placement: { library: true, home: [] } }]);
-    expect(updatePlan(quiet, placedLater)).toMatchObject({ kind: 'consent', newlyPlaced: [page.id] });
+    expect(updatePlan(quiet, placedLater)).toMatchObject({ kind: 'apply', newlyPlaced: [page.id] });
     const extra = withPages([page, { id: 'other', title: 'Other', placement: { tab: true }, sections: [sec('z')] }]);
-    expect(updatePlan(base, extra)).toMatchObject({ kind: 'consent', newlyPlaced: ['other'] });
+    expect(updatePlan(base, extra)).toMatchObject({ kind: 'apply', newlyPlaced: ['other'] });
+    // A new place together with a new permission still asks.
+    const both = withPages([page, { id: 'other', title: 'Other', placement: { tab: true }, sections: [sec('z')] }], { permissions: [...rawV2.permissions, 'jellyfinToken'] });
+    expect(updatePlan(base, both)).toMatchObject({ kind: 'consent', newPermissions: ['jellyfinToken'] });
     // A page that keeps its place, or drops one, asks nothing.
     expect(updatePlan(placedLater, quiet).kind).toBe('apply');
   });
 });
 
 describe('dueForCheck', () => {
-  it('checks at start and then at most once per 6 hours', () => {
+  it('checks at start and then at most once per 15 minutes', () => {
     expect(dueForCheck(undefined, 1000)).toBe(true);
     expect(dueForCheck(1000, 1000 + UPDATE_CHECK_INTERVAL_MS - 1)).toBe(false);
     expect(dueForCheck(1000, 1000 + UPDATE_CHECK_INTERVAL_MS)).toBe(true);
