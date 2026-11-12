@@ -13,7 +13,7 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
-- **Load the whole video ahead.** A new switch in Settings, Playback (off by default). When on, the
+- **Load the whole video ahead.** A new switch in Settings, Playback (on by default). When on, the
   player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
   less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android
   phones with 3 GB of memory or more (the player's own size on smaller devices and most TV sticks),
