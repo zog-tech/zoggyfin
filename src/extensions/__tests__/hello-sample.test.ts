@@ -98,6 +98,7 @@ describe('the Hello sample', () => {
     expect(m.contributes.skipLabels?.map((l) => l.id)).toEqual(['intro', 'credits']);
     const page = m.contributes.pages?.[0];
     expect(page?.search?.feed).toBe('/pages/search');
+    expect(page?.search).toMatchObject({ global: true, title: 'From Hello Pages' });
     expect(page?.sections.map((s) => s.layout)).toEqual(['row', 'list', 'grid']);
   });
 
