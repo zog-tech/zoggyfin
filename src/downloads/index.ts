@@ -9,8 +9,9 @@
  * Extension media (an extension's `media.download`), for the signed-in account:
  *
  *   downloadExtensionMedia({ extension, mediaId, download, title, subtitle?, image?,
- *     duration?, option?, playback?, kind? }): Promise<{ ok: true } | { ok: false; error: string }>
- *     Queues the file. `extension` is the manifest id or the installed extension.
+ *     duration?, option?, playback?, kind? }): Promise<{ ok: true; preparing } | { ok: false; error: string }>
+ *     Queues the file. `preparing`: the extension makes the file first; the
+ *     record waits and asks again. `extension` is the manifest id or the installed extension.
  *     Refuses (with a message, never a URL) when the `downloads` grant is off,
  *     on the plain web build and TV, for a URL off the extension's origin, and
  *     when the description has `options` and no `option` was passed.
@@ -18,8 +19,8 @@
  *     Promise<{ ok: true; options: DownloadOption[] } | { ok: false; error: string }>
  *     The choices to show first. Empty `options`: one file, no choice needed.
  *   extensionMediaState(records, extId, mediaId, account) / useExtensionDownload(extId, mediaId):
- *     ExtensionMediaState for a button: none, queued, downloading(progress),
- *     paused(progress), done, failed(error).
+ *     ExtensionMediaState for a button: none, queued, preparing(progress | null),
+ *     downloading(progress), paused(progress), done, failed(error).
  *   extensionLocalPlay({ extension, mediaId, startSeconds? }): ExternalPlayRequest | null
  *     A completed download of the signed-in account, played from the device.
  *   removeExtensionDownloads(extId) / extensionDownloadCount(extId): for the remove flow.
@@ -271,10 +272,10 @@ function messageOf(e: unknown, fallback: string): string {
 /** Queues an extension's media entry for download (see the top of this file). */
 export async function downloadExtensionMedia(
   req: Omit<ExtensionDownloadInput, 'extension'> & { extension: ExtensionRef },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; preparing: boolean } | { ok: false; error: string }> {
   try {
-    await downloadManager.downloadExtension({ ...req, extension: extIdOf(req.extension) }, downloadsSupported);
-    return { ok: true };
+    const { preparing } = await downloadManager.downloadExtension({ ...req, extension: extIdOf(req.extension) }, downloadsSupported);
+    return { ok: true, preparing };
   } catch (e) {
     return { ok: false, error: messageOf(e, 'The download could not start.') };
   }

@@ -1,4 +1,17 @@
-import { countdownClock, countdownLeft, nextUpPhase, nextUpStartsAt, normalizeSegments, setCountdownRunning, skipPromptAt, skipPromptFor } from '../segments';
+import {
+  countdownClock,
+  countdownLeft,
+  endCountdownLeft,
+  endPlaysNext,
+  externalSegments,
+  nextUpModeOf,
+  nextUpPhase,
+  nextUpStartsAt,
+  normalizeSegments,
+  setCountdownRunning,
+  skipPromptAt,
+  skipPromptFor,
+} from '../segments';
 
 const T = 10_000_000;
 
@@ -98,5 +111,51 @@ describe('next-up timing', () => {
     expect(setCountdownRunning(running, true, 500)).toBe(running);
     const held = countdownClock(0, false);
     expect(setCountdownRunning(held, false, 500)).toBe(held);
+  });
+});
+
+// Extension media (a YouTube video): the last seconds are content, so only the real end starts the next title.
+describe('next-up at the end (extension media)', () => {
+  it('takes the mode from the external source', () => {
+    expect(nextUpModeOf(null)).toBe('credits');
+    expect(nextUpModeOf({})).toBe('credits');
+    expect(nextUpModeOf({ external: { source: {} } })).toBe('credits');
+    expect(nextUpModeOf({ external: { source: { nextAtEnd: true } } })).toBe('end');
+  });
+  it('shows the card only in the last 10 s, not 30 s before the end', () => {
+    expect(nextUpStartsAt([], 600, 'end')).toBe(590);
+    expect(nextUpStartsAt([], 600)).toBe(570);
+  });
+  it('ignores a SponsorBlock outro: the outro is still part of the video', () => {
+    const outro = externalSegments([{ label: 'outro', title: 'Outro', start: 560, end: 600 }]);
+    expect(nextUpStartsAt(outro, 600, 'end')).toBe(590);
+    expect(nextUpStartsAt(outro, 600)).toBe(560);
+  });
+  it('shows for short videos down to 30 s, never with no length', () => {
+    expect(nextUpStartsAt([], 45, 'end')).toBe(35);
+    expect(nextUpStartsAt([], 20, 'end')).toBeNull();
+    expect(nextUpStartsAt([], 0, 'end')).toBeNull();
+  });
+  it('the ring follows the time left in the video', () => {
+    expect(endCountdownLeft(590, 600)).toBe(10);
+    expect(endCountdownLeft(596.5, 600)).toBe(3.5);
+    expect(endCountdownLeft(600, 600)).toBe(0);
+    expect(endCountdownLeft(300, 600)).toBe(10);
+    expect(endCountdownLeft(5, 0)).toBe(10);
+  });
+  it('the end starts the next title unless the card was cancelled', () => {
+    const base = { mode: 'end' as const, autoplay: true, hasNext: true, startsAt: 590, dismissedAt: null };
+    expect(endPlaysNext(base)).toBe(true);
+    expect(endPlaysNext({ ...base, dismissedAt: 592 })).toBe(false);
+    // A dismissal before the card (an old one) does not count.
+    expect(endPlaysNext({ ...base, dismissedAt: 100 })).toBe(true);
+    expect(endPlaysNext({ ...base, autoplay: false })).toBe(false);
+    expect(endPlaysNext({ ...base, hasNext: false })).toBe(false);
+    expect(endPlaysNext({ ...base, startsAt: null, dismissedAt: 5 })).toBe(true);
+  });
+  it('keeps the Jellyfin rule: autoplay and a next item', () => {
+    const base = { mode: 'credits' as const, autoplay: true, hasNext: true, startsAt: 1300, dismissedAt: 1310 };
+    expect(endPlaysNext(base)).toBe(true);
+    expect(endPlaysNext({ ...base, autoplay: false })).toBe(false);
   });
 });

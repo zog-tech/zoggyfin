@@ -73,6 +73,16 @@ export function failedText(extensionName: string): string {
 }
 
 /** The plain tile of an entry. Its art glyph follows the media kind. */
+/**
+ * The length a tile shows on its art (seconds), or null: none for a live
+ * entry (a `LIVE` badge), where a length means nothing, or for no length.
+ */
+export function entryLength(entry: Pick<FeedEntry, 'badge' | 'media'>): number | null {
+  if (entry.badge && entry.badge.trim().toUpperCase() === 'LIVE') return null;
+  const d = entry.media?.duration;
+  return typeof d === 'number' && Number.isFinite(d) && d >= 1 ? d : null;
+}
+
 export function tileOfEntry(entry: FeedEntry): PlainTileData {
   return {
     key: entry.key,
@@ -83,6 +93,7 @@ export function tileOfEntry(entry: FeedEntry): PlainTileData {
     poster: entry.imageUrl ?? null,
     progress: entry.progress ?? null,
     badge: entry.badge ?? null,
+    duration: entryLength(entry),
   };
 }
 

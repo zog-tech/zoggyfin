@@ -218,7 +218,7 @@ function PlaybackSection() {
             : null;
   const cellular = Platform.OS !== 'web' && !isTV;
   return (
-    <Group title="Playback">
+    <Group title="Playback" footer="Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.">
       <SettingsRow icon="gauge" label="Quality on Wi-Fi" value={qualityLabel(st.wifiBitrate)} onPress={() => setPicker('wifi')} />
       {cellular ? (
         <SettingsRow icon="antenna.radiowaves.left.and.right" label="Quality on cellular" value={qualityLabel(st.cellularBitrate)} onPress={() => setPicker('cellular')} />
@@ -231,7 +231,6 @@ function PlaybackSection() {
         onPress={() => st.update({ autoplayNext: !st.autoplayNext })}
         role="switch"
         checked={st.autoplayNext}
-        last
         trailing={
           <Switch
             value={st.autoplayNext}
@@ -240,6 +239,24 @@ function PlaybackSection() {
             thumbColor={mediaColors.white}
             {...webSwitchColors}
             accessibilityLabel="Play next episode automatically"
+          />
+        }
+      />
+      <SettingsRow
+        icon="square.stack.3d.up"
+        label="Load the whole video ahead"
+        onPress={() => st.update({ loadWholeVideo: !st.loadWholeVideo })}
+        role="switch"
+        checked={st.loadWholeVideo}
+        last
+        trailing={
+          <Switch
+            value={st.loadWholeVideo}
+            onValueChange={(v) => st.update({ loadWholeVideo: v })}
+            trackColor={{ true: c.accent, false: c.surface3 }}
+            thumbColor={mediaColors.white}
+            {...webSwitchColors}
+            accessibilityLabel="Load the whole video ahead"
           />
         }
       />

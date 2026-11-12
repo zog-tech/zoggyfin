@@ -6,7 +6,8 @@ import type { BaseItemDto } from '@/api/types';
 import { ItemImage } from '@/components/item-image';
 import { Touchable } from '@/components/touchable';
 import { episodeLabel } from '@/lib/format';
-import { type CountdownClock, countdownClock, countdownLeft, NEXT_UP_COUNTDOWN_SECONDS, setCountdownRunning } from '@/player/segments';
+import { type CountdownClock, countdownClock, countdownLeft, endCountdownLeft, NEXT_UP_COUNTDOWN_SECONDS, setCountdownRunning } from '@/player/segments';
+import { usePlayerStore } from '@/player/store';
 
 import { Glass } from './glass';
 import { c, motion, radius, spacing, textStyle, type } from './tokens';
@@ -42,10 +43,18 @@ function CountdownRing({ progress }: { progress: number }) {
   );
 }
 
+/** `end` mode: the time left in the video, in steps of the tick (so a position tick re-renders only the card, and not often). */
+function useEndLeft(endsAt: number | undefined): number | null {
+  return usePlayerStore((st) => (endsAt === undefined ? null : Math.ceil(endCountdownLeft(st.position, endsAt) * (1000 / TICK_MS)) / (1000 / TICK_MS)));
+}
+
 /**
  * The next-episode card (design-system §7.8): the next episode's thumb and a
  * 10 s countdown ring, with "Play Now" and "Cancel". When the countdown ends,
- * `onPlay` runs. The countdown holds while the video is `paused`. TV: "Play Now" takes the focus while the controls are
+ * `onPlay` runs. The countdown holds while the video is `paused`.
+ * With `endsAt` (the video's length, `end` mode) the ring shows the time left
+ * in the video and the card never plays by itself: the session starts the
+ * next title when the video ends. TV: "Play Now" takes the focus while the controls are
  * hidden (`preferredFocus`); Right reaches "Cancel".
  */
 export function NextUpCard({
@@ -54,6 +63,7 @@ export function NextUpCard({
   onCancel,
   autoplay,
   paused,
+  endsAt,
   preferredFocus,
   onFocusChange,
 }: {
@@ -62,14 +72,18 @@ export function NextUpCard({
   onCancel: () => void;
   autoplay: boolean;
   paused: boolean;
+  endsAt?: number;
   preferredFocus?: boolean;
   onFocusChange?: (focused: boolean) => void;
 }) {
-  const [remaining, setRemaining] = useState(NEXT_UP_COUNTDOWN_SECONDS);
+  const [counted, setRemaining] = useState(NEXT_UP_COUNTDOWN_SECONDS);
+  const endLeft = useEndLeft(endsAt);
+  const atEnd = endLeft !== null;
+  const remaining = endLeft ?? counted;
   const clock = useRef<CountdownClock | null>(null);
   const fired = useRef(false);
   useEffect(() => {
-    if (!autoplay) return;
+    if (!autoplay || atEnd) return;
     const now = Date.now();
     clock.current = setCountdownRunning(clock.current ?? countdownClock(now, false), !paused, now);
     if (paused) return;
@@ -85,7 +99,7 @@ export function NextUpCard({
       }
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [autoplay, paused, onPlay]);
+  }, [autoplay, atEnd, paused, onPlay]);
   const left = Math.ceil(remaining);
 
   const label = [episodeLabel(next), next.Name].filter(Boolean).join(' · ');

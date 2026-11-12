@@ -343,8 +343,9 @@ Web and the Mac app send requests from a browser, so the extension must allow
 CORS for the app's origins: the web address of your Zoggyfin, `tauri://localhost`
 and `http://tauri.localhost` (the Mac app), and `http://localhost:<port>` for
 development. Allow the headers `Content-Type`, `Authorization`, `X-Emby-Token`,
-`X-Jellyfin-Server-Url`, `X-Jellyfin-Server-Id` and `X-Jellyfin-User-Id`. The
-iPhone, iPad and Android apps send no `Origin`.
+`X-Jellyfin-Server-Url`, `X-Jellyfin-Server-Id`, `X-Jellyfin-User-Id` and
+`Prefer` (the download description, see "Preparing" below). The iPhone, iPad
+and Android apps send no `Origin`.
 
 A panel must allow framing by those origins (no `X-Frame-Options: DENY`, and no
 `frame-ancestors` that leaves them out).
@@ -410,7 +411,7 @@ has one `row` section, no tab, no Library tile, and the section on Home.
 | `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), an optional `image` (the artwork of its Library tile, see below), `placement`, an optional `search`, and 1 to 8 `sections`, or `tabs` (see [Tabs](#tabs)), or both. |
 | `tabs` | 2 to 6 tabs. Each has `id`, `title`, 1 to 8 `sections` and an optional `search`. |
 | `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
-| `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
+| `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. `global` (default `false`) also shows the results in the app's Search tab, under `title` (at most 40 characters; default: the page title). See [Results in the Search tab](#results-in-the-search-tab). |
 | `sections` | `id`, `title`, `feed`, `layout` (`row`, the default, `grid` or `list`), `shape` (`poster`, `thumb`, the default, or `square`), `refreshSeconds` (5 to 3600). `grid` and `list` load the next page near the end. |
 | `skipLabels` | At most 10. `id`, `title`, `default`: `auto` (skip, with Undo), `ask` (the default; a Skip button) or `off`. |
 
@@ -503,6 +504,42 @@ sections in order.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are
   never read as templates.
+
+### Results in the Search tab
+
+A `search` (of a page or of a tab) with `"global": true` also runs when the
+user searches in the app's own Search tab. Its results show as a row after the
+server's results, under `title`, or the page title when `title` is left out.
+
+```json
+"search": {
+  "feed": "/api/search",
+  "placeholder": "Search films",
+  "global": true,
+  "title": "From the catalogue"
+}
+```
+
+- The app sends `GET <search.feed>?query=<text>` with the same headers and
+  limits as the page's own search (8 s), and shows the first page only. It
+  never sends `cursor` here.
+- It runs for text of 2 or more characters, after the Search tab's pause in
+  typing, beside the server search: a slow extension never holds back the
+  server's results. A reply to an older text is never shown.
+- It runs only for extensions that are turned on for the signed-in account,
+  only online, only with the All, Movies or Shows filter, and not when a genre
+  is chosen. Downloads and the offline search do not change.
+- At most 4 searches run, in the order of Settings → Extensions, then page
+  order, then the page's search before its tabs' searches. A feed that two
+  searches of one extension name runs once.
+- The tiles use the shape of the page's (or tab's) first `grid`, else wide
+  tiles, and open as they do on the page: an entry with `itemId` opens the
+  Jellyfin item, an entry with `detail` its entry page.
+- While the reply is out the row shows a short loading line. An empty reply,
+  an error or a timeout shows nothing.
+- `global` and `title` need no new schema version: an app version that does
+  not know them ignores them. A manifest that the app saved before it knew
+  them gets them at the next update check of the extension.
 
 ### Tabs
 
@@ -783,6 +820,34 @@ Extensions." With downloads off, Download does not show.
 - `bytes` is the size the app shows before the transfer starts; the real size
   comes from the response.
 
+**Preparing.** A server that makes the file first (for example with a
+converter) can tell the app to ask again later instead of making it wait. The
+app sends every download description request with `Prefer: respond-async`
+(RFC 7240). When the file is not ready and the request has that header, answer
+`202 Accepted` with:
+
+```json
+{ "preparing": { "progress": 0.42, "retryAfter": 5 } }
+```
+
+- `progress` (optional) is 0 to 1. The Downloads tab shows "Preparing on the
+  server…" with the percent when it is known.
+- `retryAfter` (optional, default 5) is the seconds until the app asks again.
+  The app keeps it between 2 and 60 s, and asks at most every 5 s.
+- Answer quickly (in a few seconds): the request has the 8 s time limit of
+  feeds. Keep making the file while the app waits.
+- The app gives up after 30 minutes of preparing ("The server took too long to
+  prepare this file"). A pause or a cancel stops the asks; a resume or a
+  restart of the app asks again.
+- A failed job is an error status with `{ "error": "…" }` (for example 502).
+  The download then fails with that text.
+- Without the header (an older app), keep the old behaviour, and answer within
+  about 5 s.
+- The option list (`GET media.download` with options) can answer "preparing"
+  too; the app then downloads with no choice.
+- On the web and in the Mac app, allow `Prefer` in CORS. When a browser refuses
+  the request, the app asks once more without the header.
+
 **Downloads: how it works.**
 
 - The app asks `media.download` when the user taps Download. When the reply has
@@ -790,7 +855,8 @@ Extensions." With downloads off, Download does not show.
   the chosen option's `download` for the file.
 - The app asks the description again each time a transfer starts (a resume
   after a restart, Retry). A file URL can therefore expire: when the transfer
-  answers 401, 403, 404 or 410, the app asks the description once more and
+  answers 401, 403, 404 or 410, the app asks the description once more (a
+  "preparing" reply then waits as above) and
   continues from the saved bytes when the server allows ranges, else it starts
   again. Keep the chosen option's `download` valid.
 - After the file, the app saves each subtitle (`subtitle-<n>.vtt`) and the
@@ -868,6 +934,8 @@ Pages") or from the header of its "Latest samples" Home row:
 - "All samples": a poster grid of 95 entries that pages 20 at a time through
   `next`.
 - A search field: `/pages/search` matches titles and topics, 20 per page.
+  The search is `global`, so its results also show in the Search tab under
+  "From Hello Pages".
 - Every entry plays the same 6 s test video, which the sample serves itself
   (`media/sample.mp4`, a test pattern with a tone, with byte ranges). The stream
   description is at `/pages/entries/<id>/play`. It has two `qualities` ("High"

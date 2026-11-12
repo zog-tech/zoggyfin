@@ -4,10 +4,17 @@
  * the Jellyfin download header), a choice is needed when the description
  * has options, an expired file URL is asked again once, and the refusals
  * (grant off, another origin, no downloads on the platform) hold no URL.
+ * An extension that prepares the file first ("preparing") makes the record
+ * wait and ask again, until the file is ready, a failure, a pause or cancel,
+ * or the time limit.
  */
+import { ExtensionError } from '@/extensions/http';
+
 import type { EngineHandlers } from '../engine-types';
 import { extensionDir, extensionRecordId, newExtensionRecord } from '../extension-media';
+
 import { downloadManager } from '../manager';
+import { PREPARE_LIMIT_MS, PREPARE_TOO_LONG } from '../state-machine';
 import { downloadsState, putRecord, useDownloadsStore } from '../store';
 import { accountA, BASE, EXT_ID, fakeDeps, mediaExtension } from '../test-utils/extension-fakes';
 
@@ -226,6 +233,137 @@ describe('an expired file URL', () => {
     await flush();
     expect(mockStart).toHaveBeenCalledTimes(1);
     expect(downloadsState().records[ID]!.state).toBe('failed');
+  });
+});
+
+describe('an extension that prepares the file first', () => {
+  const preparing = (progress?: number) => ({ preparing: { ...(progress !== undefined ? { progress } : {}), retryAfter: 5 } });
+  let now = 1_000_000;
+  let clock: jest.SpyInstance<number, []>;
+  beforeEach(() => {
+    now = 1_000_000;
+    clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+  });
+  afterEach(() => clock.mockRestore());
+
+  /** Time passes, and the manager's tick runs (it runs every 5 s in the app). */
+  async function later(ms: number) {
+    now += ms;
+    downloadManager.tick();
+    await flush();
+  }
+
+  it('sends Prefer: respond-async, waits in preparing with no transfer, then downloads the file when it is ready', async () => {
+    use({ [DOWNLOAD]: (n: number) => (n < 3 ? preparing(n * 0.2) : single) });
+    const out = await downloadManager.downloadExtension(input, true);
+    await flush();
+    expect(out).toEqual({ preparing: true });
+    expect(fake.requests[0]!.headers.Prefer).toBe('respond-async');
+    let r = downloadsState().records[ID]!;
+    expect(r.state).toBe('preparing');
+    expect(r.prepare).toEqual({ since: now, progress: 0.2 });
+    expect(mockStart).not.toHaveBeenCalled();
+
+    // Not yet time to ask again.
+    await later(4000);
+    expect(fake.requests).toHaveLength(1);
+    await later(1000);
+    r = downloadsState().records[ID]!;
+    expect(fake.requests).toHaveLength(2);
+    expect(r.state).toBe('preparing');
+    expect(r.prepare).toEqual({ since: 1_000_000, progress: 0.4 });
+
+    await later(5000);
+    r = downloadsState().records[ID]!;
+    expect(r.state).toBe('downloading');
+    expect(r.prepare).toBeUndefined();
+    expect(mockStart).toHaveBeenCalledTimes(1);
+    expect((mockStart.mock.calls[0][0] as { url: string }).url).toBe(`${BASE}/files/e1-720.mp4?sig=one`);
+  });
+
+  it('a hard server failure while preparing ends as failed with the server message', async () => {
+    use({
+      [DOWNLOAD]: (n: number) => {
+        if (n === 1) return preparing();
+        throw new ExtensionError('Video unavailable', 502);
+      },
+    });
+    await downloadManager.downloadExtension(input, true);
+    await later(5000);
+    const r = downloadsState().records[ID]!;
+    expect(r.state).toBe('failed');
+    expect(r.error).toBe('Video unavailable');
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('cancel and pause stop the asks', async () => {
+    use({ [DOWNLOAD]: preparing() });
+    await downloadManager.downloadExtension(input, true);
+    await downloadManager.pause(ID);
+    expect(downloadsState().records[ID]!.state).toBe('paused');
+    await later(60_000);
+    expect(fake.requests).toHaveLength(1);
+
+    await downloadManager.resume(ID);
+    await flush();
+    expect(downloadsState().records[ID]!.state).toBe('preparing');
+    expect(fake.requests).toHaveLength(2);
+
+    await downloadManager.cancel(ID);
+    expect(downloadsState().records[ID]).toBeUndefined();
+    await later(60_000);
+    expect(fake.requests).toHaveLength(2);
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('gives up after the limit with a clear message', async () => {
+    use({ [DOWNLOAD]: preparing() });
+    await downloadManager.downloadExtension(input, true);
+    await later(PREPARE_LIMIT_MS);
+    const r = downloadsState().records[ID]!;
+    expect(r.state).toBe('failed');
+    expect(r.error).toBe(PREPARE_TOO_LONG);
+    expect(r.retryAt).toBeNull();
+  });
+
+  it('a saved wait (after a restart) asks again on the next tick', async () => {
+    use({ [DOWNLOAD]: single });
+    const saved = newExtensionRecord(input, { serverId: 'server-1', userId: 'user-1', baseUrl: BASE, kind: 'video', order: 0, now: 1 });
+    putRecord({ ...saved, state: 'preparing', retryAt: now - 1, prepare: { since: now - 60_000, progress: 0.5 } });
+    await later(0);
+    expect(downloadsState().records[ID]!.state).toBe('downloading');
+    expect(mockStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('an expired file URL whose file the server makes again waits in preparing', async () => {
+    use({ [DOWNLOAD]: (n: number) => (n <= 2 ? single : n === 3 ? preparing(0.1) : { ...single, url: '/files/e1-720.mp4?sig=new' }) });
+    await downloadManager.downloadExtension(input, true);
+    await flush();
+    mockHandlers.current!.onError(ID, 'HTTP 404', 404);
+    await flush();
+    expect(downloadsState().records[ID]!.state).toBe('preparing');
+    await later(5000);
+    expect(downloadsState().records[ID]!.state).toBe('downloading');
+    expect((mockStart.mock.calls[1][0] as { url: string }).url).toMatch(/sig=new$/);
+  });
+
+  it('a browser that refuses the Prefer header (CORS) asks once more without it', async () => {
+    let n = 0;
+    fake = fakeDeps(() => ext, {});
+    downloadManager.useExtensionDeps({
+      ...fake.deps,
+      sendJson: async (req) => {
+        fake.requests.push(req);
+        n++;
+        if (req.headers.Prefer) throw Object.assign(new ExtensionError('Cannot reach the extension (Failed to fetch).'), { unreachable: true });
+        return single;
+      },
+    });
+    await downloadManager.downloadExtension(input, true);
+    await flush();
+    expect(n).toBeGreaterThanOrEqual(2);
+    expect(fake.requests[1]!.headers.Prefer).toBeUndefined();
+    expect(downloadsState().records[ID]!.state).toBe('downloading');
   });
 });
 

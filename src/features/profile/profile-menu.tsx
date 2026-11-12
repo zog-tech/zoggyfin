@@ -61,7 +61,7 @@ function useMenuState() {
     const all = Object.values(downloads);
     return {
       count: all.filter((r) => r.state === 'completed').length,
-      active: all.filter((r) => r.state === 'downloading' || r.state === 'queued').map((r) => ({ done: r.bytesDone, total: r.bytesTotal })),
+      active: all.filter((r) => r.state === 'downloading' || r.state === 'queued' || r.state === 'preparing').map((r) => ({ done: r.bytesDone, total: r.bytesTotal })),
     };
   }, [downloads]);
   const rows = menuRows({

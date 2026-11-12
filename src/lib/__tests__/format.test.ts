@@ -1,7 +1,7 @@
 import { gridItemTypes, isAudioView, isSupportedView, libraryKind } from '@/features/library/library-kind';
 import { filterSections, groupSearchResults, pushRecentSearch, topResult } from '@/features/search/group-results';
 
-import { episodeLabel, formatClock, formatDuration, playedFraction, remainingLabel, subtitleFor } from '../format';
+import { episodeLabel, formatClock, formatClockSeconds, formatDuration, lengthLabel, playedFraction, remainingLabel, subtitleFor } from '../format';
 
 const T = 10_000_000;
 
@@ -140,5 +140,25 @@ describe('download formats', () => {
     expect(formatEta(61)).toBe('1 min left');
     expect(formatEta(3600 + 300)).toBe('1 h 5 min left');
     expect(formatEta(7200)).toBe('2 h left');
+  });
+});
+
+describe('video length on a tile', () => {
+  it('formats seconds as a clock', () => {
+    expect(formatClockSeconds(754)).toBe('12:34');
+    expect(formatClockSeconds(3723)).toBe('1:02:03');
+    expect(formatClockSeconds(59.6)).toBe('1:00');
+    expect(formatClockSeconds(5)).toBe('0:05');
+  });
+  it('gives null for no length', () => {
+    expect(formatClockSeconds(0)).toBeNull();
+    expect(formatClockSeconds(undefined)).toBeNull();
+    expect(formatClockSeconds(null)).toBeNull();
+    expect(formatClockSeconds(Number.NaN)).toBeNull();
+  });
+  it('says the length for a screen reader', () => {
+    expect(lengthLabel(754)).toBe('12 min long');
+    expect(lengthLabel(3723)).toBe('1 h 2 min long');
+    expect(lengthLabel(null)).toBeNull();
   });
 });

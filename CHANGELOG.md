@@ -13,6 +13,16 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Load the whole video ahead.** A new switch in Settings, Playback (off by default). When on, the
+  player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
+  less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android
+  phones with 3 GB of memory or more (the player's own size on smaller devices and most TV sticks),
+  120 MB in a browser, 1 GB in the Mac app; on iPhone and iPad the system sets the limit. Live
+  streams, downloads and watch together keep the normal buffer. Nothing is saved after the player
+  closes.
+- **Extension results in Search.** An extension search with `global: true` also shows its results
+  in the Search tab, as a row after the server's results, under its own title. Each extension
+  loads on its own, so the server's results never wait. See `docs/extensions.md`.
 - **Extensions, schema version 2.** An extension can add native pages (rows, grids and lists that
   load more as you scroll, with search), shown as a tab on iPad, the web and the Mac app, in the
   TV side menu, and on phones as a Library tile or, if you choose ("On this phone"), as a tab in
@@ -192,6 +202,20 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Downloads of a long video from an extension no longer fail with "did not answer in time".** An
+  extension that makes the file first (for example one that converts a video) can now answer
+  "preparing". The download waits in the Downloads tab with "Preparing on the server…" and its
+  progress, asks again, and starts when the file is ready. The wait survives a restart; pause and
+  cancel stop it; it gives up after 30 minutes. Extension authors: see "Preparing" in
+  docs/extensions.md.
+- **Video length on extension tiles.** Extension tiles and list lines (for example YouTube videos)
+  now show the video's length ("12:34") at the bottom right of the picture, and screen readers say
+  it. Live entries show no length.
+- **Extension videos play to the end.** A YouTube video with a next title stopped about 20 s early:
+  the Up Next card counted down from 30 s before the end (or from a SponsorBlock outro) and then
+  started the next video. For extension media the card now shows in the last 10 s, its ring shows
+  the time left in the video, and the next video starts only when the video ends. Cancel keeps
+  the player at the end. Jellyfin episodes keep the countdown at the credits.
 - **Invite links open in full from Messages.** iPhone Messages linked only `…/join`, because it stops a
   link before a long run of letters. The link now has a dot every 200 characters; the app and the
   /join page remove them. Old links still work.

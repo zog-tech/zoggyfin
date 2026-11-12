@@ -11,9 +11,11 @@
 import { memo } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 
+import { LengthPill } from '@/components/length-pill';
 import { TileCaption, TileFocusFill } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { tvFocusRest } from '@/features/tv/focus-settle';
+import { lengthLabel } from '@/lib/format';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, mediaColors, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
 
@@ -30,6 +32,8 @@ export interface PlainTileData {
   progress?: number | null;
   /** A short label on the art, for example "New". */
   badge?: string | null;
+  /** The video's length in seconds: a pill at the bottom right of the art. Null for none (live). */
+  duration?: number | null;
 }
 
 export const PlainTile = memo(function PlainTile({
@@ -62,7 +66,7 @@ export const PlainTile = memo(function PlainTile({
   const s = useStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const progress = data.progress ?? null;
-  const label = [data.title, data.subtitle, data.badge, progress !== null ? `${Math.round(progress * 100)} percent watched` : null].filter(Boolean).join(', ');
+  const label = [data.title, data.subtitle, data.badge, lengthLabel(data.duration), progress !== null ? `${Math.round(progress * 100)} percent watched` : null].filter(Boolean).join(', ');
   const body = (
     <>
       <TileFocusFill artHeight={width / aspectRatio} radius={radius.md} />
@@ -75,6 +79,7 @@ export const PlainTile = memo(function PlainTile({
             </Text>
           </View>
         ) : null}
+        <LengthPill seconds={data.duration} aboveProgress={progress !== null} />
         {progress !== null ? (
           <View style={s.progress}>
             <View style={[s.progressFill, { width: `${Math.max(2, Math.round(progress * 100))}%` }]} />

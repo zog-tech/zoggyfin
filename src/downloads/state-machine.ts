@@ -12,8 +12,24 @@
  *   cancel: any state but completed ──▶ cancelled
  *   missing: completed, but the file is gone ──▶ failed (no automatic retry;
  *            a retry downloads it again)
+ *
+ * Extension media whose file the extension makes first:
+ *   downloading / queued ──prepare──▶ preparing ──poll (at retryAt)──▶ queued
+ *   preparing ──pause──▶ paused;  prepare after PREPARE_LIMIT_MS ──▶ failed
+ *   (no automatic retry). `prepare.since` stays until the file is named or a
+ *   retry by hand, so the limit counts the whole wait.
  */
 import type { DownloadRecord, DownloadState } from './types';
+
+/** The longest wait for an extension that prepares a file. */
+export const PREPARE_LIMIT_MS = 30 * 60_000;
+
+/** The shortest and the longest time between two asks while the extension prepares (seconds). */
+export const PREPARE_RETRY_MIN_S = 2;
+export const PREPARE_RETRY_MAX_S = 60;
+
+/** The error when the extension prepares for longer than `PREPARE_LIMIT_MS`. */
+export const PREPARE_TOO_LONG = 'The server took too long to prepare this file. Try again later';
 
 export type DownloadEvent =
   | { type: 'start'; now: number }
@@ -25,7 +41,11 @@ export type DownloadEvent =
   | { type: 'retry' }
   | { type: 'autoRetry'; now: number }
   | { type: 'cancel' }
-  | { type: 'missing' };
+  | { type: 'missing' }
+  /** The extension makes the file first: ask again after `retryAfter` seconds. */
+  | { type: 'prepare'; progress: number | null; retryAfter: number; now: number }
+  /** A preparing record's time to ask again has come. */
+  | { type: 'poll'; now: number };
 
 /** The error of a completed download whose file is gone. */
 export const FILE_MISSING = 'The downloaded file is missing';
@@ -64,9 +84,12 @@ export function transition(r: DownloadRecord, e: DownloadEvent): DownloadRecord 
       const total = e.bytesTotal && e.bytesTotal > 0 ? e.bytesTotal : r.bytesTotal;
       return { ...r, bytesDone: Math.max(0, e.bytesDone), bytesTotal: total, speed, progressAt: e.now };
     }
-    case 'pause':
-      if (r.state !== 'queued' && r.state !== 'downloading') return r;
-      return { ...r, state: 'paused', speed: 0 };
+    case 'pause': {
+      if (r.state !== 'queued' && r.state !== 'downloading' && r.state !== 'preparing') return r;
+      // A resume starts a new wait for the extension.
+      const { prepare: _p, ...rest } = r;
+      return { ...rest, state: 'paused', speed: 0, retryAt: null };
+    }
     case 'resume':
       if (r.state !== 'paused') return r;
       return { ...r, state: 'queued' };
@@ -95,9 +118,11 @@ export function transition(r: DownloadRecord, e: DownloadEvent): DownloadRecord 
         retryAt: attempts <= MAX_AUTO_RETRIES ? e.now + retryDelayMs(attempts) : null,
       };
     }
-    case 'retry':
+    case 'retry': {
       if (r.state !== 'failed') return r;
-      return { ...r, state: 'queued', attempts: 0, retryAt: null, error: null };
+      const { prepare: _p, ...rest } = r;
+      return { ...rest, state: 'queued', attempts: 0, retryAt: null, error: null };
+    }
     case 'autoRetry':
       if (r.state !== 'failed' || r.retryAt === null || r.retryAt > e.now) return r;
       return { ...r, state: 'queued', retryAt: null };
@@ -107,12 +132,36 @@ export function transition(r: DownloadRecord, e: DownloadEvent): DownloadRecord 
     case 'missing':
       if (r.state !== 'completed') return r;
       return { ...r, state: 'failed', error: FILE_MISSING, bytesDone: 0, speed: 0, attempts: 0, retryAt: null, completedAt: null, validator: null };
+    case 'prepare': {
+      if (r.state !== 'downloading' && r.state !== 'queued') return r;
+      const since = r.prepare?.since ?? e.now;
+      if (e.now - since >= PREPARE_LIMIT_MS) {
+        const { prepare: _p, ...rest } = r;
+        return { ...rest, state: 'failed', attempts: r.attempts + 1, error: PREPARE_TOO_LONG, speed: 0, retryAt: null };
+      }
+      const progress = e.progress === null ? null : Math.max(0, Math.min(1, e.progress));
+      return { ...r, state: 'preparing', speed: 0, error: null, retryAt: e.now + clampRetryAfter(e.retryAfter) * 1000, prepare: { since, progress } };
+    }
+    case 'poll':
+      if (r.state !== 'preparing' || (r.retryAt !== null && r.retryAt > e.now)) return r;
+      return { ...r, state: 'queued', retryAt: null };
   }
+}
+
+/** Seconds until the next ask, kept between `PREPARE_RETRY_MIN_S` and `PREPARE_RETRY_MAX_S`. */
+export function clampRetryAfter(seconds: number): number {
+  if (!Number.isFinite(seconds)) return PREPARE_RETRY_MIN_S * 2;
+  return Math.max(PREPARE_RETRY_MIN_S, Math.min(PREPARE_RETRY_MAX_S, seconds));
+}
+
+/** Preparing records whose time to ask again has come. */
+export function dueForPoll(records: readonly DownloadRecord[], now: number): DownloadRecord[] {
+  return records.filter((r) => r.state === 'preparing' && (r.retryAt === null || r.retryAt <= now));
 }
 
 /** States that still need work. */
 export function isActive(state: DownloadState): boolean {
-  return state === 'queued' || state === 'downloading' || state === 'paused' || state === 'failed';
+  return state === 'queued' || state === 'preparing' || state === 'downloading' || state === 'paused' || state === 'failed';
 }
 
 /**

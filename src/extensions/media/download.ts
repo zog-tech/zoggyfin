@@ -9,6 +9,10 @@
  *   left out. Subtitles and options are read one by one.
  * - A reply with no file and no option left is refused. The error holds no
  *   URL.
+ * - "Preparing" (`parsePreparing`): an extension that makes the file first
+ *   answers 202 with `{ "preparing": { "progress": 0.42, "retryAfter": 5 } }`
+ *   when the request had `Prefer: respond-async` (RFC 7240). The app asks
+ *   again after `retryAfter` seconds.
  *
  * Pure, so it is unit-tested.
  */
@@ -42,6 +46,33 @@ export interface DownloadDescription {
   subtitles: DownloadSubtitle[];
   imageUrl?: string;
   options: DownloadOption[];
+}
+
+/** The `Prefer` header of a download description request: the app understands a "preparing" reply. */
+export const PREFER_ASYNC = 'respond-async';
+
+/** A "preparing" reply: the extension makes the file; ask again later. */
+export interface PreparingReply {
+  /** 0..1, or null when the extension does not say. */
+  progress: number | null;
+  /** Seconds until the next ask, as the extension sent it (the download manager keeps it in bounds). */
+  retryAfter: number;
+}
+
+/** The ask-again time when the reply names none (seconds). */
+export const PREPARING_RETRY_DEFAULT = 5;
+
+/** Reads a "preparing" reply, or null when the reply is something else. */
+export function parsePreparing(data: unknown): PreparingReply | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const p = (data as { preparing?: unknown }).preparing;
+  if (p === true) return { progress: null, retryAfter: PREPARING_RETRY_DEFAULT };
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+  const { progress, retryAfter } = p as { progress?: unknown; retryAfter?: unknown };
+  return {
+    progress: typeof progress === 'number' && Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : null,
+    retryAfter: typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : PREPARING_RETRY_DEFAULT,
+  };
 }
 
 const subtitleSchema = z.object({ label: z.string().min(1).max(80), language: z.string().max(20).optional(), url: z.string().min(1).max(2000) });

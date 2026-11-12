@@ -190,6 +190,11 @@ function statusLine(r: DownloadRecord): string {
       return [sizes ?? 'Starting', r.speed > 0 ? formatSpeed(r.speed) : null, formatEta(etaSeconds(r))].filter(Boolean).join(' · ');
     case 'queued':
       return ['Waiting', sizes].filter(Boolean).join(' · ');
+    case 'preparing': {
+      // The extension makes the file first; the transfer starts when it is ready.
+      const p = r.prepare?.progress;
+      return p != null && p > 0 ? `Preparing on the server… ${Math.round(p * 100)}%` : 'Preparing on the server…';
+    }
     case 'paused':
       return r.method === 'transcode' && r.bytesDone === 0 ? 'Paused. Starts again when you resume' : ['Paused', sizes].filter(Boolean).join(' · ');
     case 'failed':
@@ -218,7 +223,8 @@ function ProgressRow({ record: r, last }: { record: DownloadRecord; last: boolea
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const open = useOpenDetail();
-  const f = fraction(r);
+  // While the extension prepares the file, the bar shows its progress.
+  const f = r.state === 'preparing' ? (r.prepare?.progress ?? 0) : fraction(r);
   const failed = r.state === 'failed';
   const cancel = async () => {
     const ok = await confirmDestructive('Cancel download?', `${r.item.Name ?? 'This item'} stops downloading and what was saved is removed.`, 'Cancel download');

@@ -29,10 +29,10 @@ import { playRouter } from './play-router';
 import { buildDeviceProfile } from './device-profile';
 import { getEngine } from './engine';
 import { sameEmbeddedTracks } from './embedded-tracks';
-import type { EmbeddedTracks, EngineEvent } from './engine-types';
+import type { EmbeddedTracks, EngineEvent, EngineSource } from './engine-types';
 import { isForeignDownload, outboxOnly, withOutbox } from './outbox-transport';
 import { ProgressReporter, type ProgressTransport, secondsToTicks, ticksToSecondsExact, toServerReport } from './progress-reporter';
-import { externalSegments, JELLYFIN_SKIP_SCOPE, normalizeSegments } from './segments';
+import { endPlaysNext, externalSegments, JELLYFIN_SKIP_SCOPE, nextUpModeOf, nextUpStartsAt, normalizeSegments } from './segments';
 import { autoRanges, type SkipContext, skippedNow, transitionAutoSkip, undoneRange } from './auto-skip';
 import { chooseTracks, rememberChoice, titleKey } from './track-prefs';
 import { loadTrackPrefs, saveTrackPrefs } from './track-prefs-store';
@@ -150,6 +150,14 @@ function subtitleLine(item: BaseItemDto): string | undefined {
   return item.ProductionYear ? String(item.ProductionYear) : undefined;
 }
 
+/**
+ * The setting "Load the whole video ahead" for a stream that is not live, with
+ * the video's length (0 when not known). Null when it is off.
+ */
+function loadAheadFor(durationSeconds: number): EngineSource['loadAhead'] {
+  return usePlaybackSettings.getState().loadWholeVideo ? { durationSeconds: durationSeconds > 0 ? durationSeconds : 0 } : null;
+}
+
 /** The plan of a live stream: no Jellyfin source, no tracks, no quality choice. */
 function livePlan(url: string, isHls: boolean): StreamPlan {
   return {
@@ -224,6 +232,8 @@ class VideoSession {
   /** The external title has played: its position may be saved (a failed load must not wipe a saved one). */
   private extPlayed = false;
   private extSavedAt = 0;
+  /** Cancel on the next-up card: the item and the position. In `end` mode the end of the video then does not start the next title. */
+  private nextDismissal: { itemId: string; at: number } | null = null;
   /** IPTV: the saved track choice was applied to the stream that loads (once per kind and load). */
   private tracksApplied = { audio: false, subtitle: false };
 
@@ -905,6 +915,7 @@ class VideoSession {
       autoplay: a.autoplay !== false,
       userAgent: a.userAgent,
       headers: a.stream.headers,
+      loadAhead: external.live ? null : loadAheadFor(playerState().duration),
     });
     const rate = playerState().rate;
     if (rate !== 1) this.engine.setRate(rate);
@@ -1069,6 +1080,8 @@ class VideoSession {
       autoplay: opts.autoplay,
       audioIndex: plan.audioIndex,
       streams: { audio: plan.audio.map((a) => a.index), subtitles: plan.subtitles.filter((x) => !x.isExternal).map((x) => x.index) },
+      // A Jellyfin Live TV channel has no end: it keeps the defaults.
+      loadAhead: source.IsInfiniteStream || item.Type === 'TvChannel' ? null : loadAheadFor(playerState().duration),
     });
     const rate = playerState().rate;
     if (rate !== 1) this.engine.setRate(rate);
@@ -1439,11 +1452,26 @@ class VideoSession {
     if (request) await this.play(request);
   }
 
+  /** Cancel on the next-up card at `position` (seconds). */
+  dismissNext(position: number): void {
+    const itemId = playerState().now?.item.Id;
+    this.nextDismissal = itemId ? { itemId, at: position } : null;
+  }
+
   private async onEnded() {
-    const now = playerState().now;
+    const { now, duration } = playerState();
     // In a together session the session says who starts the next episode (the host, or the member who picked it).
     const mayAutoplay = playRouter.active ? playRouter.autoplay() : !controlGate.active;
-    if (now?.next && usePlaybackSettings.getState().autoplayNext && mayAutoplay) {
+    const mode = nextUpModeOf(now);
+    const dismissal = this.nextDismissal;
+    const plays = endPlaysNext({
+      mode,
+      autoplay: usePlaybackSettings.getState().autoplayNext && mayAutoplay,
+      hasNext: !!now?.next,
+      startsAt: now ? nextUpStartsAt(now.segments, duration, mode) : null,
+      dismissedAt: dismissal && dismissal.itemId === now?.item.Id ? dismissal.at : null,
+    });
+    if (now?.next && plays) {
       await this.playNext();
       return;
     }

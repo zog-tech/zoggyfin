@@ -11,6 +11,8 @@ export const FEED_TIMEOUT_MS = 8_000;
 
 export class ExtensionError extends Error {
   status?: number;
+  /** True when no answer came at all (no connection, or a browser refused the request, for example by CORS); not a time-out. */
+  unreachable?: boolean;
   constructor(message: string, status?: number) {
     super(message);
     this.name = 'ExtensionError';
@@ -100,7 +102,9 @@ export async function fetchWithTimeout(url: string, init: RequestInit, ms: numbe
     return await fetch(url, { ...init, signal: ctrl.signal });
   } catch (e) {
     if (ctrl.signal.aborted) throw new ExtensionError('The extension did not answer in time.');
-    throw new ExtensionError(e instanceof Error && e.message ? `Cannot reach the extension (${e.message}).` : 'Cannot reach the extension.');
+    const err = new ExtensionError(e instanceof Error && e.message ? `Cannot reach the extension (${e.message}).` : 'Cannot reach the extension.');
+    err.unreachable = true;
+    throw err;
   } finally {
     clearTimeout(t);
   }

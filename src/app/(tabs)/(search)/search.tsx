@@ -31,6 +31,8 @@ import {
   type SearchFilter,
   topResult,
 } from '@/features/search/group-results';
+import { ExtensionSearchResults } from '@/features/search/extension-results';
+import { globalSearchQuery } from '@/features/search/extension-search';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
@@ -118,6 +120,8 @@ export default function SearchScreen() {
   useFocusEffect(useCallback(() => remember, [remember]));
 
   const active = term.length >= 2 || !!genre;
+  // Extension searches with `global: true` run beside the server search, never before it.
+  const extQuery = globalSearchQuery(term, { offline: localOnly, genre, filter });
   const body = searchBody({
     active,
     localOnly,
@@ -342,6 +346,7 @@ export default function SearchScreen() {
             {localOnly ? <Text style={[s.localNote, { paddingHorizontal: l.gutter }]}>Showing downloads only. The server cannot be reached.</Text> : null}
           </View>
         )}
+        <ExtensionSearchResults query={extQuery} />
       </TvScrollView>
       <ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />
     </>

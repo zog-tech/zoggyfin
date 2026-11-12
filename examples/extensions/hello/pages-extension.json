@@ -26,7 +26,9 @@
         },
         "search": {
           "feed": "/pages/search",
-          "placeholder": "Search the samples"
+          "placeholder": "Search the samples",
+          "global": true,
+          "title": "From Hello Pages"
         },
         "sections": [
           {

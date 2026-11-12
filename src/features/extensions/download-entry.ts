@@ -49,5 +49,7 @@ export async function downloadMedia(extension: InstalledExtension, target: FeedE
     title, subtitle: facts.subtitle ?? facts.eyebrow, image: target.imageUrl, duration: media.duration, option,
   });
   if (stale()) return;
-  toast(r.ok ? `Downloading ${title}` : r.error, { icon: r.ok ? 'arrow.down.circle' : 'exclamationmark.triangle' });
+  if (!r.ok) toast(r.error, { icon: 'exclamationmark.triangle' });
+  // The extension makes the file first; Downloads shows the wait.
+  else toast(r.preparing ? `Preparing ${title} on the server. It downloads when it is ready.` : `Downloading ${title}`, { icon: 'arrow.down.circle' });
 }

@@ -37,6 +37,19 @@ export function formatClock(ticks: number | null | undefined): string | null {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/** "12:34" or "1:02:03" from seconds (the length pill on a video tile). Null for no length. */
+export function formatClockSeconds(seconds: number | null | undefined): string | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null;
+  return formatClock(seconds * TICKS_PER_SECOND);
+}
+
+/** "12 min long", for a screen reader next to the length pill. Null for no length. */
+export function lengthLabel(seconds: number | null | undefined): string | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null;
+  const d = formatDuration(seconds * TICKS_PER_SECOND);
+  return d ? `${d} long` : null;
+}
+
 /** "S1 · E4" style label for an episode, or null. */
 export function episodeLabel(item: BaseItemDto): string | null {
   const s = item.ParentIndexNumber;

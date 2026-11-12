@@ -18,13 +18,18 @@
  * - A description with `options` needs a choice first (`extensionDownloadOptions`).
  * - A file URL can expire: a transfer that fails with 401, 403, 404 or 410
  *   asks the description again once (`isExpiredStatus`).
+ * - The description request sends `Prefer: respond-async`. An extension that
+ *   makes the file first answers "preparing" (`parsePreparing`); `resolveFile`
+ *   then gives `{ preparing }` and the record waits (`state-machine.ts`).
+ *   A browser refuses the request when the extension's CORS rules do not
+ *   allow `Prefer`; the app then asks once more without it.
  * - Record ids are `ext:<extId>:<mediaId>`, so they never match a Jellyfin id.
  * - Error text never holds a URL or a token (`safeText`).
  *
  * Pure apart from the injected dependencies, so it is unit-tested.
  */
 import type { ExtensionMediaDeps } from '@/extensions/media';
-import { parseDownloadDescription, type DownloadDescription, type DownloadOption } from '@/extensions/media/download';
+import { parseDownloadDescription, parsePreparing, PREFER_ASYNC, type DownloadDescription, type DownloadOption, type PreparingReply } from '@/extensions/media/download';
 import { reportSender } from '@/extensions/media/outbox';
 import { buildReport, type ReportEvent } from '@/extensions/media/report';
 import { parseStreamDescription } from '@/extensions/media/describe';
@@ -41,7 +46,7 @@ import { extensionOf, type MediaPlan } from './plan';
 import { fraction } from './state-machine';
 import { DOWNLOAD_SCHEMA_VERSION, type DownloadRecord, type ExtensionDownloadSource, type LocalSubtitle } from './types';
 
-export type { DownloadOption } from '@/extensions/media/download';
+export type { DownloadOption, PreparingReply } from '@/extensions/media/download';
 
 /** The dependencies of extension downloads: the installed extensions, the account and the requests. */
 export type ExtensionDownloadDeps = ExtensionMediaDeps;
@@ -121,13 +126,35 @@ export function extensionHeaders(ext: InstalledExtension, deps: ExtensionDownloa
   return streamHeaders(ext.manifest, deps.context(ext), ext, deps.account());
 }
 
-/** Reads a download description from a URL on the extension's origin. Throws `ExtensionError` with no URL. */
-async function readDescription(ext: InstalledExtension, url: string, deps: ExtensionDownloadDeps): Promise<DownloadDescription> {
+/** The extension makes the file first: ask again later. */
+export interface PreparingFile {
+  preparing: PreparingReply;
+}
+
+type DescriptionReply = { description: DownloadDescription } | PreparingFile;
+
+/** True for a "preparing" answer of `resolveFile`. */
+export function isPreparing(f: ResolvedFile | PreparingFile): f is PreparingFile {
+  return 'preparing' in f;
+}
+
+/** Reads a download description (or a "preparing" reply) from a URL on the extension's origin. Throws `ExtensionError` with no URL. */
+async function readDescription(ext: InstalledExtension, url: string, deps: ExtensionDownloadDeps): Promise<DescriptionReply> {
   const target = urlOnOrigin(ext.manifest.baseUrl, url);
   if (!target) throw new ExtensionError("This download is not on the extension's server.");
   const sendJson = deps.sendJson ?? send;
-  const data = await sendJson({ url: target, method: 'GET', headers: { ...extensionHeaders(ext, deps), Accept: 'application/json' } }, FEED_TIMEOUT_MS);
-  return parseDownloadDescription(data, ext.manifest.baseUrl);
+  const headers = { ...extensionHeaders(ext, deps), Accept: 'application/json' };
+  let data: unknown;
+  try {
+    data = await sendJson({ url: target, method: 'GET', headers: { ...headers, Prefer: PREFER_ASYNC } }, FEED_TIMEOUT_MS);
+  } catch (e) {
+    // No answer at all: in a browser, CORS rules without `Prefer` look the same. One more ask without it.
+    if (!(e instanceof ExtensionError && e.unreachable)) throw e;
+    data = await sendJson({ url: target, method: 'GET', headers }, FEED_TIMEOUT_MS);
+  }
+  const preparing = parsePreparing(data);
+  if (preparing) return { preparing };
+  return { description: parseDownloadDescription(data, ext.manifest.baseUrl) };
 }
 
 /** The installed extension that may download, or throws with the reason. */
@@ -140,12 +167,14 @@ function allowed(extId: string, deps: ExtensionDownloadDeps, supported: boolean)
 
 /**
  * The choices of a download description (`options`), for a quality picker.
- * Empty: the description names one file, so no choice is needed.
+ * Empty: the description names one file (or the extension prepares it), so
+ * no choice is needed.
  */
 export async function downloadOptions(extId: string, download: string, deps: ExtensionDownloadDeps, supported: boolean): Promise<DownloadOption[]> {
   const ext = allowed(extId, deps, supported);
   try {
-    return (await readDescription(ext, download, deps)).options;
+    const reply = await readDescription(ext, download, deps);
+    return 'description' in reply ? reply.description.options : [];
   } catch (e) {
     throw new ExtensionError(safeText(e, 'The extension did not send a download.'));
   }
@@ -162,17 +191,22 @@ export interface ResolvedFile {
 /**
  * Asks the extension which file to save now. With `option`, the chosen
  * option's own description names the file. With no option and only options
- * in the reply, the user must choose first.
+ * in the reply, the user must choose first. `{ preparing }`: the extension
+ * makes the file; ask again later.
  */
-export async function resolveFile(source: Pick<ExtensionDownloadSource, 'extId' | 'download' | 'option'>, deps: ExtensionDownloadDeps, supported: boolean): Promise<ResolvedFile> {
+export async function resolveFile(source: Pick<ExtensionDownloadSource, 'extId' | 'download' | 'option'>, deps: ExtensionDownloadDeps, supported: boolean): Promise<ResolvedFile | PreparingFile> {
   const ext = allowed(source.extId, deps, supported);
   try {
-    let d = await readDescription(ext, source.download, deps);
+    const first = await readDescription(ext, source.download, deps);
+    if ('preparing' in first) return first;
+    let d = first.description;
     let label = d.label;
     if (source.option) {
       const choice = d.options.find((o) => o.id === source.option);
       if (choice) {
-        d = await readDescription(ext, choice.download, deps);
+        const chosen = await readDescription(ext, choice.download, deps);
+        if ('preparing' in chosen) return chosen;
+        d = chosen.description;
         label = d.label ?? choice.label;
       } else if (!d.url) throw new ExtensionError('This quality is not offered any more. Choose another one.');
     }
@@ -271,7 +305,9 @@ export function withResolvedFile(r: DownloadRecord, f: ResolvedFile, plan: Media
   if (f.label) source.label = f.label;
   // The description's image is the better one; the entry's image stays the fallback.
   if (f.description.imageUrl) source.imageUrl = f.description.imageUrl;
-  return { ...r, source, mediaFile: plan.file, method: 'original', mediaSourceId: plan.mediaSourceId, bytesTotal: r.bytesTotal ?? plan.expectedBytes };
+  // The file is named: the wait for the extension is over.
+  const { prepare: _p, ...rest } = r;
+  return { ...rest, source, mediaFile: plan.file, method: 'original', mediaSourceId: plan.mediaSourceId, bytesTotal: r.bytesTotal ?? plan.expectedBytes };
 }
 
 /** The subtitle files to save next to the media: `subtitle-<n>.vtt`. */
@@ -302,6 +338,8 @@ export async function learnReport(ext: InstalledExtension, playback: string, dep
 export type ExtensionMediaState =
   | { state: 'none' }
   | { state: 'queued' }
+  /** The extension makes the file first; `progress` 0..1 when it says. */
+  | { state: 'preparing'; progress: number | null }
   | { state: 'downloading' | 'paused'; progress: number }
   | { state: 'done' }
   | { state: 'failed'; error: string };
@@ -315,6 +353,8 @@ export function extensionMediaState(records: Record<string, DownloadRecord>, ext
       return { state: 'done' };
     case 'queued':
       return { state: 'queued' };
+    case 'preparing':
+      return { state: 'preparing', progress: r.prepare?.progress ?? null };
     case 'failed':
       return { state: 'failed', error: r.error ?? 'The download stopped' };
     default:
