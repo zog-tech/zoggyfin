@@ -184,6 +184,7 @@ Play → session.ts finds the completed record (local.ts) → plays the file →
 - Internet mode: `syncplay.ts` (Jellyfin SyncPlay), pure helpers in `syncplay-logic.ts`.
 - Nearby mode: `nearby.ts` (controller), `room.ts` (host: the clock and the authority), `follower.ts` (guest), `protocol.ts` (versioned JSON wire messages), `machine.ts` (state machine), `recovery.ts` (drops), `join-gate.ts`, `join-code.ts`, `budget.ts` (host upload).
 - Sync: `clock.ts` (NTP-style offset), `drift.ts`, `anchor-follower.ts`.
+- "Sound plays on" (nearby audio): `speaker.ts` (pure rule: the host's choice, the device that plays the sound, the fallback to the host), the `speaker` message and `welcome.speaker`; `speaker-output.ts` sets the audio engine volume to 0 on the other devices (`audioSession().setGroupMuted`) from the together store, so the end of a session restores it.
 - Transport: `link.ts` (handshake) over `link-native-types.ts`. Implementations: `modules/zoggyfin-native` (iOS Network.framework + BLE, Android NSD + BLE + local-only hotspot) and `link-desktop.ts` (the same Swift code in the Mac app).
 - `rendezvous.ts` + `rendezvous-crypto.ts`: the BLE rendezvous (X25519, cipher primitives in `rendezvous-cipher.ts` with @noble, `rendezvous-cipher.ios.ts` with CryptoKit). Both must give the same bytes as `__tests__/rendezvous-vectors.json`.
 - Player bindings: `player-binding.ts`, `player-port.ts`, `audio-binding.ts`.

@@ -19,6 +19,10 @@ export const PROTOCOL_VERSION = 1;
 // `media` messages when the host plays something else; it can send `pick`.
 // A guest with no `rooms` (an older build) joins only a room that has an
 // item, and the host removes it, with a reason, when the item changes.
+//
+// "Sound plays on" (also version 1): `welcome.speaker` and the `speaker`
+// message name the one device that plays the sound (speaker.ts). An older
+// guest drops the unknown message and ignores the field: it keeps its sound.
 
 export type MediaKind = 'video' | 'audio';
 
@@ -187,6 +191,8 @@ export type Message =
       members?: Member[];
       /** Rooms: the number of the room's current item. It grows with each `media`. */
       media?: number;
+      /** The member id of the one device that plays the sound; left out or null: every device. */
+      speaker?: string | null;
     }
   /** Clock sync: the guest sends t0 (its clock); the host answers with t1 (receive) and t2 (send), host clock. */
   | { t: 'ping'; id: number; t0: number }
@@ -238,6 +244,12 @@ export type Message =
    * at most one in 250 ms. Applying one twice changes nothing.
    */
   | { t: 'memberDelta'; upsert: Member[]; gone: string[]; onlyHostControls: boolean }
+  /**
+   * Host to all: the device that plays the sound now (`target`, a member id),
+   * or null for every device. The others keep playing in sync with no sound.
+   * `fallback`: the chosen device left, so the host plays the sound now.
+   */
+  | { t: 'speaker'; target: string | null; fallback?: boolean }
   /** Host to a guest: you may not control playback. */
   | { t: 'denied'; reason: string }
   /** Host to a guest: the host removed you (or removed and blocked you). Do not reconnect. */
@@ -332,7 +344,8 @@ function valid(x: Record<string, unknown>): boolean {
         optNum(x.epoch) &&
         optStr(x.hostId) &&
         (x.members === undefined || (Array.isArray(x.members) && x.members.every(isMember))) &&
-        optNum(x.media)
+        optNum(x.media) &&
+        optStr(x.speaker)
       );
     case 'ping':
       return num(x.id) && num(x.t0);
@@ -383,6 +396,8 @@ function valid(x: Record<string, unknown>): boolean {
       return Array.isArray(x.members) && x.members.every(isMember) && bool(x.onlyHostControls);
     case 'memberDelta':
       return Array.isArray(x.upsert) && x.upsert.every(isMember) && Array.isArray(x.gone) && x.gone.every(str) && bool(x.onlyHostControls);
+    case 'speaker':
+      return (x.target === null || (str(x.target) && x.target.length > 0)) && optBool(x.fallback);
     case 'denied':
     case 'removed':
       return str(x.reason);

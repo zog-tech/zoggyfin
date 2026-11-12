@@ -10,6 +10,7 @@ import { IDLE, type Phase } from './machine';
 import type { StreamWarning } from './budget';
 import type { BleState } from './link-native-types';
 import type { Advert, MediaKind, Member, SharedItem } from './protocol';
+import type { SpeakerView } from './speaker';
 
 export type TogetherMode = 'none' | 'nearby' | 'syncplay';
 
@@ -135,6 +136,8 @@ export interface TogetherState {
   rejoin: SavedSession | null;
   /** Host: too many guests stream from this device, or advice for its path (budget.ts). */
   streamWarning: StreamWarning | null;
+  /** Nearby: "Sound plays on" (speaker.ts); null outside a nearby session. */
+  speaker: SpeakerView | null;
 }
 
 export const initialTogether: TogetherState = {
@@ -165,6 +168,7 @@ export const initialTogether: TogetherState = {
   ble: null,
   rejoin: null,
   streamWarning: null,
+  speaker: null,
 };
 
 export const useTogetherStore = create<TogetherState>(() => initialTogether);
