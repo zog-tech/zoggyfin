@@ -17,7 +17,7 @@ import { useShowsPause } from '@/player/control-gate';
 import { isTV } from '@/platform/tv';
 import { usePlayerStore } from '@/player/store';
 
-import { createStyles, type AppTheme, font, tv, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, font, tv, useLayout, useStyles, useTheme } from '@/theme';
 
 import { Glass } from './glass';
 import { iconSize, motion, radius, spacing, type } from './tokens';
@@ -38,6 +38,8 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
   const fraction = usePlayerStore((s) => (s.duration > 0 ? Math.min(1, s.position / s.duration) : 0));
   const styles = useStyles(makeStyles);
   const { c } = useTheme();
+  // A phone-width bar has no room for the chip's text next to the title; the room bar above says it.
+  const narrow = useLayout().width < 600;
   const lift = useSharedValue(0);
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: lift.get() }] }));
 
@@ -115,7 +117,7 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
           ) : null}
         </Animated.View>
       </Touchable>
-      <TogetherChip iconOnly={inline} />
+      <TogetherChip iconOnly={inline || narrow} />
       <Touchable radius={22} onPress={toggle} hitSlop={6} style={styles.button} accessibilityRole="button" accessibilityLabel={showsPause ? 'Pause' : 'Play'}>
         <Icon name={showsPause ? 'pause.fill' : 'play.fill'} size={iconSize.md} color={c.text} weight="semibold" />
       </Touchable>

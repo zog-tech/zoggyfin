@@ -22,6 +22,7 @@ import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
 import type { IconName } from '@/components/icon-names';
 import { makeSheetStyles, Sheet, SheetRow } from '@/components/sheet';
+import { MODAL_ORIENTATIONS } from '@/components/sheet-layout';
 import { Touchable } from '@/components/touchable';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
@@ -260,7 +261,7 @@ function Popover({ onClose, children }: { onClose: () => void; children: ReactNo
     };
   }, [onClose]);
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+    <Modal transparent visible animationType="fade" onRequestClose={onClose} supportedOrientations={MODAL_ORIENTATIONS}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="Close the menu" accessibilityRole="button" />
       <View ref={panel} style={[s.popover, { top: insets.top + 64 }]} accessibilityRole="menu" aria-label="Profile menu">
         <TvScrollView contentContainerStyle={s.popoverContent}>{children}</TvScrollView>

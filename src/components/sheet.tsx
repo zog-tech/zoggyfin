@@ -5,10 +5,12 @@ import Animated, { Easing, FadeIn, FadeOut, SlideInDown, SlideOutDown, useAnimat
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { useWindowFrame } from '@/lib/use-window-frame';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, motion, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
 
 import { shouldDismiss } from './sheet-dismiss';
+import { MODAL_ORIENTATIONS, sheetHeight } from './sheet-layout';
 import { Touchable } from './touchable';
 
 const ENTER = Easing.bezier(...motion.easing.enter);
@@ -43,7 +45,7 @@ export function Sheet({
   children: ReactNode;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent supportedOrientations={MODAL_ORIENTATIONS}>
       {/*
         Its own safe area: the modal covers the whole window, but the screen
         under it (a tab page) reports the tab bar in its bottom inset. That
@@ -75,6 +77,9 @@ function SheetPanel({
 }) {
   const s = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  // The modal's own frame: it follows a rotation in the same render as the insets.
+  const frame = useWindowFrame();
+  const maxHeight = sheetHeight(frame.height, insets.top);
   const drag = useSharedValue(0);
   const dragStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: drag.get() }],
@@ -102,7 +107,7 @@ function SheetPanel({
         <Animated.View
           entering={SlideInDown.duration(motion.duration.base).easing(ENTER)}
           exiting={SlideOutDown.duration(motion.duration.fast)}
-          style={[s.panel, isTV ? s.panelTV : { paddingBottom: insets.bottom + spacing.md }, fixedHeight && !isTV && s.panelFixed, dragStyle]}
+          style={[s.panel, isTV ? s.panelTV : { paddingBottom: insets.bottom + spacing.md, maxHeight }, fixedHeight && !isTV && { height: maxHeight }, dragStyle]}
           accessibilityViewIsModal>
           <GestureDetector gesture={swipe}>
             <View>
@@ -174,7 +179,6 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
     alignSelf: 'center' as const,
     width: '100%' as const,
     maxWidth: sizes.sheetMaxWidth,
-    maxHeight: '80%' as const,
     backgroundColor: c.bgGrouped,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
@@ -182,7 +186,6 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
     borderCurve: 'continuous' as const,
     ...shadow('overlay'),
   },
-  panelFixed: { height: '80%' as const },
   panelTV: { maxWidth: scaled(sizes.sheetMaxWidth), borderRadius: radius.xxl, padding: scaled(spacing.xxl) },
   grabber: { alignSelf: 'center' as const, width: 36, height: 5, borderRadius: 3, backgroundColor: c.surface3, marginTop: spacing.sm, marginBottom: spacing.sm },
   header: {
