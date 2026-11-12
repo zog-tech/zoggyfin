@@ -192,6 +192,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Downloads of a long video from an extension no longer fail with "did not answer in time".** An
+  extension that makes the file first (for example one that converts a video) can now answer
+  "preparing". The download waits in the Downloads tab with "Preparing on the server…" and its
+  progress, asks again, and starts when the file is ready. The wait survives a restart; pause and
+  cancel stop it; it gives up after 30 minutes. Extension authors: see "Preparing" in
+  docs/extensions.md.
 - **Invite links open in full from Messages.** iPhone Messages linked only `…/join`, because it stops a
   link before a long run of letters. The link now has a dot every 200 characters; the app and the
   /join page remove them. Old links still work.

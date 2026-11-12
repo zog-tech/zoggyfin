@@ -22,5 +22,5 @@ export {
   type StreamType,
 } from './describe';
 export { REPORT_EVENTS, buildReport, type ReportBody, type ReportEvent, type ReportInput } from './report';
-export { MAX_DOWNLOAD_OPTIONS, MAX_DOWNLOAD_SUBTITLES, parseDownloadDescription, type DownloadDescription, type DownloadOption, type DownloadSubtitle } from './download';
+export { MAX_DOWNLOAD_OPTIONS, MAX_DOWNLOAD_SUBTITLES, PREFER_ASYNC, parseDownloadDescription, parsePreparing, type DownloadDescription, type DownloadOption, type DownloadSubtitle, type PreparingReply } from './download';
 export { extensionSource, mediaItemId, mediaPlayRequest, safeText, skipDefaults, skipTitle, streamFromDescription, streamHeaders, type ExtensionMediaDeps } from './source';

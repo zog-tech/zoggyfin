@@ -6,7 +6,7 @@ import { create } from 'zustand';
 
 import { readJson, writeJson } from '@/storage/json';
 
-import { EMPTY_SNAPSHOT, legacySnapshot, loadSnapshots } from './migrate';
+import { EMPTY_SNAPSHOT, legacySnapshot, loadSnapshots, storedRecords } from './migrate';
 import { fraction, isFileMissing } from './state-machine';
 import {
   DOWNLOAD_SCHEMA_VERSION,
@@ -52,7 +52,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function saveNow() {
   saveTimer = null;
   const { records, collections } = useDownloadsStore.getState();
-  writeJson(STORE_KEY_V3, { schemaVersion: DOWNLOAD_SCHEMA_VERSION, records, collections } satisfies DownloadsSnapshot);
+  // `preparing` is saved as `queued` (see `storedRecords`).
+  writeJson(STORE_KEY_V3, { schemaVersion: DOWNLOAD_SCHEMA_VERSION, records: storedRecords(records), collections } satisfies DownloadsSnapshot);
   // The copy an older app version reads (see `migrate.ts`).
   writeJson(STORE_KEY, legacySnapshot({ records, collections }));
 }
@@ -176,6 +177,8 @@ export function recordStatus(r: DownloadRecord | undefined): DownloadStatus {
   if (!r || r.state === 'cancelled') return { state: 'none' };
   if (r.state === 'completed') return { state: 'completed' };
   if (isFileMissing(r)) return { state: 'failed', progress: 0, missing: true };
+  // Only extension media prepares; a button shows it as waiting.
+  if (r.state === 'preparing') return { state: 'queued', progress: 0 };
   return { state: r.state, progress: pct(fraction(r)) };
 }
 

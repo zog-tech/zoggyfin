@@ -12,8 +12,20 @@ export const DOWNLOAD_SCHEMA_VERSION = 3;
  *            ↓  ↑
  *          paused        failed (retry with backoff) → queued
  * Any state that is not completed → cancelled (the record is then removed).
+ * `preparing` (extension media only): the extension makes the file first;
+ * the app asks again at `retryAt` (see `state-machine.ts`). It is saved as
+ * `queued` with `retryAt` and `prepare` set (`storedRecords` in `migrate.ts`),
+ * so an older app version reads a state it knows.
  */
-export type DownloadState = 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type DownloadState = 'queued' | 'preparing' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+/** An extension that makes the file first (`preparing`): since when, and how far (0..1) when it says. */
+export interface PrepareInfo {
+  /** Epoch ms of the first "preparing" reply; the wait has an upper bound from it. */
+  since: number;
+  /** 0..1, or null when the extension does not say. */
+  progress: number | null;
+}
 
 export type MediaKind = 'video' | 'audio';
 
@@ -112,8 +124,10 @@ export interface DownloadRecord {
   progressAt: number | null;
   /** Failed attempts in a row; the next retry waits longer each time. */
   attempts: number;
-  /** Epoch ms when a failed download may start again by itself. */
+  /** Epoch ms when a failed download may start again by itself, or when a preparing one asks again. */
   retryAt: number | null;
+  /** Set while the extension prepares the file (and kept until the file is named). */
+  prepare?: PrepareInfo;
   error: string | null;
   /** Folder of this item, relative to the app's document directory. */
   dir: string;
