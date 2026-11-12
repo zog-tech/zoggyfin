@@ -44,10 +44,14 @@ export interface PlaybackSettings {
   /**
    * "Load the whole video ahead": the player reads ahead to the end while it
    * plays (up to a memory cap per platform, `player/buffer-ahead.ts`). Kept in
-   * memory only; nothing is saved when the player closes. Added later: older
-   * saved settings lack it and get the default (off).
+   * memory only; nothing is saved when the player closes. On by default. The
+   * saved value counts only when `loadWholeVideoChosen` is true: the first
+   * version saved "off" with every other playback change, before the user
+   * chose it.
    */
   loadWholeVideo: boolean;
+  /** True once the user flipped "Load the whole video ahead". */
+  loadWholeVideoChosen: boolean;
 }
 
 const KEY = 'settings.playback.v1';
@@ -59,7 +63,8 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   skipForwardSeconds: 10,
   autoplayNext: true,
   downloadQuality: 0,
-  loadWholeVideo: false,
+  loadWholeVideo: true,
+  loadWholeVideoChosen: false,
 };
 
 interface Store extends PlaybackSettings {
@@ -69,7 +74,7 @@ interface Store extends PlaybackSettings {
 export const usePlaybackSettings = create<Store>((set, get) => ({
   ...readPlaybackSettings(readJson<unknown>(KEY, null)),
   update(patch) {
-    set(patch);
+    set('loadWholeVideo' in patch ? { ...patch, loadWholeVideoChosen: true } : patch);
     const s = get();
     const saved: PlaybackSettings = {
       wifiBitrate: s.wifiBitrate,
@@ -79,6 +84,7 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
       autoplayNext: s.autoplayNext,
       downloadQuality: s.downloadQuality,
       loadWholeVideo: s.loadWholeVideo,
+      loadWholeVideoChosen: s.loadWholeVideoChosen,
     };
     writeJson(KEY, saved);
   },
@@ -96,6 +102,7 @@ export function readPlaybackSettings(saved: unknown): PlaybackSettings {
     const value = rec[key];
     if (typeof value === typeof out[key]) (out as unknown as Record<string, unknown>)[key] = value;
   }
+  if (!out.loadWholeVideoChosen) out.loadWholeVideo = DEFAULT_PLAYBACK_SETTINGS.loadWholeVideo;
   return out;
 }
 
