@@ -174,6 +174,9 @@ first commit to today. All of it was built in the first weeks of the project.
   film follow them on the web; on iPhone, iPad and Android they use the caption settings of the device.
 
 ### Changed
+- **Extension updates apply by themselves.** A new page or a new Library tile or tab no longer waits
+  for "Review the update": only a new permission asks. The app also checks for extension updates
+  every 15 minutes and on each return to the app, not every 6 hours.
 
 - **Live TV placement.** On iPhone, iPad and Android, Live TV is now a tile in the Library grid with the
   server's libraries, not a row above them. Home has a Live TV row with your favourite channels and the
@@ -201,6 +204,10 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **One filter row in Search.** The genre chips and the type chips (All, Movies, Shows, ...) were two
+  rows. Now there is one row: the type chips, then a "Genre" chip at the end that opens a list. A
+  chosen genre shows its name with a Clear chip beside it.
 
 - **Downloads of a long video from an extension no longer fail with "did not answer in time".** An
   extension that makes the file first (for example one that converts a video) can now answer

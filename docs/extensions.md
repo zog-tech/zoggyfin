@@ -28,16 +28,15 @@ update, or remove it on its page in Settings → Extensions.
 ### Updates
 
 The app loads the manifest of each installed extension again at start, when
-you sign in to another account, and then at most once every 6 hours while it
-is in use. "Check for an update" on the extension's page checks at once.
+you sign in to another account, and then at most once every 15 minutes while
+it is in use (also on each return to the foreground). "Check for an update" on
+the extension's page checks at once.
 
-- An update that needs no new permission and places no new page (a page that
-  asks for a tab or a Library tile it did not ask for before) applies by
-  itself, with no question. New `tabs`, sections, settings and a new
-  `version` are such updates.
-- An update that asks for a new permission or places a new page is not
-  applied. The extension shows "Update available" in Settings → Extensions,
-  its page has "Review the update" (the confirm screen), and the app shows
+- An update that needs no new permission applies by itself, with no question.
+  New pages, a page that asks for a new place (a tab or a Library tile), new
+  `tabs`, sections, settings and a new `version` are such updates.
+- An update that asks for a new permission is not applied. The extension
+  shows "Update available" in Settings → Extensions, its page has "Review the update" (the confirm screen), and the app shows
   one toast per account, extension and version. "Check for an update" opens
   the confirm screen for it at once.
 - A manifest that does not load, is not valid, or has another `id` changes
@@ -598,7 +597,7 @@ page title; on TV it is a row that the D-pad reaches.
   page shows them. A page with no `sections` and bad `tabs` is refused, as is
   a page with neither.
 - An update that only adds `tabs` (and a new `version`) asks nothing: it
-  needs no new permission and places no new page.
+  needs no new permission.
 
 ### Where a page shows
 
