@@ -192,6 +192,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Video length on extension tiles.** Extension tiles and list lines (for example YouTube videos)
+  now show the video's length ("12:34") at the bottom right of the picture, and screen readers say
+  it. Live entries show no length.
 - **Extension videos play to the end.** A YouTube video with a next title stopped about 20 s early:
   the Up Next card counted down from 30 s before the end (or from a SponsorBlock outro) and then
   started the next video. For extension media the card now shows in the last 10 s, its ring shows
