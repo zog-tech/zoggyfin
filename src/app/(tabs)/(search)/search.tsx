@@ -144,8 +144,11 @@ export default function SearchScreen() {
     searchRef.current?.setText(r);
   };
 
+  // The chip row changes length when a genre is chosen or cleared: show its start again.
+  const chipRow = useRef<ComponentRef<typeof ScrollView>>(null);
   const pickGenre = (name: string | null) => {
     setGenre(name);
+    chipRow.current?.scrollTo({ x: 0, animated: false });
     // Episodes, Music and People do not exist within a genre.
     if (name && !GENRE_SEARCH_FILTERS.some((f) => f.value === filter)) setFilter('all');
   };
@@ -241,6 +244,7 @@ export default function SearchScreen() {
         <OfflineBanner />
         {active || genreChip.visible ? (
           <ScrollView
+            ref={chipRow}
             horizontal
             showsHorizontalScrollIndicator={false}
             style={s.chips}
