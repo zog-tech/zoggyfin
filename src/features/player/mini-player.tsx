@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon } from '@/components/icon';
@@ -20,6 +20,7 @@ import { usePlayerStore } from '@/player/store';
 import { createStyles, type AppTheme, font, tv, useStyles, useTheme } from '@/theme';
 
 import { Glass } from './glass';
+import { canSwipeDismiss, shouldDismiss, showsCloseButton } from './mini-player-rules';
 import { iconSize, motion, radius, spacing, type } from './tokens';
 
 /** True when the mini player should show: something plays and the full player is closed. */
@@ -28,8 +29,8 @@ export function useMiniPlayerVisible(): boolean {
 }
 
 /**
- * The mini player (design-system §7.2): art, title, play/pause and close,
- * with a 2 pt progress line. Tap or swipe up opens the full player.
+ * The mini player (design-system §7.2): art, title, play/pause, next (audio) and
+ * close (video, web and TV; phone audio stops with a swipe down), with a 2 pt progress line. Tap or swipe up opens the full player.
  * `inline` is the compact iOS 26 accessory placement.
  */
 export function MiniPlayer({ inline = false, floating = false }: { inline?: boolean; floating?: boolean }) {
@@ -39,17 +40,36 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
   const styles = useStyles(makeStyles);
   const { c } = useTheme();
   const lift = useSharedValue(0);
-  const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: lift.get() }] }));
+  const liftStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(lift.get(), [0, 80], [1, 0.4], 'clamp'),
+    transform: [{ translateY: lift.get() }],
+  }));
 
   const isAudio = usePlayerStore((s) => s.now?.kind === 'audio');
+  const rules = { isAudio, web: Platform.OS === 'web', tv: isTV };
+  const dismissable = canSwipeDismiss(rules);
+  const dismiss = () => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    activePlayback.stop();
+    lift.set(0);
+  };
   const sourceName = useAudioStore((s) => s.queue.source?.name);
   const shift = useSharedValue(0);
   const shiftStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shift.get() }] }));
   const swipe = Gesture.Pan()
-    .activeOffsetY(-12)
+    .activeOffsetY(dismissable ? [-12, 12] : -12)
     .failOffsetX([-20, 20])
-    .onUpdate((e) => lift.set(Math.min(0, e.translationY) * 0.4))
+    // Up is a rubber band; down follows the finger more closely, as it can dismiss.
+    .onUpdate((e) => lift.set(e.translationY < 0 ? e.translationY * 0.4 : dismissable ? e.translationY * 0.7 : 0))
     .onEnd((e) => {
+      if (dismissable && shouldDismiss(e.translationY, e.velocityY)) {
+        lift.set(
+          withTiming(120, { duration: motion.duration.fast, easing: Easing.bezier(...motion.easing.exit) }, (done) => {
+            if (done) scheduleOnRN(dismiss);
+          }),
+        );
+        return;
+      }
       lift.set(withSpring(0, { ...motion.spring.smooth, velocity: e.velocityY }));
       if (e.translationY < -30 || e.velocityY < -500) scheduleOnRN(openFullPlayer);
     });
@@ -102,7 +122,12 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
           <Icon name="backward.fill" size={iconSize.sm} color={c.text} />
         </Touchable>
       ) : null}
-      <Touchable radius={radius.pill} onPress={openFullPlayer} containerStyle={[styles.openArea, isTV && styles.openAreaTV]} accessibilityRole="button" accessibilityLabel={`Now playing: ${item.Name ?? ''}. Opens the player`} style={styles.open}>
+      <Touchable radius={radius.pill} onPress={openFullPlayer} containerStyle={[styles.openArea, isTV && styles.openAreaTV]} accessibilityRole="button" accessibilityLabel={`Now playing: ${item.Name ?? ''}. Opens the player`}
+        accessibilityActions={dismissable ? [{ name: 'stop', label: 'Stop' }] : undefined}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === 'stop') activePlayback.stop();
+        }}
+        style={styles.open}>
         {!inline ? art : null}
         <Animated.View style={[styles.text, shiftStyle]}>
           <Text style={styles.title} numberOfLines={1}>
@@ -124,7 +149,7 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
           <Icon name="forward.fill" size={inline ? iconSize.sm : iconSize.md - 2} color={c.text} />
         </Touchable>
       ) : null}
-      {!inline ? (
+      {showsCloseButton({ inline, ...rules }) ? (
         <Touchable radius={22} onPress={() => activePlayback.stop()} hitSlop={6} style={styles.button} accessibilityRole="button" accessibilityLabel="Stop playback">
           <Icon name="xmark" size={iconSize.sm} color={c.text2} weight="semibold" />
         </Touchable>
