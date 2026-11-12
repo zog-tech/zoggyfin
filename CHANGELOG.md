@@ -13,6 +13,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Sound plays on (listen together).** In a nearby listen-together session, the host picks where
+  the sound comes out: every device (as before) or one device, for example the phone on the car
+  stereo. The other devices keep playing in sync with no sound, so a change is instant, and their
+  controls still work. When the chosen device leaves, the sound goes to the host and everyone sees
+  a note. Guests of an older version keep their sound. SyncPlay sessions do not have it.
 - **Load the whole video ahead.** A new switch in Settings, Playback (on by default). When on, the
   player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
   less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android

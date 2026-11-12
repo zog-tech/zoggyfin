@@ -169,6 +169,7 @@ export class AudioEngine {
       this.emit({ type: 'track', key, previousKey: this.keys[previousIndex] ?? null, at: Date.now() });
     });
     this.remoteTracks(p);
+    if (this.volume !== 1) p.volume = this.volume;
     this.playlist = p;
     return p;
   }
@@ -385,8 +386,12 @@ export class AudioEngine {
     if (this.playlist) this.playlist.playbackRate = rate;
   }
 
+  /** The volume of the playlist (0 to 1). It holds for a playlist that is made later too. */
+  private volume = 1;
+
   setVolume(volume: number): void {
-    if (this.playlist) this.playlist.volume = Math.max(0, Math.min(1, volume));
+    this.volume = Math.max(0, Math.min(1, volume));
+    if (this.playlist) this.playlist.volume = this.volume;
   }
 
   setLockScreen(info: LockScreenInfo, controls: LockScreenControls): void {

@@ -1064,23 +1064,44 @@ class AudioSession {
     setAudioState({ sleep: timer });
     if (this.sleepHandle) clearInterval(this.sleepHandle);
     this.sleepHandle = null;
-    this.engine.setVolume(1);
+    this.setSleepVolume(1);
     if (timer.kind === 'off') return;
     this.sleepHandle = setInterval(() => {
       const t = audioState().sleep;
       const now = Date.now();
       const entry = currentEntry(audioState().queue);
-      this.engine.setVolume(sleepFadeVolume(t, now));
+      this.setSleepVolume(sleepFadeVolume(t, now));
       if (sleepDue(t, { now, itemKey: entry?.key ?? null, position: this.engine.position, trackEnded: false })) {
         this.pause();
-        this.engine.setVolume(1);
+        this.setSleepVolume(1);
         this.setSleep(sleepOff);
         toast('Sleep timer: paused', { icon: 'checkmark' });
       }
     }, 1000);
   }
 
+  /** The sleep timer's fade (1: no fade). */
+  private sleepVolume = 1;
+  /** Listen together: another device plays the sound ("Sound plays on"); this one plays in sync with no sound. */
+  private groupMuted = false;
+
+  private setSleepVolume(volume: number): void {
+    this.sleepVolume = volume;
+    this.applyVolume();
+  }
+
+  private applyVolume(): void {
+    this.engine.setVolume(this.groupMuted ? 0 : this.sleepVolume);
+  }
+
   // ---- Listen together ---------------------------------------------------------------
+
+  /** Listen together: true while another device plays the session's sound. The player keeps playing in sync. */
+  setGroupMuted(muted: boolean): void {
+    if (muted === this.groupMuted) return;
+    this.groupMuted = muted;
+    this.applyVolume();
+  }
 
   /**
    * The player controls with no gate: the together session uses them after it

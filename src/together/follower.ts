@@ -29,6 +29,8 @@ export interface FollowerDeps {
   onTrackMismatch?(track: string, anchor: Anchor): void;
   /** Rooms: the host plays another item, or none. The player is let go: load the new item, then `attach`. */
   onMedia?(media: Extract<Message, { t: 'media' }>): void;
+  /** "Sound plays on" changed (speaker.ts). `fallback`: the chosen device left, the host plays the sound now. */
+  onSpeaker?(target: string | null, fallback: boolean): void;
 }
 
 /** What the host told this guest about the session (for reconnects and the election). */
@@ -80,6 +82,8 @@ export class Follower {
   onlyHostControls = false;
   private local = false;
   private server = false;
+  /** The device that plays the sound (a member id), or null for every device (speaker.ts). */
+  speaker: string | null = null;
   /** Rooms: the number of the room's current item (null: a host of an older build). */
   media: number | null = null;
   /** This device cannot play the current item (or closed its player). */
@@ -268,6 +272,8 @@ export class Follower {
           this.deps.onQueue?.(message.queue);
         }
         if (message.members) this.setMembers(message.members);
+        // A host of an older build sends no speaker: every device plays the sound.
+        this.setSpeaker(message.speaker ?? null, false);
         this.anchors.setAnchor(message.anchor, message.track ?? null);
         this.noteGroup();
         this.deps.onChange?.();
@@ -315,12 +321,22 @@ export class Follower {
         this.deps.onChange?.();
         return;
       }
+      case 'speaker':
+        this.setSpeaker(message.target, !!message.fallback);
+        this.deps.onChange?.();
+        return;
       case 'denied':
         this.deps.onDenied?.(message.reason);
         return;
       default:
         return;
     }
+  }
+
+  private setSpeaker(target: string | null, fallback: boolean): void {
+    if (target === this.speaker) return;
+    this.speaker = target;
+    this.deps.onSpeaker?.(target, fallback);
   }
 
   private setMembers(list: Member[]): void {

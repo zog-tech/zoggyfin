@@ -71,6 +71,8 @@ import { createRendezvous, decodeInfo, encodeInfo, type Rendezvous, type Rendezv
 import { generateKeyPair } from './rendezvous-crypto';
 import { deviceKey, type Findable, isFinalRefusal, JoinGate, MAX_GUESTS, REFUSAL_TEXT } from './join-gate';
 import { HostRoom, IDLE_PORT, type RoomMedia } from './room';
+import { fallbackText, type SpeakerChoice, speakerNote, type SpeakerView } from './speaker';
+import { watchSpeakerOutput } from './speaker-output';
 import { guestKeyOf, mediaKey, requestOfPick, type RoomRole, routeInRoom } from './room-route';
 import { shortName } from './hub';
 import { closeTogetherSheet, initialTogether, openTogetherSheet, type SavedSession, setTogether, type SheetPlace, togetherState } from './store';
@@ -397,7 +399,7 @@ class NearbyController {
   private async startHosting(opts: {
     adopt?: boolean;
     resume?: SavedSession;
-    takeover?: { anchor: Anchor; members: Member[]; epoch: number; sessionId: string; key: string; media: number | null };
+    takeover?: { anchor: Anchor; members: Member[]; epoch: number; sessionId: string; key: string; media: number | null; speaker: SpeakerChoice };
   }): Promise<void> {
     const n = this.native!;
     this.ensureLink();
@@ -461,6 +463,9 @@ class NearbyController {
         pong: (peer, id, t0, t1) => this.link?.sendPong(peer, id, t0, t1),
         onPick: (memberId, name, pick) => this.onPick(memberId, name, pick),
         drop: (peer) => setTimeout(() => this.link?.drop(peer), 300),
+        onSpeaker: (_target, fallback) => {
+          if (fallback) toast(fallbackText(true, null), { icon: 'speaker.wave.2.fill' });
+        },
       },
       {
         sessionId,
@@ -475,6 +480,7 @@ class NearbyController {
         anchor: t?.anchor,
         members: t?.members,
         media: t?.media ?? undefined,
+        speaker: t?.speaker,
       },
     );
     if (media) this.room.setGroupRate(playerState().rate || 1);
@@ -718,6 +724,9 @@ class NearbyController {
     const room = this.room;
     if (!room) return;
     setTogether({ members: room.memberList, waiting: room.state.waiting, onlyHostControls: room.onlyHostControls });
+    const target = room.speaker.target;
+    const sp = togetherState().speaker;
+    if (sp?.target !== target || sp.selfId !== this.memberId || sp.hostId !== room.hostId) setTogether({ speaker: { target, selfId: this.memberId, hostId: room.hostId } });
     controlGate.setPlaying(room.hasMedia ? room.state.wantPlaying : null);
     this.checkBudget(room.memberList);
     // A host with every member away looks for a newer host of the same session (it took over while this device was gone).
@@ -1187,6 +1196,7 @@ class NearbyController {
       onQueue: (q) => void this.onGuestQueue(q),
       onTrackMismatch: (track, anchor) => this.onTrackMismatch(track, anchor),
       onMedia: (m) => this.switchGuestMedia(m.kind, m.item, m.queue ?? null, m.by),
+      onSpeaker: (target, fallback) => this.onGuestSpeaker(target, fallback),
     });
     this.follower = f;
     this.watchGuestPlayer();
@@ -1208,12 +1218,31 @@ class NearbyController {
     return this.mediaBase;
   }
 
+  /** The guest's view of "Sound plays on". */
+  private guestSpeaker(f: Follower): SpeakerView {
+    return { target: f.speaker, selfId: f.facts?.selfId ?? this.memberId, hostId: f.facts?.hostId ?? null };
+  }
+
+  /** The host changed the sound device (or the chosen device left): say where the sound plays now. */
+  private onGuestSpeaker(target: string | null, fallback: boolean): void {
+    const f = this.follower;
+    if (!f) return;
+    this.ev('speaker', { target, fallback });
+    const view = this.guestSpeaker(f);
+    const hostName = togetherState().hostName;
+    // Full names: one person can bring two devices ("Sam · iPhone", "Sam · iPad").
+    const text = fallback ? fallbackText(false, hostName) : speakerNote(view, { hostName, members: f.allMembers });
+    toast(text, { icon: target === null || target === view.selfId ? 'speaker.wave.2.fill' : 'speaker.slash.fill' });
+    this.publishGuest();
+  }
+
   private publishGuest(): void {
     const f = this.follower;
     if (!f) return;
     const st = f.stats;
     controlGate.setPlaying(f.wantsPlay);
     setTogether({
+      speaker: this.guestSpeaker(f),
       members: f.members,
       onlyHostControls: f.onlyHostControls,
       waiting: f.isWaiting,
@@ -1550,6 +1579,7 @@ class NearbyController {
     const selfId = f.facts?.selfId ?? this.memberId;
     const members = f.allMembers.filter((m) => m.id !== selfId && m.id !== r.oldHostId);
     const media = f.media;
+    const speaker = f.speaker;
     f.release();
     this.follower = null;
     // A join to the old host may still be open (a retry): close it, so the old host cannot take this device back as a guest.
@@ -1565,7 +1595,7 @@ class NearbyController {
     queueGate.set(null);
     audioSession().leaveShared();
     await this.startHosting({
-      takeover: { anchor, members, epoch: s.epoch + 1, sessionId: s.id, key: s.key, media },
+      takeover: { anchor, members, epoch: s.epoch + 1, sessionId: s.id, key: s.key, media, speaker },
     });
     setTogether({ source: null });
     toast('You are the host now.', { icon: 'person.2.fill' });
@@ -1619,6 +1649,7 @@ class NearbyController {
       onQueue: (q) => void this.onGuestQueue(q),
       onTrackMismatch: (track, anchor) => this.onTrackMismatch(track, anchor),
       onMedia: (m) => this.switchGuestMedia(m.kind, m.item, m.queue ?? null, m.by),
+      onSpeaker: (target, fallback) => this.onGuestSpeaker(target, fallback),
     });
     this.follower = f;
     this.watchGuestPlayer();
@@ -2007,6 +2038,15 @@ class NearbyController {
     this.native?.bleStopAll?.();
   }
 
+  /** Host: where the sound plays (null: every device; else a member id, or this device's). */
+  setSpeaker(choice: SpeakerChoice): void {
+    const room = this.room;
+    if (!room) return;
+    if (!room.setSpeaker(choice)) toast('That device is not in the session now.', { icon: 'exclamationmark.triangle' });
+    this.ev('speaker', { choice });
+    this.publishHost();
+  }
+
   /** Host: ends the session for everyone. Guest: leaves. */
   async stopAll(): Promise<void> {
     this.ev('stop all');
@@ -2079,6 +2119,9 @@ class NearbyController {
 let controller: NearbyController | null = null;
 
 export function nearby(): NearbyController {
-  controller ??= new NearbyController();
+  if (!controller) {
+    controller = new NearbyController();
+    watchSpeakerOutput();
+  }
   return controller;
 }

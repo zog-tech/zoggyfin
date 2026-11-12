@@ -254,6 +254,8 @@ Phase 5 ("Watch together"):
   joined first and has the media becomes the host.
 - Listen together: "Listen together" in the music player's ⋯ menu and on album and
   playlist pages. A "Together" indicator shows in the full and mini music players.
+  "Sound plays on" (nearby, for one car or one room): the host picks every device or one
+  device. The others keep playing in sync with no sound, and their controls still work.
 - Internet mode: Jellyfin SyncPlay groups on the signed-in server, on native and the web.
   Start a group with the current item or the audio queue, join a group, play, pause and
   seek for everyone, next and previous item of the group queue, leave.
