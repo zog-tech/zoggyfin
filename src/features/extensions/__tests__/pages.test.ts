@@ -2,7 +2,7 @@ import { readEntry, type FeedEntry } from '@/extensions/feeds';
 import { parseManifest, type Manifest } from '@/extensions/schema';
 
 import { firstParam, parseEntryRoute, resolveHomeRow, resolvePageRoute } from '../routes';
-import { emptyAction, emptyText, entryTap, failedText, sectionBody, sectionMode, tileOfEntry } from '../section-view';
+import { emptyAction, emptyText, entryLength, entryTap, failedText, sectionBody, sectionMode, tileOfEntry } from '../section-view';
 
 const base = 'https://media.example.org';
 
@@ -162,8 +162,31 @@ describe('tile of an entry', () => {
       poster: `${base}/a.jpg`,
       progress: 0.5,
       badge: 'New',
+      duration: null,
     });
-    expect(tileOfEntry(entry({ title: 'A' }))).toMatchObject({ key: '0', id: '0', kind: 'video', poster: null, progress: null, badge: null });
+    expect(tileOfEntry(entry({ title: 'A' }))).toMatchObject({ key: '0', id: '0', kind: 'video', poster: null, progress: null, badge: null, duration: null });
+  });
+
+  it('carries the video length for the pill on the art', () => {
+    expect(tileOfEntry(entry({ title: 'A', media: { id: 'm', kind: 'video', playback: '/p', duration: 754 } })).duration).toBe(754);
+  });
+});
+
+describe('length of an entry', () => {
+  const media = (duration?: number) => ({ id: 'm', kind: 'video' as const, playback: `${base}/p`, ...(duration !== undefined ? { duration } : {}) });
+  it('gives the media length in seconds', () => {
+    expect(entryLength({ media: media(3723) })).toBe(3723);
+  });
+  it('gives none for a live entry, whatever the case of the badge', () => {
+    expect(entryLength({ badge: 'LIVE', media: media(3723) })).toBeNull();
+    expect(entryLength({ badge: ' live ', media: media(3723) })).toBeNull();
+    expect(entryLength({ badge: 'New', media: media(60) })).toBe(60);
+  });
+  it('gives none with no media, no length or a length under a second', () => {
+    expect(entryLength({})).toBeNull();
+    expect(entryLength({ media: media() })).toBeNull();
+    expect(entryLength({ media: media(0) })).toBeNull();
+    expect(entryLength({ media: media(Number.NaN) })).toBeNull();
   });
 });
 

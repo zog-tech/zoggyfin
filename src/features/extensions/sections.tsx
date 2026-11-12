@@ -15,6 +15,7 @@ import type { BaseItemDto } from '@/api/types';
 import { useItemMenu } from '@/components/action-sheet';
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
+import { LengthPill } from '@/components/length-pill';
 import { ItemImage } from '@/components/item-image';
 import { RowHeader } from '@/components/item-row';
 import { PlainArt } from '@/components/plain-art';
@@ -31,6 +32,7 @@ import { BillboardRows, showOnBillboard } from '@/features/tv/billboard';
 import { tvFocusRest } from '@/features/tv/focus-settle';
 import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
 import { TvShelf } from '@/features/tv/shelf';
+import { lengthLabel } from '@/lib/format';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
@@ -178,7 +180,9 @@ export const EntryListRow = memo(function EntryListRow({
   const pressable = entryIsPressable(entry, !!item);
   const artWidth = scaled(sizes.episodeThumb) * (l.bp === 'compact' && !l.tv ? 0.75 : 1);
   const title = entry.title ?? item?.Name ?? '';
-  const label = [title, entry.subtitle, entry.badge].filter(Boolean).join(', ');
+  const progress = tile.progress ?? null;
+  const hasProgress = progress !== null;
+  const label = [title, entry.subtitle, entry.badge, item ? null : lengthLabel(tile.duration)].filter(Boolean).join(', ');
   const body = (
     <>
       <View>
@@ -187,9 +191,10 @@ export const EntryListRow = memo(function EntryListRow({
         ) : (
           <PlainArt uri={tile.poster} name={title} id={tile.id} kind={tile.kind} width={artWidth} aspectRatio={16 / 9} rounded={radius.sm} showTitle={false} />
         )}
-        {tile.progress !== null && tile.progress !== undefined ? (
+        {item ? null : <LengthPill seconds={tile.duration} aboveProgress={hasProgress} />}
+        {progress !== null ? (
           <View style={s.track}>
-            <View style={[s.bar, { width: `${Math.max(2, Math.round(tile.progress * 100))}%` }]} />
+            <View style={[s.bar, { width: `${Math.max(2, Math.round(progress * 100))}%` }]} />
           </View>
         ) : null}
       </View>

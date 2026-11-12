@@ -32,7 +32,7 @@ import { sameEmbeddedTracks } from './embedded-tracks';
 import type { EmbeddedTracks, EngineEvent } from './engine-types';
 import { isForeignDownload, outboxOnly, withOutbox } from './outbox-transport';
 import { ProgressReporter, type ProgressTransport, secondsToTicks, ticksToSecondsExact, toServerReport } from './progress-reporter';
-import { externalSegments, JELLYFIN_SKIP_SCOPE, normalizeSegments } from './segments';
+import { endPlaysNext, externalSegments, JELLYFIN_SKIP_SCOPE, nextUpModeOf, nextUpStartsAt, normalizeSegments } from './segments';
 import { autoRanges, type SkipContext, skippedNow, transitionAutoSkip, undoneRange } from './auto-skip';
 import { chooseTracks, rememberChoice, titleKey } from './track-prefs';
 import { loadTrackPrefs, saveTrackPrefs } from './track-prefs-store';
@@ -224,6 +224,8 @@ class VideoSession {
   /** The external title has played: its position may be saved (a failed load must not wipe a saved one). */
   private extPlayed = false;
   private extSavedAt = 0;
+  /** Cancel on the next-up card: the item and the position. In `end` mode the end of the video then does not start the next title. */
+  private nextDismissal: { itemId: string; at: number } | null = null;
   /** IPTV: the saved track choice was applied to the stream that loads (once per kind and load). */
   private tracksApplied = { audio: false, subtitle: false };
 
@@ -1439,11 +1441,26 @@ class VideoSession {
     if (request) await this.play(request);
   }
 
+  /** Cancel on the next-up card at `position` (seconds). */
+  dismissNext(position: number): void {
+    const itemId = playerState().now?.item.Id;
+    this.nextDismissal = itemId ? { itemId, at: position } : null;
+  }
+
   private async onEnded() {
-    const now = playerState().now;
+    const { now, duration } = playerState();
     // In a together session the session says who starts the next episode (the host, or the member who picked it).
     const mayAutoplay = playRouter.active ? playRouter.autoplay() : !controlGate.active;
-    if (now?.next && usePlaybackSettings.getState().autoplayNext && mayAutoplay) {
+    const mode = nextUpModeOf(now);
+    const dismissal = this.nextDismissal;
+    const plays = endPlaysNext({
+      mode,
+      autoplay: usePlaybackSettings.getState().autoplayNext && mayAutoplay,
+      hasNext: !!now?.next,
+      startsAt: now ? nextUpStartsAt(now.segments, duration, mode) : null,
+      dismissedAt: dismissal && dismissal.itemId === now?.item.Id ? dismissal.at : null,
+    });
+    if (now?.next && plays) {
       await this.playNext();
       return;
     }

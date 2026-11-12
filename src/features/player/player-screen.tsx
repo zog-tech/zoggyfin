@@ -29,7 +29,7 @@ import { VideoSurface } from '@/player/engine';
 import type { VideoFit } from '@/player/engine-types';
 import type { KeyPress } from '@/native/key-input-types';
 import { buttonShows } from '@/player/auto-skip';
-import { JELLYFIN_SKIP_SCOPE, nextUpPhase, nextUpStartsAt, skipPromptAt, skipPromptFor } from '@/player/segments';
+import { JELLYFIN_SKIP_SCOPE, nextUpModeOf, nextUpPhase, nextUpStartsAt, skipPromptAt, skipPromptFor } from '@/player/segments';
 import { videoSession } from '@/player/session';
 import { controlGate, useShowsPause } from '@/player/control-gate';
 import { playRouter } from '@/player/play-router';
@@ -425,14 +425,22 @@ export function PlayerScreen() {
     const skip = st.now.external?.skip;
     const ctx = { scope: skip?.scope ?? JELLYFIN_SKIP_SCOPE, defaults: skip?.defaults, choices: skipChoices };
     const autoAllowed = !playRouter.active && !controlGate.active && !st.now.external?.live;
-    return skipPromptAt(st.now.segments, st.position, st.duration, !!st.now.next, (seg) => buttonShows(seg, ctx, st.autoSkip, autoAllowed))?.segment ?? null;
+    // `end` mode: the card shows only in the last seconds, so Skip Credits stays with a next title.
+    const cardAtCredits = !!st.now.next && nextUpModeOf(st.now) === 'credits';
+    return skipPromptAt(st.now.segments, st.position, st.duration, cardAtCredits, (seg) => buttonShows(seg, ctx, st.autoSkip, autoAllowed))?.segment ?? null;
   });
   const prompt = promptSegment ? skipPromptFor(promptSegment, duration) : null;
-  const startsAt = now ? nextUpStartsAt(now.segments, duration) : null;
+  const nextMode = nextUpModeOf(now);
+  const startsAt = now ? nextUpStartsAt(now.segments, duration, nextMode) : null;
   const phase = usePlayerStore((st) => nextUpPhase({ position: st.position, startsAt, hasNext, dismissedAt }));
 
   const playNext = useCallback(() => void videoSession().playNext(), []);
-  const cancelNext = useCallback(() => setDismissal({ itemId, at: playerState().position }), [itemId]);
+  const cancelNext = useCallback(() => {
+    const at = playerState().position;
+    setDismissal({ itemId, at });
+    // `end` mode: the session starts the next title at the end, so it must know.
+    videoSession().dismissNext(at);
+  }, [itemId]);
 
   // TV remote with the controls shown: a double Left or Right seeks 10 s (player/tv-keys.ts).
   // With them hidden, Left and Right go through tap seek (dispatchTap) instead.
@@ -1154,6 +1162,7 @@ export function PlayerScreen() {
               onCancel={cancelNext}
               autoplay={settings.autoplayNext}
               paused={!playing}
+              endsAt={nextMode === 'end' ? duration : undefined}
               preferredFocus={isTV && focusOwner === 'prompt'}
               onFocusChange={trackPrompt}
             />
