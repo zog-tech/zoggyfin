@@ -13,7 +13,10 @@
  * download description for the file, sends the extension's headers (never
  * the Jellyfin `Authorization` header), and runs only while its account is
  * the signed-in one. Files: <documents>/downloads/ext-<id>/media.<ext>,
- * primary.jpg, subtitle-<n>.vtt.
+ * primary.jpg, subtitle-<n>.vtt. An extension that makes the file first
+ * answers "preparing": the record waits in `preparing` (no transfer slot)
+ * and the tick asks again at `retryAt` (`dueForPoll`), until the file is
+ * named, the user pauses or cancels, or the wait passes `PREPARE_LIMIT_MS`.
  */
 import type { Api } from '@jellyfin/sdk';
 
@@ -47,6 +50,7 @@ import {
   extensionRecordId,
   isExpiredStatus,
   isExtensionRecord,
+  isPreparing,
   learnReport,
   newExtensionRecord,
   type ResolvedFile,
@@ -56,7 +60,7 @@ import {
   withResolvedFile,
 } from './extension-media';
 import { canResume, isWholeFile, resumeHint } from './resume';
-import { type DownloadEvent, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
+import { type DownloadEvent, dueForPoll, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
 import { downloadsState, dropCollection, dropRecord, patchRecord, putCollection, putRecord, rekeyRecord, useDownloadsStore } from './store';
 import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadRecord, type LocalImages } from './types';
 
@@ -368,6 +372,8 @@ class DownloadManager {
     const now = Date.now();
     const list = Object.values(downloadsState().records);
     for (const r of dueForRetry(list, now)) apply(r.itemId, { type: 'autoRetry', now });
+    // An extension that prepares a file: its time to ask again has come.
+    for (const r of dueForPoll(list, now)) apply(r.itemId, { type: 'poll', now });
     // A queued download of a user who signed out waits; it starts when that user signs in again.
     const owners = signedInOwners();
     // An extension download needs its extension list and headers: only its own account, while signed in.
@@ -403,6 +409,12 @@ class DownloadManager {
       if (isExtensionRecord(r)) {
         // The extension's headers, never the Jellyfin Authorization header.
         const file = await resolveFile(r.source, this.extensionDeps(), engine.supported);
+        if (isPreparing(file)) {
+          // Not ready on the server: wait without a transfer slot (a pause meanwhile wins).
+          apply(itemId, { type: 'prepare', progress: file.preparing.progress, retryAfter: file.preparing.retryAfter, now: Date.now() });
+          stale = true;
+          return;
+        }
         plan = extensionPlan(itemId, file);
         headers = file.headers;
         this.extFiles.set(itemId, file);
@@ -610,7 +622,8 @@ class DownloadManager {
     const deps = this.extensionDeps();
     const ext = deps.extension(r.source.extId);
     if (!ext) return {};
-    const file = this.extFiles.get(r.itemId) ?? (await resolveFile(r.source, deps, engine.supported).catch(() => null));
+    const got = this.extFiles.get(r.itemId) ?? (await resolveFile(r.source, deps, engine.supported).catch(() => null));
+    const file = got && !isPreparing(got) ? got : null;
     const headers = file?.headers ?? {};
     const out: Partial<DownloadRecord> = {};
     const image = file?.description.imageUrl ?? r.source.imageUrl;
@@ -643,9 +656,10 @@ class DownloadManager {
    * Downloads an extension's media entry for the signed-in account. Throws
    * (with no URL) when the extension may not download, when the description
    * offers options and none was chosen, or when nothing can be saved here.
-   * A second call for the same entry resumes or retries it.
+   * A second call for the same entry resumes or retries it. `preparing`: the
+   * extension makes the file first; the record waits and asks again.
    */
-  async downloadExtension(input: ExtensionDownloadInput, supported: boolean): Promise<void> {
+  async downloadExtension(input: ExtensionDownloadInput, supported: boolean): Promise<{ preparing: boolean }> {
     const deps = this.extensionDeps();
     const account = deps.account();
     if (!account) throw new Error('Sign in to download.');
@@ -664,7 +678,7 @@ class DownloadManager {
       if (existing.state === 'failed') apply(id, { type: 'retry' });
       if (existing.state === 'paused') apply(id, { type: 'resume' });
       this.tick();
-      return;
+      return { preparing: downloadsState().records[id]?.state === 'preparing' };
     }
     const orders = Object.values(downloadsState().records).map((r) => r.order);
     const kind = input.kind ?? 'video';
@@ -676,9 +690,14 @@ class DownloadManager {
       order: orders.length ? Math.max(...orders) + 1 : 0,
       now: Date.now(),
     });
-    putRecord(withResolvedFile(record, file, extensionPlan(id, file)));
-    this.extFiles.set(id, file);
+    if (isPreparing(file)) {
+      putRecord(transition(record, { type: 'prepare', progress: file.preparing.progress, retryAfter: file.preparing.retryAfter, now: Date.now() }));
+    } else {
+      putRecord(withResolvedFile(record, file, extensionPlan(id, file)));
+      this.extFiles.set(id, file);
+    }
     this.tick();
+    return { preparing: isPreparing(file) };
   }
 
   /** The choices of an extension's download description (empty: one file, no choice). */
@@ -829,7 +848,7 @@ class DownloadManager {
 
   async pauseAll(): Promise<void> {
     for (const r of Object.values(downloadsState().records)) {
-      if (r.state === 'queued' || r.state === 'downloading') await this.pause(r.itemId);
+      if (r.state === 'queued' || r.state === 'downloading' || r.state === 'preparing') await this.pause(r.itemId);
     }
   }
 

@@ -343,8 +343,9 @@ Web and the Mac app send requests from a browser, so the extension must allow
 CORS for the app's origins: the web address of your Zoggyfin, `tauri://localhost`
 and `http://tauri.localhost` (the Mac app), and `http://localhost:<port>` for
 development. Allow the headers `Content-Type`, `Authorization`, `X-Emby-Token`,
-`X-Jellyfin-Server-Url`, `X-Jellyfin-Server-Id` and `X-Jellyfin-User-Id`. The
-iPhone, iPad and Android apps send no `Origin`.
+`X-Jellyfin-Server-Url`, `X-Jellyfin-Server-Id`, `X-Jellyfin-User-Id` and
+`Prefer` (the download description, see "Preparing" below). The iPhone, iPad
+and Android apps send no `Origin`.
 
 A panel must allow framing by those origins (no `X-Frame-Options: DENY`, and no
 `frame-ancestors` that leaves them out).
@@ -783,6 +784,34 @@ Extensions." With downloads off, Download does not show.
 - `bytes` is the size the app shows before the transfer starts; the real size
   comes from the response.
 
+**Preparing.** A server that makes the file first (for example with a
+converter) can tell the app to ask again later instead of making it wait. The
+app sends every download description request with `Prefer: respond-async`
+(RFC 7240). When the file is not ready and the request has that header, answer
+`202 Accepted` with:
+
+```json
+{ "preparing": { "progress": 0.42, "retryAfter": 5 } }
+```
+
+- `progress` (optional) is 0 to 1. The Downloads tab shows "Preparing on the
+  server…" with the percent when it is known.
+- `retryAfter` (optional, default 5) is the seconds until the app asks again.
+  The app keeps it between 2 and 60 s, and asks at most every 5 s.
+- Answer quickly (in a few seconds): the request has the 8 s time limit of
+  feeds. Keep making the file while the app waits.
+- The app gives up after 30 minutes of preparing ("The server took too long to
+  prepare this file"). A pause or a cancel stops the asks; a resume or a
+  restart of the app asks again.
+- A failed job is an error status with `{ "error": "…" }` (for example 502).
+  The download then fails with that text.
+- Without the header (an older app), keep the old behaviour, and answer within
+  about 5 s.
+- The option list (`GET media.download` with options) can answer "preparing"
+  too; the app then downloads with no choice.
+- On the web and in the Mac app, allow `Prefer` in CORS. When a browser refuses
+  the request, the app asks once more without the header.
+
 **Downloads: how it works.**
 
 - The app asks `media.download` when the user taps Download. When the reply has
@@ -790,7 +819,8 @@ Extensions." With downloads off, Download does not show.
   the chosen option's `download` for the file.
 - The app asks the description again each time a transfer starts (a resume
   after a restart, Retry). A file URL can therefore expire: when the transfer
-  answers 401, 403, 404 or 410, the app asks the description once more and
+  answers 401, 403, 404 or 410, the app asks the description once more (a
+  "preparing" reply then waits as above) and
   continues from the saved bytes when the server allows ranges, else it starts
   again. Keep the chosen option's `download` valid.
 - After the file, the app saves each subtitle (`subtitle-<n>.vtt`) and the

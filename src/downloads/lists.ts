@@ -50,7 +50,7 @@ export function buildLists(records: Record<string, DownloadRecord>, collections:
     .map((g) => ({ ...g, records: g.records.sort((a, b) => a.sort - b.sort) }))
     .sort((a, b) => Math.max(...b.records.map((r) => r.completedAt ?? 0)) - Math.max(...a.records.map((r) => r.completedAt ?? 0)));
   const appBytes = all.reduce((n, r) => n + r.bytesDone, 0);
-  const activeCount = inProgress.filter((r) => r.state === 'downloading' || r.state === 'queued').length;
+  const activeCount = inProgress.filter((r) => r.state === 'downloading' || r.state === 'queued' || r.state === 'preparing').length;
   return { inProgress, groups, appBytes, activeCount };
 }
 

@@ -14,6 +14,12 @@
  *   is then an orphan and is removed); a missing source on a Jellyfin id is
  *   read as `jellyfin`.
  *
+ * Preparing (extension media, inside v3): an optional `prepare` field
+ *   (`{ since, progress }`). A record in `preparing` is saved as `queued`
+ *   with `retryAt` and `prepare` set (`storedRecords`); a queued record has no
+ *   `retryAt` otherwise, so the load reads it back as `preparing`. An older
+ *   app version reads a plain queued record and asks the extension again.
+ *
  * Downgrade safety (`store.ts`): an older app (v2) keeps nothing of a
  * snapshot whose version it does not know. So the v3 snapshot is saved
  * under its own key, and the old key keeps a v2 copy of the Jellyfin
@@ -24,7 +30,7 @@
  */
 import type { BaseItemDto } from '@/api/types';
 
-import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadRecord, type DownloadSource, type DownloadsSnapshot, type ExtensionDownloadSource, type DownloadState } from './types';
+import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadRecord, type DownloadSource, type DownloadsSnapshot, type ExtensionDownloadSource, type DownloadState, type PrepareInfo } from './types';
 
 export const EMPTY_SNAPSHOT: DownloadsSnapshot = { schemaVersion: DOWNLOAD_SCHEMA_VERSION, records: {}, collections: {} };
 
@@ -163,6 +169,34 @@ export function readSource(raw: unknown, itemId: string, version: unknown): Down
   return out;
 }
 
+/** A saved `prepare` field, or undefined when it is missing or damaged. */
+export function readPrepare(raw: unknown): PrepareInfo | undefined {
+  if (!isObject(raw)) return undefined;
+  const since = num(raw.since);
+  if (since === undefined) return undefined;
+  const p = raw.progress;
+  return { since, progress: typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 1 ? p : null };
+}
+
+/**
+ * The records as they are saved: `preparing` becomes `queued` (with
+ * `retryAt` and `prepare` kept), a state every app version knows. Pure.
+ */
+export function storedRecords(records: Record<string, DownloadRecord>): Record<string, DownloadRecord> {
+  if (!Object.values(records).some((r) => r.state === 'preparing')) return records;
+  const out: Record<string, DownloadRecord> = {};
+  for (const [id, r] of Object.entries(records)) out[id] = r.state === 'preparing' ? { ...r, state: 'queued', retryAt: r.retryAt ?? 0 } : r;
+  return out;
+}
+
+/** The state of a saved record: a running one goes back to the queue; a saved wait is `preparing` again. */
+function loadedState(v: { state: string; retryAt?: unknown }, prepare: PrepareInfo | undefined): DownloadState {
+  if (v.state === 'downloading') return 'queued';
+  if ((v.state === 'queued' || v.state === 'preparing') && prepare && typeof v.retryAt === 'number') return 'preparing';
+  if (v.state === 'preparing') return 'queued';
+  return v.state as DownloadState;
+}
+
 function isCollection(v: unknown): v is DownloadCollection {
   return isObject(v) && typeof v.id === 'string' && Array.isArray(v.itemIds) && isObject(v.item);
 }
@@ -247,12 +281,17 @@ export function migrateSnapshot(raw: unknown): DownloadsSnapshot {
   for (const v of Object.values(isObject(raw.records) ? raw.records : {})) {
     try {
       if (!isRecordShape(v)) continue;
-      const state: DownloadState = v.state === 'downloading' ? 'queued' : v.state === 'cancelled' ? 'cancelled' : v.state;
+      // A wait for the extension belongs to extension media only.
+      const prepare = v.itemId.startsWith('ext:') ? readPrepare(v.prepare) : undefined;
+      const state = loadedState(v, prepare);
       if (state === 'cancelled') continue;
       // A v2 snapshot may hold a v2 record only; a v3 snapshot reads each record's own version.
       const source = readSource(v.source, v.itemId, raw.schemaVersion === 2 ? 2 : v.schemaVersion);
       if (!source) continue;
-      records[v.itemId] = { ...v, schemaVersion: DOWNLOAD_SCHEMA_VERSION, source, state, speed: 0, progressAt: null };
+      const { prepare: _raw, ...rest } = v;
+      const record: DownloadRecord = { ...rest, schemaVersion: DOWNLOAD_SCHEMA_VERSION, source, state, speed: 0, progressAt: null };
+      if (prepare) record.prepare = prepare;
+      records[v.itemId] = record;
     } catch {
       // One unreadable record never stops the others.
     }
