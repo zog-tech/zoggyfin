@@ -6,6 +6,7 @@
  */
 import { desktopWindow, localPath, mpv, type MpvEvent, type MpvTrack, nowPlaying, type NowPlayingInfo, type RemoteCommand } from '@/platform/desktop';
 
+import { bufferInputOf, mpvBufferOptions } from './buffer-ahead';
 import { fromMpv } from './embedded-tracks';
 import { type EngineEvent, type EngineListener, type EngineSource, type EngineSubtitle, sourceHeaders, type VideoEngine } from './engine-types';
 import { PositionLine } from './position-line';
@@ -279,7 +280,8 @@ export class MpvEngine implements VideoEngine {
       // Subtitles stay off until the session picks one; audio follows the plan.
       // A download plays from its file on the disk.
       // A stream from a nearby host reads less ahead: every guest shares the host's upload.
-      const ahead = source.readAhead ? `,cache-secs=${source.readAhead},demuxer-readahead-secs=${source.readAhead}` : '';
+      // "Load the whole video ahead" raises the cache for this file only (buffer-ahead.ts).
+      const ahead = mpvBufferOptions(bufferInputOf(source));
       await mpv.command('loadfile', localPath(source.uri), 'replace', '-1', `start=${start.toFixed(3)},sid=no${ahead}`);
     });
   }

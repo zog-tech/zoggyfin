@@ -10,6 +10,7 @@ import { type StyleProp, View, type ViewStyle } from 'react-native';
 import { hasMpv, mpv, showVideoThrough } from '@/platform/desktop';
 
 import { MpvEngine } from './engine-mpv';
+import { bufferInputOf, hlsBufferConfig } from './buffer-ahead';
 import { type ElementTrackLike, fromHls, fromMediaElement } from './embedded-tracks';
 import { type EngineListener, type EngineSource, headersForRequest, sourceHeaders, type VideoEngine, type VideoFit } from './engine-types';
 
@@ -194,6 +195,8 @@ class WebEngine implements VideoEngine {
           startPosition: start || -1,
           enableWorker: true,
           lowLatencyMode: false,
+          // "Load the whole video ahead": a larger byte cap, up to the end (buffer-ahead.ts). Else hls.js defaults.
+          ...hlsBufferConfig(bufferInputOf(source)),
           ...(withHeaders
             ? {
                 // Only to the stream's origin: segments on another server get no headers.

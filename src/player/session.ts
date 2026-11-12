@@ -29,7 +29,7 @@ import { playRouter } from './play-router';
 import { buildDeviceProfile } from './device-profile';
 import { getEngine } from './engine';
 import { sameEmbeddedTracks } from './embedded-tracks';
-import type { EmbeddedTracks, EngineEvent } from './engine-types';
+import type { EmbeddedTracks, EngineEvent, EngineSource } from './engine-types';
 import { isForeignDownload, outboxOnly, withOutbox } from './outbox-transport';
 import { ProgressReporter, type ProgressTransport, secondsToTicks, ticksToSecondsExact, toServerReport } from './progress-reporter';
 import { externalSegments, JELLYFIN_SKIP_SCOPE, normalizeSegments } from './segments';
@@ -148,6 +148,14 @@ function subtitleLine(item: BaseItemDto): string | undefined {
     return [item.SeriesName, se].filter(Boolean).join(' · ') || undefined;
   }
   return item.ProductionYear ? String(item.ProductionYear) : undefined;
+}
+
+/**
+ * The setting "Load the whole video ahead" for a stream that is not live, with
+ * the video's length (0 when not known). Null when it is off.
+ */
+function loadAheadFor(durationSeconds: number): EngineSource['loadAhead'] {
+  return usePlaybackSettings.getState().loadWholeVideo ? { durationSeconds: durationSeconds > 0 ? durationSeconds : 0 } : null;
 }
 
 /** The plan of a live stream: no Jellyfin source, no tracks, no quality choice. */
@@ -905,6 +913,7 @@ class VideoSession {
       autoplay: a.autoplay !== false,
       userAgent: a.userAgent,
       headers: a.stream.headers,
+      loadAhead: external.live ? null : loadAheadFor(playerState().duration),
     });
     const rate = playerState().rate;
     if (rate !== 1) this.engine.setRate(rate);
@@ -1069,6 +1078,8 @@ class VideoSession {
       autoplay: opts.autoplay,
       audioIndex: plan.audioIndex,
       streams: { audio: plan.audio.map((a) => a.index), subtitles: plan.subtitles.filter((x) => !x.isExternal).map((x) => x.index) },
+      // A Jellyfin Live TV channel has no end: it keeps the defaults.
+      loadAhead: source.IsInfiniteStream || item.Type === 'TvChannel' ? null : loadAheadFor(playerState().duration),
     });
     const rate = playerState().rate;
     if (rate !== 1) this.engine.setRate(rate);
