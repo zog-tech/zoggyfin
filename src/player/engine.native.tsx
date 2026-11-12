@@ -3,12 +3,14 @@
  * life, so playback continues when the player screen closes (mini player,
  * background audio, Picture in Picture).
  */
+import * as Device from 'expo-device';
 import { createVideoPlayer, isPictureInPictureSupported, type VideoPlayer, type VideoTrack, VideoView } from 'expo-video';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Platform, type StyleProp, View, type ViewStyle } from 'react-native';
 
 import { setAutoPictureInPicture } from '@/native/zoggyfin-native';
 
+import { bufferInputOf, nativeBufferOptions } from './buffer-ahead';
 import { expoTrackId, fromExpoVideo } from './embedded-tracks';
 import { type EngineListener, type EngineSource, type EngineStatus, sourceHeaders, type VideoEngine, type VideoFit, type VideoTrackInfo } from './engine-types';
 
@@ -221,10 +223,8 @@ class NativeEngine implements VideoEngine {
     this.sourceReady = false;
     // A player that plays keeps its rate on a new source: it is to stay paused, so pause it now.
     if (!this.pendingPlay && this.playing) p.pause();
-    // Android's default is 20 s; iOS's 0 lets AVPlayer decide (it can read minutes ahead).
-    p.bufferOptions = source.readAhead
-      ? { preferredForwardBufferDuration: source.readAhead, minBufferForPlayback: 2, waitsToMinimizeStalling: true }
-      : { preferredForwardBufferDuration: Platform.OS === 'ios' ? 0 : 20, minBufferForPlayback: 2, waitsToMinimizeStalling: true };
+    // Defaults, watch together's read-ahead, or "Load the whole video ahead" (buffer-ahead.ts).
+    p.bufferOptions = nativeBufferOptions(bufferInputOf(source), Platform.OS, Device.totalMemory);
     p.replace({
       uri: source.uri,
       contentType: source.isHls ? 'hls' : 'progressive',

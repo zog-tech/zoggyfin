@@ -13,6 +13,13 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Load the whole video ahead.** A new switch in Settings, Playback (off by default). When on, the
+  player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
+  less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android
+  phones with 3 GB of memory or more (the player's own size on smaller devices and most TV sticks),
+  120 MB in a browser, 1 GB in the Mac app; on iPhone and iPad the system sets the limit. Live
+  streams, downloads and watch together keep the normal buffer. Nothing is saved after the player
+  closes.
 - **Extensions, schema version 2.** An extension can add native pages (rows, grids and lists that
   load more as you scroll, with search), shown as a tab on iPad, the web and the Mac app, in the
   TV side menu, and on phones as a Library tile or, if you choose ("On this phone"), as a tab in

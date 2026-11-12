@@ -147,7 +147,7 @@ videoSession().play()                                   session.ts
 
 - `engine-types.ts` is the seam. The session drives the engine. Screens never touch an engine.
 - `device-profile.ts` tells the server what the device plays directly. Capabilities come from `capabilities.native.ts` (decoders) or `capabilities.ts` (browser probe, or libmpv in the Mac app).
-- Pure helpers with tests: `stream.ts`, `segments.ts` (Skip Intro, next-up), `timeline.ts` (trickplay, chapters), `tv-keys.ts` (TV remote keys), `position-line.ts` (smooths libmpv positions), `vtt.ts`.
+- Pure helpers with tests: `buffer-ahead.ts` (the "Load the whole video ahead" setting per engine: byte caps, live and watch together keep the defaults), `stream.ts`, `segments.ts` (Skip Intro, next-up), `timeline.ts` (trickplay, chapters), `tv-keys.ts` (TV remote keys), `position-line.ts` (smooths libmpv positions), `vtt.ts`.
 - `control-gate.ts` sends play, pause and seek to a together session while one runs.
 - The player UI is in `src/features/player/` (`player-screen.tsx`, `scrubber.tsx`, `mini-player.tsx`, `subtitle-overlay.tsx`, `global-keys.tsx`).
 - Player controls: on TV they show and hide at once (no fade); on other platforms they fade in 160 ms. They auto-hide after 3 s on every platform (`player.autoHideMs`).

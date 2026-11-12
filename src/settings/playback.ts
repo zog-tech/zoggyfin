@@ -41,6 +41,13 @@ export interface PlaybackSettings {
   autoplayNext: boolean;
   /** Video downloads: 0 keeps the original file when it plays here; else the maximum height. */
   downloadQuality: DownloadQuality;
+  /**
+   * "Load the whole video ahead": the player reads ahead to the end while it
+   * plays (up to a memory cap per platform, `player/buffer-ahead.ts`). Kept in
+   * memory only; nothing is saved when the player closes. Added later: older
+   * saved settings lack it and get the default (off).
+   */
+  loadWholeVideo: boolean;
 }
 
 const KEY = 'settings.playback.v1';
@@ -52,6 +59,7 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   skipForwardSeconds: 10,
   autoplayNext: true,
   downloadQuality: 0,
+  loadWholeVideo: false,
 };
 
 interface Store extends PlaybackSettings {
@@ -59,8 +67,7 @@ interface Store extends PlaybackSettings {
 }
 
 export const usePlaybackSettings = create<Store>((set, get) => ({
-  ...DEFAULT_PLAYBACK_SETTINGS,
-  ...readJson<Partial<PlaybackSettings>>(KEY, {}),
+  ...readPlaybackSettings(readJson<unknown>(KEY, null)),
   update(patch) {
     set(patch);
     const s = get();
@@ -71,10 +78,26 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
       skipForwardSeconds: s.skipForwardSeconds,
       autoplayNext: s.autoplayNext,
       downloadQuality: s.downloadQuality,
+      loadWholeVideo: s.loadWholeVideo,
     };
     writeJson(KEY, saved);
   },
 }));
+
+/**
+ * The saved settings over the defaults. A missing field (a field added in a
+ * later version) or a field of the wrong type gets its default. Never throws.
+ */
+export function readPlaybackSettings(saved: unknown): PlaybackSettings {
+  const out: PlaybackSettings = { ...DEFAULT_PLAYBACK_SETTINGS };
+  if (!saved || typeof saved !== 'object') return out;
+  const rec = saved as Record<string, unknown>;
+  for (const key of Object.keys(out) as (keyof PlaybackSettings)[]) {
+    const value = rec[key];
+    if (typeof value === typeof out[key]) (out as unknown as Record<string, unknown>)[key] = value;
+  }
+  return out;
+}
 
 /** The bitrate to request, in bits per second, for the current network. */
 export function bitrateFor(settings: PlaybackSettings, cellular: boolean): number {

@@ -25,6 +25,13 @@ export interface EngineSource {
    */
   readAhead?: number;
   /**
+   * The setting "Load the whole video ahead" is on for this load: the
+   * engine reads ahead to the end, up to its memory cap (`buffer-ahead.ts`).
+   * The session never sets it for a live stream or a local file. Holds the
+   * video's length in seconds (0 when not known). `readAhead` wins.
+   */
+  loadAhead?: { durationSeconds: number } | null;
+  /**
    * The User-Agent header for the stream (IPTV providers can ask for one).
    * expo-video and libmpv send it; a browser does not let a page set it.
    */
