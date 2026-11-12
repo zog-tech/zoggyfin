@@ -411,7 +411,7 @@ has one `row` section, no tab, no Library tile, and the section on Home.
 | `pages` | At most 5. `id`, `title`, an optional `icon` (an icon name of the app), an optional `image` (the artwork of its Library tile, see below), `placement`, an optional `search`, and 1 to 8 `sections`, or `tabs` (see [Tabs](#tabs)), or both. |
 | `tabs` | 2 to 6 tabs. Each has `id`, `title`, 1 to 8 `sections` and an optional `search`. |
 | `placement` | `tab`: the page may show as a tab. `library`: a tile in the Library grid. `home`: ids of sections of this page that also show as Home rows, in that order. All are off by default. |
-| `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. |
+| `search` | `feed` gets `query` and `cursor`, and answers with a feed page. `placeholder` is optional. `global` (default `false`) also shows the results in the app's Search tab, under `title` (at most 40 characters; default: the page title). See [Results in the Search tab](#results-in-the-search-tab). |
 | `sections` | `id`, `title`, `feed`, `layout` (`row`, the default, `grid` or `list`), `shape` (`poster`, `thumb`, the default, or `square`), `refreshSeconds` (5 to 3600). `grid` and `list` load the next page near the end. |
 | `skipLabels` | At most 10. `id`, `title`, `default`: `auto` (skip, with Undo), `ask` (the default; a Skip button) or `off`. |
 
@@ -504,6 +504,42 @@ sections in order.
   `refreshSeconds` loads a feed again on that interval.
 - The cursor and the search text are added to the URL as they are: they are
   never read as templates.
+
+### Results in the Search tab
+
+A `search` (of a page or of a tab) with `"global": true` also runs when the
+user searches in the app's own Search tab. Its results show as a row after the
+server's results, under `title`, or the page title when `title` is left out.
+
+```json
+"search": {
+  "feed": "/api/search",
+  "placeholder": "Search films",
+  "global": true,
+  "title": "From the catalogue"
+}
+```
+
+- The app sends `GET <search.feed>?query=<text>` with the same headers and
+  limits as the page's own search (8 s), and shows the first page only. It
+  never sends `cursor` here.
+- It runs for text of 2 or more characters, after the Search tab's pause in
+  typing, beside the server search: a slow extension never holds back the
+  server's results. A reply to an older text is never shown.
+- It runs only for extensions that are turned on for the signed-in account,
+  only online, only with the All, Movies or Shows filter, and not when a genre
+  is chosen. Downloads and the offline search do not change.
+- At most 4 searches run, in the order of Settings → Extensions, then page
+  order, then the page's search before its tabs' searches. A feed that two
+  searches of one extension name runs once.
+- The tiles use the shape of the page's (or tab's) first `grid`, else wide
+  tiles, and open as they do on the page: an entry with `itemId` opens the
+  Jellyfin item, an entry with `detail` its entry page.
+- While the reply is out the row shows a short loading line. An empty reply,
+  an error or a timeout shows nothing.
+- `global` and `title` need no new schema version: an app version that does
+  not know them ignores them. A manifest that the app saved before it knew
+  them gets them at the next update check of the extension.
 
 ### Tabs
 
@@ -898,6 +934,8 @@ Pages") or from the header of its "Latest samples" Home row:
 - "All samples": a poster grid of 95 entries that pages 20 at a time through
   `next`.
 - A search field: `/pages/search` matches titles and topics, 20 per page.
+  The search is `global`, so its results also show in the Search tab under
+  "From Hello Pages".
 - Every entry plays the same 6 s test video, which the sample serves itself
   (`media/sample.mp4`, a test pattern with a tone, with byte ranges). The stream
   description is at `/pages/entries/<id>/play`. It has two `qualities` ("High"

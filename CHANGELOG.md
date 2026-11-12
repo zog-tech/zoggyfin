@@ -20,6 +20,9 @@ first commit to today. All of it was built in the first weeks of the project.
   120 MB in a browser, 1 GB in the Mac app; on iPhone and iPad the system sets the limit. Live
   streams, downloads and watch together keep the normal buffer. Nothing is saved after the player
   closes.
+- **Extension results in Search.** An extension search with `global: true` also shows its results
+  in the Search tab, as a row after the server's results, under its own title. Each extension
+  loads on its own, so the server's results never wait. See `docs/extensions.md`.
 - **Extensions, schema version 2.** An extension can add native pages (rows, grids and lists that
   load more as you scroll, with search), shown as a tab on iPad, the web and the Mac app, in the
   TV side menu, and on phones as a Library tile or, if you choose ("On this phone"), as a tab in

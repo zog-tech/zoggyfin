@@ -13,7 +13,8 @@
  *   action whose panel the manifest does not have is left out.
  * - A search waits `SEARCH_DEBOUNCE_MS` after the last key press and runs
  *   under a latest-wins gate: a late reply of an older search is dropped
- *   and never shown.
+ *   and never shown. `useFeedSearchNow` is the same search for a text that
+ *   is already settled (the main Search tab), one page only.
  */
 import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api/library-api';
 import { useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
@@ -160,4 +161,20 @@ export function useFeedSearch(source: FeedSource | undefined, text: string): Fee
   useEffect(() => () => gate.cancel(), [gate]);
   const q = useFeedQuery(source, query, !!query, (work) => latestOnly(gate, work));
   return { ...stateOf(q, true), query };
+}
+
+/**
+ * The first page of a search feed for a text the caller already settled
+ * (the main Search tab waits for typing to pause itself). With an empty
+ * `query`, nothing loads. Latest wins: a reply for an older text, or one
+ * that comes after the text was cleared or the screen closed, is dropped.
+ */
+export function useFeedSearchNow(source: FeedSource | undefined, query: string): FeedState {
+  const [gate] = useState(createGate);
+  useEffect(() => {
+    if (!query) gate.cancel();
+  }, [gate, query]);
+  useEffect(() => () => gate.cancel(), [gate]);
+  const q = useFeedQuery(source, query, !!query, (work) => latestOnly(gate, work));
+  return stateOf(q, false);
 }

@@ -41,8 +41,21 @@ export const placementSchema = z.object({
 });
 export type Placement = z.infer<typeof placementSchema>;
 
-/** A search field. The feed gets `query` and `cursor`. */
-export const searchSchema = z.object({ feed: path, placeholder: z.string().max(80).optional() });
+export const MAX_SEARCH_TITLE = 40;
+
+/**
+ * A search field. The feed gets `query` and `cursor`. `global`: the main
+ * Search tab also sends its text to this feed and shows the results as a
+ * section titled `title` (else the page title). Both are optional, so a
+ * manifest without them reads as before, and an app version that does not
+ * know them drops them.
+ */
+export const searchSchema = z.object({
+  feed: path,
+  placeholder: z.string().max(80).optional(),
+  global: z.boolean().optional(),
+  title: z.string().trim().min(1).max(MAX_SEARCH_TITLE).optional(),
+});
 export type SearchSpec = z.infer<typeof searchSchema>;
 
 /** One tab of a page: its own sections and, optionally, its own search (else the page's). */
