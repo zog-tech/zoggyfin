@@ -202,6 +202,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **One filter row in Search.** The genre chips and the type chips (All, Movies, Shows, ...) were two
+  rows. Now there is one row: the type chips, then a "Genre" chip at the end that opens a list. A
+  chosen genre shows its name with a Clear chip beside it.
+
 - **Downloads of a long video from an extension no longer fail with "did not answer in time".** An
   extension that makes the file first (for example one that converts a video) can now answer
   "preparing". The download waits in the Downloads tab with "Preparing on the server…" and its

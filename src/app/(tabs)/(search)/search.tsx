@@ -9,6 +9,7 @@ import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { Button } from '@/components/button';
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon } from '@/components/icon';
+import { OptionSheet } from '@/components/option-sheet';
 import { ItemImage } from '@/components/item-image';
 import { ItemRow, RowHeader } from '@/components/item-row';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
@@ -31,6 +32,7 @@ import {
   type SearchFilter,
   topResult,
 } from '@/features/search/group-results';
+import { genreChipModel, genreOptions } from '@/features/search/genre-chip';
 import { ExtensionSearchResults } from '@/features/search/extension-results';
 import { globalSearchQuery } from '@/features/search/extension-search';
 import { TvScrollView } from '@/features/tv/page-scroll';
@@ -82,6 +84,7 @@ export default function SearchScreen() {
   const q = useSearch(term, genre ?? undefined);
   const offline = useOffline();
   const genreList = browseGenres(useVideoGenres(!offline).data);
+  const [genreSheet, setGenreSheet] = useState(false);
   // The system speech screen (Android): the TV remote's voice button opens Google's search instead.
   const [canSpeak] = useState(() => !!voiceInput?.available());
   const records = useDownloadsStore((st) => st.records);
@@ -120,6 +123,7 @@ export default function SearchScreen() {
   useFocusEffect(useCallback(() => remember, [remember]));
 
   const active = term.length >= 2 || !!genre;
+  const genreChip = genreChipModel({ genre, genreCount: genreList.length, localOnly });
   // Extension searches with `global: true` run beside the server search, never before it.
   const extQuery = globalSearchQuery(term, { offline: localOnly, genre, filter });
   const body = searchBody({
@@ -235,27 +239,29 @@ export default function SearchScreen() {
         ) : null}
 
         <OfflineBanner />
-        {genreList.length && !localOnly ? (
+        {active || genreChip.visible ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={s.chips}
             contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
-            <Chip label="All genres" selected={!genre} onPress={() => pickGenre(null)} />
-            {genreList.map((g) => (
-              <Chip key={g.Id} label={g.Name ?? ''} selected={genre === g.Name} onPress={() => pickGenre(genre === g.Name ? null : (g.Name ?? null))} />
-            ))}
-          </ScrollView>
-        ) : null}
-        {active ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={s.chips}
-            contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
-            {(genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
-              <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
-            ))}
+            {active
+              ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
+                  <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
+                ))
+              : null}
+            {genreChip.visible ? (
+              <>
+                <Chip
+                  label={genreChip.label}
+                  icon="chevron.down"
+                  selected={genreChip.selected}
+                  onPress={() => setGenreSheet(true)}
+                  accessibilityLabel={genreChip.accessibilityLabel}
+                />
+                {genreChip.showClear ? <Chip label="Clear" icon="xmark" onPress={() => pickGenre(null)} accessibilityLabel="Clear genre" /> : null}
+              </>
+            ) : null}
           </ScrollView>
         ) : null}
 
@@ -348,6 +354,14 @@ export default function SearchScreen() {
         )}
         <ExtensionSearchResults query={extQuery} />
       </TvScrollView>
+      <OptionSheet
+        visible={genreSheet}
+        title="Genre"
+        options={genreOptions(genreList.map((g) => g.Name ?? '').filter(Boolean))}
+        selected={[genre]}
+        onSelect={pickGenre}
+        onClose={() => setGenreSheet(false)}
+      />
       <ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />
     </>
   );
