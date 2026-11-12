@@ -205,6 +205,13 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Music has sound again after an interruption on iPhone.** When the camera or another app stopped
+  the music and never said it was done, a later play showed "playing" with no sound. The app now
+  activates the audio session again before that play, also a play from the lock screen.
+- **Next and previous on the lock screen always work on iPhone.** They now move the app's queue
+  like the buttons in the app. Before, they did nothing for a song that was not preloaded (a
+  catalog song) and for "previous" on the first song after a fresh start. Needs a new native build.
+
 - **One filter row in Search.** The genre chips and the type chips (All, Movies, Shows, ...) were two
   rows. Now there is one row: the type chips, then a "Genre" chip at the end that opens a list. A
   chosen genre shows its name with a Clear chip beside it.

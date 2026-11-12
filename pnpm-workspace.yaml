@@ -1,3 +1,4 @@
 patchedDependencies:
   '@kesha-antonov/react-native-background-downloader@4.6.3': patches/@kesha-antonov__react-native-background-downloader@4.6.3.patch
+  expo-audio@58.0.10: patches/expo-audio@58.0.10.patch
   expo-video@58.0.13: patches/expo-video@58.0.13.patch

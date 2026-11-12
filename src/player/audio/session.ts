@@ -201,6 +201,12 @@ class AudioSession {
       case 'ended':
         void this.onQueueEnd();
         break;
+      case 'remote':
+        // The lock screen: the same next and previous as the app's buttons, so a track
+        // that is not in the native window (a catalog song, the one before) still plays.
+        if (e.command === 'next') this.next();
+        else this.previous();
+        break;
       case 'error':
         if (this.recoverAfterAddressSwitch()) break;
         setPlayerState({ status: 'error', error: e.message });
