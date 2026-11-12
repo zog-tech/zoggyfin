@@ -13,6 +13,15 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Sound plays on (listen together).** In a nearby listen-together session, the host picks where
+  the sound comes out: every device (as before) or one device, for example the phone on the car
+  stereo. The other devices keep playing in sync with no sound, so a change is instant, and their
+  controls still work. When the chosen device leaves, the sound goes to the host and everyone sees
+  a note. Guests of an older version keep their sound. SyncPlay sessions do not have it.
+- **Download state on more places.** The Download button of an album or a playlist counts its
+  songs while it downloads ("3 of 12"). The top result in Search shows the download glyph. Song and
+  episode rows tell a screen reader that an item is downloaded or downloading. On iPhone, iPad,
+  Android and the Mac app only: the web and TV have no downloads.
 - **Load the whole video ahead.** A new switch in Settings, Playback (on by default). When on, the
   player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
   less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android
@@ -204,6 +213,13 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **Music has sound again after an interruption on iPhone.** When the camera or another app stopped
+  the music and never said it was done, a later play showed "playing" with no sound. The app now
+  activates the audio session again before that play, also a play from the lock screen.
+- **Next and previous on the lock screen always work on iPhone.** They now move the app's queue
+  like the buttons in the app. Before, they did nothing for a song that was not preloaded (a
+  catalog song) and for "previous" on the first song after a fresh start. Needs a new native build.
 
 - **One filter row in Search.** The genre chips and the type chips (All, Movies, Shows, ...) were two
   rows. Now there is one row: the type chips, then a "Genre" chip at the end that opens a list. A

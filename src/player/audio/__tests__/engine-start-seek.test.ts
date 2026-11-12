@@ -15,6 +15,7 @@ interface FakePlaylist {
   add: jest.Mock;
   remove: jest.Mock;
   playbackRate: number;
+  volume: number;
   addListener: (name: string, l: Listener) => void;
   seekTo: (seconds: number) => Promise<void>;
 }
@@ -33,6 +34,7 @@ jest.mock('expo-audio', () => ({
       add: jest.fn(),
       remove: jest.fn(),
       playbackRate: 1,
+      volume: 1,
       addListener(name, l) {
         p.listeners.set(name, l);
       },
@@ -125,5 +127,17 @@ describe('audio engine start seek', () => {
     engine.seekTo(70);
     expect(p.seeks.map((s) => s.seconds)).toEqual([10]);
     expect(engine.position).toBe(70);
+  });
+});
+
+describe('audio engine volume', () => {
+  it('a volume set before the playlist exists holds for it (listen together: no sound here)', async () => {
+    fake.playlist = null;
+    const engine = new AudioEngine();
+    engine.setVolume(0);
+    await engine.load({ key: 'a', uri: 'a.mp3' }, null, 0, false);
+    expect(fake.playlist!.volume).toBe(0);
+    engine.setVolume(1);
+    expect(fake.playlist!.volume).toBe(1);
   });
 });

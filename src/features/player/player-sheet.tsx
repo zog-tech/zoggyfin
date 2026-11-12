@@ -3,6 +3,7 @@ import { type LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
+import { MODAL_ORIENTATIONS } from '@/components/sheet-layout';
 import { isTV } from '@/platform/tv';
 import { font, mediaColors, scaled } from '@/theme';
 
@@ -74,7 +75,7 @@ export function PlayerSheet({
   // The first selected row takes the focus.
   const firstSelected = sections.flatMap((x) => x.rows).find((r) => r.selected)?.key ?? sections[0]?.rows[0]?.key;
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} supportedOrientations={MODAL_ORIENTATIONS}>
       <Pressable style={styles.backdrop} onPress={onClose} focusable={!isTV} accessibilityLabel="Close" accessibilityRole="button" />
       <View style={[styles.sheet, isTV && styles.sheetTV, { paddingBottom: insets.bottom + spacing.md }]} accessibilityViewIsModal>
         <View style={styles.header}>

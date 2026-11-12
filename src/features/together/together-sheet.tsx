@@ -31,6 +31,7 @@ import { groupStateLabel } from '@/together/syncplay-logic';
 import { joinTransport, mergeSessions, playForEveryone, SERVER_CONTROLS_TEXT, type SessionRow, sessionHeadline, shortName } from '@/together/hub';
 import { SHOWN_REQUESTS, visibleRequests } from '@/together/join-gate';
 import type { Member } from '@/together/protocol';
+import { mutedHere, speakerLabel } from '@/together/speaker';
 
 import { QrCode } from './qr-code';
 import { startSession, type StartTarget, targetFor, WhoStep } from './start-flow';
@@ -590,6 +591,8 @@ function NearbyView({ st, env }: { st: TogetherState; env: SheetEnv }) {
         </View>
       </Section>
 
+      <SpeakerSection st={st} />
+
       {host ? <HostHelp st={st} env={env} /> : null}
 
       {host ? (
@@ -687,6 +690,53 @@ function RoomNow({ st }: { st: TogetherState }) {
         </View>
       </View>
       {!title && canPick ? <Button title="Pick something" variant="tonal" icon="magnifyingglass" onPress={() => closeTogetherSheet()} /> : null}
+    </Section>
+  );
+}
+
+/**
+ * "Sound plays on" (listen together): the host picks every device or one
+ * device; the others play in sync with no sound. Guests see the choice.
+ */
+function SpeakerSection({ st }: { st: TogetherState }) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const sp = st.speaker;
+  if (st.kind !== 'audio' || !sp || !st.item) return null;
+  const footer = 'The others keep playing in sync with no sound. Their controls still work.';
+  if (st.role === 'host') {
+    return (
+      <Section title="Sound plays on" footer={footer}>
+        <View style={s.group}>
+          <ChoiceRow title="Every device" selected={sp.target === null} onPress={() => nearby().setSpeaker(null)} />
+          <ChoiceRow title="This device" selected={sp.target === sp.selfId} onPress={() => nearby().setSpeaker(sp.selfId)} last={!st.members.length} />
+          {st.members.map((m, i, list) => (
+            <ChoiceRow
+              key={m.id}
+              title={m.name}
+              detail={m.away ? 'Reconnecting…' : undefined}
+              selected={sp.target === m.id}
+              disabled={!!m.away}
+              onPress={() => nearby().setSpeaker(m.id)}
+              last={i === list.length - 1}
+            />
+          ))}
+        </View>
+      </Section>
+    );
+  }
+  const muted = mutedHere(sp.target, sp.selfId);
+  return (
+    <Section title="Sound plays on">
+      <View style={[s.group, s.row]}>
+        <View style={s.rowText}>
+          <Text style={s.rowTitle} numberOfLines={1}>
+            {speakerLabel(sp, { hostName: st.hostName, members: st.members })}
+          </Text>
+          <Text style={s.rowDetail}>{muted ? 'This device plays in sync with no sound. Its controls still work.' : 'This device plays the sound.'}</Text>
+        </View>
+        <Icon name={muted ? 'speaker.slash.fill' : 'speaker.wave.2.fill'} size={18} color={c.text2} />
+      </View>
     </Section>
   );
 }

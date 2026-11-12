@@ -22,7 +22,7 @@ import { Icon, type IconName } from '@/components/icon';
 import { ItemImage } from '@/components/item-image';
 import { useDownloadArrival } from '@/components/download-indicator';
 import { ProgressRing } from '@/components/progress-ring';
-import { type DownloadStatus, useDownloadStatus } from '@/downloads';
+import { type DownloadStatus, useCollectionCounts, useDownloadStatus } from '@/downloads';
 import { Touchable } from '@/components/touchable';
 import { useItemActions } from '@/features/actions/use-item-actions';
 import { TogetherSheetHost, usePlayForEveryone, useTogetherEntry } from '@/features/together/together-sheet';
@@ -58,6 +58,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 
+import { downloadButtonView } from './download-button';
 import { fitRoundActions, heroHeight, heroLayout, solidHeaderAfter } from './hero-layout';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
@@ -131,6 +132,8 @@ export function DetailScaffold<Row>({
   // In a together session the Play button plays for everyone (or, for a guest, only the host picks).
   const room = usePlayForEveryone();
   const download = useDownloadStatus(item.Id);
+  // An album or playlist counts its songs on the button ("3 of 12"); null for a single item.
+  const downloadCounts = useCollectionCounts(item.Id);
   const [sheet, setSheet] = useState(false);
   const [rowWidth, setRowWidth] = useState(0);
   const pull = usePullRefresh(onRefresh);
@@ -219,25 +222,17 @@ export function DetailScaffold<Row>({
   }
   const dlAction = actions.find((a) => a.id === 'builtin.download' || a.id === 'builtin.downloading' || a.id === 'builtin.removeDownload');
   if (dlAction) {
-    if (download.state === 'completed') {
-      secondary.push({ key: 'download', download: download.state, icon: 'arrow.down.circle.fill', label: 'Downloaded', tint: c.success, a11y: 'Downloaded. Remove the download', onPress: () => run(dlAction) });
-    } else if (download.state === 'none') {
-      secondary.push({ key: 'download', download: download.state, icon: 'arrow.down.circle', label: 'Download', onPress: () => run(dlAction) });
-    } else if (download.state === 'failed' && download.missing) {
-      secondary.push({ key: 'download', download: download.state, icon: 'arrow.down.circle', label: 'Download again', tint: c.danger, a11y: 'The downloaded file is missing. Download it again', onPress: () => run(dlAction) });
-    } else if (download.state === 'failed') {
-      secondary.push({ key: 'download', download: download.state, icon: 'exclamationmark.triangle', label: 'Failed', tint: c.danger, a11y: 'Download failed. Open Downloads', onPress: () => run(dlAction) });
-    } else {
-      const pct = Math.round(download.progress * 100);
-      secondary.push({
-        key: 'download', download: download.state,
-        icon: 'arrow.down.circle',
-        label: download.state === 'paused' ? 'Paused' : `${pct}%`,
-        ring: download.progress,
-        a11y: `Downloading ${pct} percent. Open Downloads`,
-        onPress: () => run(dlAction),
-      });
-    }
+    const v = downloadButtonView(download, downloadCounts);
+    secondary.push({
+      key: 'download',
+      download: download.state,
+      icon: v.icon,
+      label: v.label,
+      tint: v.tint === 'success' ? c.success : v.tint === 'danger' ? c.danger : undefined,
+      ring: v.ring,
+      a11y: v.a11y,
+      onPress: () => run(dlAction),
+    });
   }
   // Together sits with the main actions, before the ones that move to More on a narrow window.
   if (together) secondary.push({ icon: 'person.2', label: 'Together', a11y: together.label, onPress: together.open });

@@ -1,0 +1,101 @@
+diff --git a/ios/AudioModule.swift b/ios/AudioModule.swift
+index 42ce9e8f213ebc243db25ef836456757b0daeb09..e79c94acf12eb34d29065d3f201ec8427b343609 100644
+--- a/ios/AudioModule.swift
++++ b/ios/AudioModule.swift
+@@ -313,6 +313,9 @@ public class AudioModule: Module {
+         let avQueuePlayer = AVQueuePlayer(items: items.compactMap { $0 })
+         let playlist = AudioPlaylist(avQueuePlayer, sources: sources, items: items, interval: updateInterval, loopMode: loopMode)
+         playlist.owningRegistry = self.registry
++        playlist.activateSessionForPlay = { [weak self] in
++          self?.activateSessionBeforePlay()
++        }
+         self.registry.add(playlist)
+         return playlist
+       }
+@@ -401,6 +404,11 @@ public class AudioModule: Module {
+         playlist.previous()
+       }
+ 
++      // Zoggyfin: send the lock screen next/previous commands to JS as `remoteTrackCommand` events.
++      Function("setRemoteTrackCommands") { (playlist: AudioPlaylist, toJs: Bool) in
++        playlist.remoteTrackCommandsToJs = toJs
++      }
++
+       Function("skipTo") { (playlist, index: Int) in
+         playlist.skipTo(index: index)
+       }
+@@ -927,6 +935,21 @@ public class AudioModule: Module {
+     }
+   }
+ 
++  // Zoggyfin: activates the session at once, even when `sessionIsActive` says it is active.
++  // The flag can be wrong after an interruption that never ended. Called on any thread
++  // (also on `sessionQueue` from `resumeInterruptedPlayers`), so it does not sync on that queue.
++  private func activateSessionBeforePlay() {
++    guard audioEnabled.withLock({ $0 }) else {
++      return
++    }
++    do {
++      try AVAudioSession.sharedInstance().setActive(true, options: [])
++      recordSessionActive(true)
++    } catch {
++      log.warn("[expo-audio] Failed to activate the audio session before play: \(error.localizedDescription)")
++    }
++  }
++
+   private func activateSession(for player: AudioPlayer) {
+     let playerId = player.id
+     let shouldKeepSessionActive = player.keepAudioSessionActive
+diff --git a/ios/AudioPlaylist.swift b/ios/AudioPlaylist.swift
+index 38e158fb0dc78dec36779a4b36686d696052e372..b643a6ac825783066d91b84c1387e9ddf06d528a 100644
+--- a/ios/AudioPlaylist.swift
++++ b/ios/AudioPlaylist.swift
+@@ -5,6 +5,7 @@ import Combine
+ private enum PlaylistConstants {
+   static let playlistStatusUpdate = "playlistStatusUpdate"
+   static let trackChanged = "trackChanged"
++  static let remoteTrackCommand = "remoteTrackCommand"
+ }
+ 
+ public class AudioPlaylist: SharedRef<AVQueuePlayer>, Playable, LockScreenPlayable {
+@@ -14,6 +15,11 @@ public class AudioPlaylist: SharedRef<AVQueuePlayer>, Playable, LockScreenPlayab
+   var isActiveForLockScreen = false
+   var metadata: Metadata?
+   var lockScreenOptions: LockScreenOptions?
++  // Zoggyfin: when true, the lock screen next/previous commands go to JS (the queue lives there)
++  // instead of moving inside the native window.
++  var remoteTrackCommandsToJs = false
++  // Zoggyfin: set by AudioModule. Activates the audio session before a play, also a play from the lock screen.
++  var activateSessionForPlay: (() -> Void)?
+ 
+   var loopMode: LoopMode = .none
+   var wasPlaying = false
+@@ -95,6 +101,9 @@ public class AudioPlaylist: SharedRef<AVQueuePlayer>, Playable, LockScreenPlayab
+   }
+ 
+   func play(at rate: Float) {
++    // Zoggyfin: after an interruption (camera, call) without an `.ended` notification the session
++    // stays inactive, and the player plays without sound. Activate it before every play.
++    activateSessionForPlay?()
+     registerTimeObserver()
+     ref.playImmediately(atRate: rate)
+ 
+@@ -132,10 +141,18 @@ public class AudioPlaylist: SharedRef<AVQueuePlayer>, Playable, LockScreenPlayab
+   }
+ 
+   func nextTrack() {
++    if remoteTrackCommandsToJs {
++      self.emit(event: PlaylistConstants.remoteTrackCommand, payload: ["command": "next"])
++      return
++    }
+     next()
+   }
+ 
+   func previousTrack() {
++    if remoteTrackCommandsToJs {
++      self.emit(event: PlaylistConstants.remoteTrackCommand, payload: ["command": "previous"])
++      return
++    }
+     previous()
+   }
+ 

@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { type Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { useHideDevToolsButton } from '@/lib/dev-tools';
 import { itemHref } from '@/lib/navigation';
 import { toast } from '@/lib/toast';
+import { useWindowFrame } from '@/lib/use-window-frame';
 import { KeyInput } from '@/native/key-input';
 import type { KeyPress } from '@/native/key-input-types';
 import { artistLine } from '@/player/audio/item';
@@ -51,7 +52,7 @@ import { Scrubber } from '../player/scrubber';
 import { useTvScrub } from '../player/use-tv-scrub';
 import { c, ease, iconSize, motion, radius, spacing } from '../player/tokens';
 import { ArtBackground } from './art-background';
-import { nowPlayingSizes } from './layout';
+import { bottomPad, nowPlayingSizes } from './layout';
 import { LyricsPanel } from './lyrics-panel';
 import { QueuePanel } from './queue-panel';
 import { VolumeSlider } from './volume-slider';
@@ -96,7 +97,8 @@ function useNow(on: boolean): number {
  * background, artwork that shrinks while paused, scrubber, transport,
  * volume, AirPlay, queue and lyrics. Long-form audio (recitations,
  * audiobooks, lectures) gets ±15/30 s skips, speed, a sleep timer and
- * chapters. Wide windows show the queue or lyrics beside the player.
+ * chapters. Wide windows show the queue or lyrics beside the player; a
+ * phone on its side shows the art beside the controls (`layout.ts`).
  */
 export function NowPlayingScreen() {
   const now = usePlayerStore((s) => s.now);
@@ -114,14 +116,24 @@ export function NowPlayingScreen() {
   const format = useAudioStore((s) => s.format);
   const queue = useAudioStore((s) => s.queue);
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  // The size comes with the insets, so a rotation renders the new layout once (use-window-frame.ts).
+  const { width, height } = useWindowFrame();
   const reduced = useReducedMotion();
   const { api, userId } = useApi();
   const signedIn = useSessionStore((st) => !!st.session);
   const s = audioSession();
 
   useHideDevToolsButton();
-  const { wide, columnWidth, contentWidth, artSize } = nowPlayingSizes({ width, height, insetTop: insets.top, insetBottom: insets.bottom, longForm });
+  const { mode, wide, columnWidth, contentWidth, artSize, pad, gap } = nowPlayingSizes({
+    width,
+    height,
+    insetTop: insets.top,
+    insetBottom: insets.bottom,
+    insetLeft: insets.left,
+    insetRight: insets.right,
+    longForm,
+  });
+  const landscape = mode === 'landscape';
   const [panel, setPanel] = useState<Panel>(wide ? 'queue' : 'none');
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -300,9 +312,9 @@ export function NowPlayingScreen() {
   };
 
   const title = (
-    <View style={styles.titleRow}>
+    <View style={[styles.titleRow, landscape && styles.titleRowLandscape]}>
       <View style={styles.flex}>
-        <Text style={[styles.title, scriptStyle(item.Name, styles.title, true)]} numberOfLines={2} accessibilityRole="header">
+        <Text style={[styles.title, scriptStyle(item.Name, styles.title, true)]} numberOfLines={landscape ? 1 : 2} accessibilityRole="header">
           {item.Name}
         </Text>
         {artist ? (
@@ -380,8 +392,8 @@ export function NowPlayingScreen() {
     <RoundButton
       icon={showsPause ? 'pause.fill' : 'play.fill'}
       label={showsPause ? 'Pause' : 'Play'}
-      size={80}
-      glyph={52}
+      size={landscape ? 64 : 80}
+      glyph={landscape ? 42 : 52}
       glass={false}
       haptic
       onPress={() => s.togglePlay()}
@@ -389,7 +401,7 @@ export function NowPlayingScreen() {
   );
 
   const transport = longForm ? (
-    <View style={styles.transport}>
+    <View style={[styles.transport, landscape && styles.transportLandscape]}>
       <RoundButton icon="backward.end.fill" label={now.chapters.length ? 'Previous chapter' : 'Previous'} size={48} glyph={iconSize.lg - 4} glass={false} onPress={() => s.chapterStep(-1)} />
       <RoundButton icon="gobackward.15" label="Back 15 seconds" size={56} glyph={iconSize.xl} glass={false} onPress={() => s.skip(-15)} />
       {playButton}
@@ -397,10 +409,10 @@ export function NowPlayingScreen() {
       <RoundButton icon="forward.end.fill" label={now.chapters.length ? 'Next chapter' : 'Next'} size={48} glyph={iconSize.lg - 4} glass={false} onPress={() => s.chapterStep(1)} />
     </View>
   ) : (
-    <View style={[styles.transport, styles.transportMusic]}>
-      <RoundButton icon="backward.fill" label="Previous" size={64} glyph={iconSize.xl + 2} glass={false} onPress={() => s.previous()} />
+    <View style={[styles.transport, styles.transportMusic, landscape && styles.transportLandscape]}>
+      <RoundButton icon="backward.fill" label="Previous" size={landscape ? 56 : 64} glyph={iconSize.xl + (landscape ? -4 : 2)} glass={false} onPress={() => s.previous()} />
       {playButton}
-      <RoundButton icon="forward.fill" label="Next" size={64} glyph={iconSize.xl + 2} glass={false} onPress={() => s.next()} />
+      <RoundButton icon="forward.fill" label="Next" size={landscape ? 56 : 64} glyph={iconSize.xl + (landscape ? -4 : 2)} glass={false} onPress={() => s.next()} />
     </View>
   );
 
@@ -433,8 +445,9 @@ export function NowPlayingScreen() {
     </View>
   ) : (
     <>
-      <VolumeSlider />
-      <View style={styles.bottomRow}>
+      {/* Landscape has no height for it; the volume buttons still work. */}
+      {landscape ? null : <VolumeSlider />}
+      <View style={[styles.bottomRow, landscape && styles.bottomRowLandscape]}>
         {/* Hidden when the track has no lyrics; the empty slot keeps AirPlay centred. */}
         {lyrics ? (
           <BottomButton icon="quote.bubble" label="Lyrics" active={effectivePanel === 'lyrics'} onPress={() => togglePanel('lyrics')} />
@@ -461,33 +474,60 @@ export function NowPlayingScreen() {
   );
 
   const controls = (
-    <View style={[styles.controls, { width: contentWidth }]}>
+    <View style={[styles.controls, landscape && styles.controlsLandscape, { width: contentWidth }]}>
       {scrubber}
       {transport}
       {bottom}
     </View>
   );
 
+  const closeButton = (
+    <Touchable
+      kind="icon"
+      radius={22}
+      onPress={minimize}
+      containerStyle={landscape ? styles.closeLandscape : styles.closeButton}
+      style={styles.closeInner}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Close the player. Music keeps playing">
+      <Icon name="chevron.down" size={iconSize.md} color={c.textOnMediaSecondary} weight="semibold" />
+    </Touchable>
+  );
+
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.grabber} />
-      <Touchable
-        kind="icon"
-        radius={22}
-        onPress={minimize}
-        containerStyle={styles.closeButton}
-        style={styles.closeInner}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="Close the player. Music keeps playing">
-        <Icon name="chevron.down" size={iconSize.md} color={c.textOnMediaSecondary} weight="semibold" />
-      </Touchable>
+      {closeButton}
       <TogetherPill top={insets.top + spacing.xs} right={spacing.lg} onPress={() => openTogetherSheet('music', null)} />
     </View>
   );
 
   let body;
-  if (wide) {
+  if (landscape) {
+    // A phone on its side: the art (or the open queue or lyrics) on the left at the full
+    // usable height, the title and the controls on the right. The safe area pads both edges.
+    body = (
+      <View style={[styles.landRow, { paddingTop: pad.top, paddingLeft: pad.left, paddingRight: pad.right, gap }]}>
+        {panelView ? (
+          <View style={{ width: columnWidth, height: artSize }}>{panelView}</View>
+        ) : (
+          <GestureDetector gesture={dismiss}>
+            <View style={[styles.landArt, { width: columnWidth, height: artSize }]}>{artwork}</View>
+          </GestureDetector>
+        )}
+        <View style={[styles.landSide, { width: contentWidth, height: artSize }]}>
+          {/* No second GestureDetector here: one gesture object can drive only one detector. */}
+          <View style={styles.landTop}>
+            {closeButton}
+            <TogetherPill top={spacing.xs + 2} right={0} onPress={() => openTogetherSheet('music', null)} />
+          </View>
+          {title}
+          {controls}
+        </View>
+      </View>
+    );
+  } else if (wide) {
     body = (
       <View style={styles.wideRow}>
         <View style={[styles.wideLeft, { width: columnWidth }]}>
@@ -637,7 +677,7 @@ export function NowPlayingScreen() {
     <KeyInput enabled={!sheet} onKey={onKey} style={styles.root}>
       <StatusBar style="light" animated />
       <ArtBackground item={item} />
-      <Animated.View style={[styles.root, frameStyle, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>{body}</Animated.View>
+      <Animated.View style={[styles.root, frameStyle, { paddingBottom: bottomPad(insets.bottom) }]}>{body}</Animated.View>
       <PlayerSheet visible={sheet !== null} title={sheetTitle} sections={sheetSections} onClose={() => setSheet(null)} />
       <TogetherSheetHost where="music" />
       <ToastHost overlay />
@@ -745,6 +785,15 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
   disabled: { opacity: 0.35 },
   wideRow: { flex: 1, flexDirection: 'row' },
+  landRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  landArt: { alignItems: 'center', justifyContent: 'center' },
+  landSide: { justifyContent: 'center' },
+  landTop: { height: 44, justifyContent: 'center' },
+  closeLandscape: { marginLeft: -spacing.sm, alignSelf: 'flex-start' },
+  titleRowLandscape: { marginTop: spacing.xs, marginBottom: spacing.xs },
+  controlsLandscape: { gap: spacing.sm, paddingTop: 0 },
+  transportLandscape: { marginVertical: 0 },
+  bottomRowLandscape: { marginTop: 0 },
   wideLeft: { alignItems: 'center', justifyContent: 'center' },
   wideRight: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
   panelTabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },

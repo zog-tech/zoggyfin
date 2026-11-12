@@ -37,13 +37,14 @@ import { files } from './files';
 import { fileUri, localImageUri, localMediaUri } from './local';
 import { downloadManager, offerDownloadAgain } from './manager';
 import { isDownloadable } from './plan';
-import { downloadsState, statusOf, useDownloadsStore } from './store';
+import { collectionCounts, type CollectionCounts, downloadsState, statusOf, useDownloadsStore } from './store';
 import { buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, forServer, jellyfinOnly, onServer, type ServerSection, visibleTo } from './lists';
 import { type DownloadOption, type ExtensionDownloadInput, extensionMediaState, type ExtensionMediaState, extensionRecordId, isExtensionRecord, localPlayRequest } from './extension-media';
 import type { DownloadRecord, DownloadStatus } from './types';
 
 export type { DownloadCollection, DownloadRecord, DownloadSource, DownloadState, DownloadStatus, ExtensionDownloadSource, LocalSubtitle } from './types';
 export type { DownloadOption, ExtensionDownloadInput } from './extension-media';
+export type { CollectionCounts } from './store';
 export { extensionMediaState, type ExtensionMediaState, extensionRecordId, isExtensionRecord } from './extension-media';
 export { DOWNLOAD_SCHEMA_VERSION } from './types';
 export { buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, onServer, type ServerSection, searchDownloads, visibleTo } from './lists';
@@ -139,6 +140,14 @@ export function downloadedItem(id: string): BaseItemDto | null {
 /** One item's or container's download state, for buttons and row badges. */
 export function useDownloadStatus(id: string | null | undefined): DownloadStatus {
   return useDownloadsStore(useShallow((s) => (id && downloadsSupported ? statusOf(id, s) : ({ state: 'none' } as DownloadStatus))));
+}
+
+/**
+ * A container's counts ("3 of 12"), or null for an item or a container with no downloads.
+ * `useShallow`: a progress tick of one song does not re-render the page; only a finished song does.
+ */
+export function useCollectionCounts(id: string | null | undefined): CollectionCounts | null {
+  return useDownloadsStore(useShallow((s) => (id && downloadsSupported ? collectionCounts(s.collections[id], s.records) : null)));
 }
 
 /** A local image for a downloaded item, or null. */

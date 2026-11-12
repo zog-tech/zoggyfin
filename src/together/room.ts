@@ -19,11 +19,15 @@
  * then only the changes (`memberDelta`), at most one in `MEMBERS_EVERY` ms.
  * An older guest gets the whole list, at the same pace. Buffering is not
  * part of the list that goes out (it changes often, and only the host needs it).
+ *
+ * "Sound plays on" (speaker.ts): the room keeps the host's choice and sends
+ * the device that plays the sound now with each change (`speaker`).
  */
 import { positionAt } from './drift';
 import type { Anchor, ControlAction, MediaKind, Member, Message, PickRequest, SharedItem, SharedQueue, StreamRef } from './protocol';
 import type { PlayerPort, Timers } from './player-port';
 import { ONLY_HOST_PICKS_TEXT } from './room-route';
+import { keepChoice, soundDevice, type SpeakerChoice, validChoice } from './speaker';
 
 /** The queue actions of an audio session. */
 export type QueueAction = Extract<ControlAction, { action: 'next' | 'previous' | 'jump' | 'shuffle' | 'repeat' }>;
@@ -100,6 +104,8 @@ export interface RoomDeps {
   onPick?(memberId: string, name: string, pick: PickRequest): void;
   /** Close this socket (a guest that the room removed). */
   drop?(peerId: string): void;
+  /** The sound device changed (`fallback`: the chosen device left, the host plays the sound now). */
+  onSpeaker?(target: SpeakerChoice, fallback: boolean): void;
 }
 
 /** A member as the room keeps it: the public facts and the socket it uses now. */
@@ -138,6 +144,8 @@ export interface RoomOptions {
   members?: Member[];
   /** A new host: the item number of the room so far (it goes on from there). */
   media?: number;
+  /** A new host: the sound device of the session so far (speaker.ts). */
+  speaker?: SpeakerChoice;
 }
 
 export class HostRoom {
@@ -172,6 +180,9 @@ export class HostRoom {
   item: SharedItem | null;
   private stream: StreamRef | null;
   private readonly startLead: number;
+  /** "Sound plays on": the host's choice, and the sound device that the guests know now. */
+  private speakerChoice: SpeakerChoice = null;
+  private speakerSent: SpeakerChoice = null;
 
   constructor(
     private readonly deps: RoomDeps,
@@ -196,6 +207,8 @@ export class HostRoom {
       this.members.set(m.id, { ...m, buffering: false, away: true, peerId: null, awayTimer: deps.timers.setTimeout(() => this.forget(m.id), AWAY_LIMIT) });
     }
     if (!opts.item) this.queue = null;
+    this.speakerChoice = keepChoice(opts.speaker ?? null, this.memberList, this.hostId);
+    this.speakerSent = soundDevice(this.speakerChoice, this.memberList, this.hostId);
     this.listen();
     this.heartbeat = deps.timers.setInterval(() => this.beat(), opts.heartbeatMs ?? 2000);
   }
@@ -407,6 +420,7 @@ export class HostRoom {
             ...(this.hostId ? { hostId: this.hostId } : {}),
             ...(message.deltas ? { members: this.wireMembers } : {}),
             ...(message.rooms ? { media: this.mediaSeq } : {}),
+            ...(this.speakerNow !== null ? { speaker: this.speakerNow } : {}),
           },
           [peerId],
         );
@@ -580,6 +594,41 @@ export class HostRoom {
     }
   }
 
+  /** The sound device now (null: every device). */
+  get speaker(): { choice: SpeakerChoice; target: SpeakerChoice } {
+    return { choice: this.speakerChoice, target: this.speakerSent };
+  }
+
+  /** The sound device for the current members (it can differ from the one sent until `updateSpeaker` runs). */
+  private get speakerNow(): SpeakerChoice {
+    return soundDevice(this.speakerChoice, this.memberList, this.hostId);
+  }
+
+  /** The host picks where the sound plays: null (every device), its own id, or a member that is here. False: not a valid choice. */
+  setSpeaker(choice: SpeakerChoice): boolean {
+    if (!validChoice(choice, this.memberList, this.hostId)) return false;
+    this.speakerChoice = choice;
+    this.updateSpeaker(false);
+    this.deps.onChange?.();
+    return true;
+  }
+
+  /**
+   * Sends the sound device when it changed. A chosen member that left gives
+   * way to the host (`fallback` unless the host chose it). Called after each
+   * member change.
+   */
+  private updateSpeaker(memberChange = true): void {
+    const before = this.speakerChoice;
+    this.speakerChoice = keepChoice(before, this.memberList, this.hostId);
+    const target = this.speakerNow;
+    if (target === this.speakerSent) return;
+    this.speakerSent = target;
+    const fallback = memberChange && before !== null && before !== this.hostId && target === this.hostId;
+    if (this.peers.length) this.deps.send({ t: 'speaker', target, ...(fallback ? { fallback: true } : {}) }, this.peers);
+    this.deps.onSpeaker?.(target, fallback);
+  }
+
   setOnlyHostControls(value: boolean): void {
     this.onlyHostControls = value;
     this.broadcastMembers();
@@ -700,6 +749,7 @@ export class HostRoom {
 
   /** A member changed: the guests hear of it with the other changes of the next `MEMBERS_EVERY` ms. */
   private broadcastMembers(): void {
+    this.updateSpeaker();
     if (this.membersTimer === null) {
       this.membersTimer = this.deps.timers.setTimeout(() => {
         this.membersTimer = null;

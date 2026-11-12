@@ -10,12 +10,13 @@ import { Button } from '@/components/button';
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { OptionSheet } from '@/components/option-sheet';
+import { DownloadGlyph, downloadLabel } from '@/components/download-indicator';
 import { ItemImage } from '@/components/item-image';
 import { ItemRow, RowHeader } from '@/components/item-row';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { shapeFor } from '@/components/tile';
 import { Touchable } from '@/components/touchable';
-import { isNetworkError, searchDownloads } from '@/downloads';
+import { isNetworkError, searchDownloads, useDownloadStatus } from '@/downloads';
 import { useDownloadsStore } from '@/downloads/store';
 import { TrackRow } from '@/features/detail/rows';
 import { browseGenres, inGenre } from '@/features/genres/genres';
@@ -399,6 +400,7 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
     .filter(Boolean)
     .join(' · ');
   const resume = !!item.UserData?.PlaybackPositionTicks;
+  const download = useDownloadStatus(item.Id);
   return (
     <View style={{ marginTop: spacing.lg, paddingHorizontal: l.gutter }}>
       <Text style={s.topHeader} accessibilityRole="header">
@@ -412,7 +414,7 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
           onPress={() => open(item)}
           onLongPress={l.tv ? undefined : () => menu.open(item)}
           accessibilityRole="button"
-          accessibilityLabel={[item.Name, facts].filter(Boolean).join(', ')}
+          accessibilityLabel={[item.Name, facts, downloadLabel(download)].filter(Boolean).join(', ')}
           containerStyle={StyleSheet.absoluteFill}
           style={({ pressed, hovered }) => [s.topCardBg, (pressed || hovered) && s.topCardBgActive]}
         />
@@ -425,7 +427,12 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
               <Text style={[s.topTitle, scriptStyle(item.Name, s.topTitle)]} numberOfLines={2}>
                 {item.Name}
               </Text>
-              {facts ? <Text style={s.topMeta}>{facts}</Text> : null}
+              {facts || download.state !== 'none' ? (
+                <View style={s.topMetaRow}>
+                  <DownloadGlyph id={item.Id} size={14} status={download} />
+                  {facts ? <Text style={s.topMeta}>{facts}</Text> : null}
+                </View>
+              ) : null}
             </View>
             {PLAYABLE.has(item.Type ?? '') ? (
               <Button title={resume ? 'Resume' : 'Play'} icon="play.fill" variant="small" onPress={onPlay} containerStyle={s.topButton} />
@@ -486,6 +493,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   topBody: { flex: 1 },
   topText: { gap: 2 },
   topTitle: { ...font(type.headline), color: c.text },
-  topMeta: { ...font(type.footnote), color: c.text2 },
+  topMeta: { ...font(type.footnote), color: c.text2, flexShrink: 1 },
+  topMetaRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.xs },
   topButton: { alignSelf: 'flex-start' as const, marginTop: spacing.sm },
 }));

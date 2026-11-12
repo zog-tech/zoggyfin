@@ -10,9 +10,18 @@
  * one after it. Inserting before the current item would make expo-audio
  * rebuild the playlist and restart the current track, so the engine only
  * appends and only removes items after the current one.
+ *
+ * On iOS the engine also keeps the audio session alive (`session-phase.ts`):
+ * after a pause it did not ask for, it activates the session again before
+ * the next play. With the patched expo-audio (`patches/expo-audio@*.patch`),
+ * the lock screen next and previous commands come here as events, so the
+ * JavaScript queue moves, not only the native window. An older binary has
+ * neither the event nor `setRemoteTrackCommands`: it keeps the old behaviour.
  */
-import { type AudioPlaylist, createAudioPlaylist, setAudioModeAsync } from 'expo-audio';
+import { type AudioPlaylist, createAudioPlaylist, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { Platform } from 'react-native';
+
+import { type SessionPhase, resumedByItself, transition } from './session-phase';
 
 export interface EngineTrack {
   /** The queue entry key. */
@@ -43,9 +52,20 @@ export type AudioEngineEvent =
   | { type: 'track'; key: string; previousKey: string | null; at: number }
   /** The last track ended and nothing follows. */
   | { type: 'ended' }
+  /** The lock screen (or a headset) asked for the next or previous track. */
+  | { type: 'remote'; command: 'next' | 'previous' }
   | { type: 'error'; message: string };
 
 export type AudioEngineListener = (e: AudioEngineEvent) => void;
+
+/** The parts of the patched expo-audio playlist that an older binary does not have. */
+interface RemoteTrackPlaylist {
+  setRemoteTrackCommands?: (toJs: boolean) => void;
+  addListener(name: 'remoteTrackCommand', l: (e: { command?: string }) => void): unknown;
+}
+
+/** iOS only: the session handling of the other platforms works as it is. */
+const guardSession = Platform.OS === 'ios';
 
 export class AudioEngine {
   private playlist: AudioPlaylist | null = null;
@@ -68,6 +88,10 @@ export class AudioEngine {
   private loading = false;
   /** One per load and unload: the start seek of an older load must not play the new one. */
   private loadToken = 0;
+  /** Whether the session can give sound (`session-phase.ts`). */
+  private phase: SessionPhase = 'idle';
+  /** Goes up on every play and pause: a play that waits for the session must not run after a pause. */
+  private intent = 0;
 
   /** The last web status: its track and time (see `webFix`). */
   private webLast: { index: number; time: number } | null = null;
@@ -125,6 +149,9 @@ export class AudioEngine {
       // A progressive transcode can report an infinite or partial length: only a finite one counts.
       const duration = s.duration > 0 && Number.isFinite(s.duration) ? s.duration + offset : 0;
       if (duration > 0) this.lastDuration = duration;
+      if (!this.loading && this.pendingStart === null) {
+        this.onPhase({ type: 'status', playing: s.playing, buffering: s.isBuffering, loaded: s.isLoaded, finished: !!s.didJustFinish && index >= this.keys.length - 1 });
+      }
       this.emit({
         type: 'status',
         position: this.lastPosition,
@@ -141,8 +168,51 @@ export class AudioEngine {
       this.lastIndex = currentIndex;
       this.emit({ type: 'track', key, previousKey: this.keys[previousIndex] ?? null, at: Date.now() });
     });
+    this.remoteTracks(p);
+    if (this.volume !== 1) p.volume = this.volume;
     this.playlist = p;
     return p;
+  }
+
+  /** Lock screen next and previous go to the queue in JavaScript (patched expo-audio only). */
+  private remoteTracks(p: AudioPlaylist) {
+    if (!guardSession) return;
+    const r = p as unknown as RemoteTrackPlaylist;
+    if (typeof r.setRemoteTrackCommands !== 'function') return;
+    try {
+      r.addListener('remoteTrackCommand', (e) => {
+        if (e?.command === 'next' || e?.command === 'previous') this.emit({ type: 'remote', command: e.command });
+      });
+      r.setRemoteTrackCommands(true);
+    } catch {
+      // The native side refused: the lock screen keeps moving the native window.
+    }
+  }
+
+  private onPhase(e: Parameters<typeof transition>[1]) {
+    const prev = this.phase;
+    this.phase = transition(prev, e);
+    if (!guardSession || !resumedByItself(prev, this.phase)) return;
+    // The player plays again without the app (lock screen, headset). The session may still be
+    // inactive: activate it, then play once more so the sound starts.
+    const token = this.loadToken;
+    const intent = this.intent;
+    void this.restoreSession().then(() => {
+      if (token !== this.loadToken || intent !== this.intent || this.phase !== 'playing') return;
+      if (this.playlist) this.playNow(this.playlist);
+    });
+  }
+
+  /** Sets the audio mode and activates the session again after it was lost. Never throws. */
+  private async restoreSession(): Promise<void> {
+    this.modeSet = false;
+    await this.audioMode();
+    try {
+      await setIsAudioActiveAsync(true);
+    } catch {
+      // Another app still holds the audio: the play below tries anyway.
+    }
+    this.phase = transition(this.phase, { type: 'restored' });
   }
 
   private async audioMode() {
@@ -200,11 +270,13 @@ export class AudioEngine {
 
   /** Replaces what plays: the current track (from `startSeconds`) and the one after it. */
   async load(current: EngineTrack, next: EngineTrack | null, startSeconds: number, autoplay: boolean): Promise<void> {
-    await this.audioMode();
+    if (guardSession && this.phase === 'lost') await this.restoreSession();
+    else await this.audioMode();
     const p = this.ensure();
     this.loadToken += 1;
     this.loading = true;
     p.pause();
+    this.phase = transition(this.phase, { type: 'pause' });
     p.clear();
     this.keys = [];
     this.offsets = [];
@@ -257,20 +329,35 @@ export class AudioEngine {
   }
 
   play(): void {
+    this.intent += 1;
     if (this.pendingStart !== null) {
       this.pendingPlay = true;
       return;
     }
-    if (this.playlist) this.playNow(this.playlist);
+    const p = this.playlist;
+    if (!p) return;
+    if (guardSession && this.phase === 'lost') {
+      // An interruption (camera, call) left the session inactive: activate it first, or the play is silent.
+      const token = this.loadToken;
+      const intent = this.intent;
+      void this.restoreSession().then(() => {
+        if (token === this.loadToken && intent === this.intent) this.playNow(p);
+      });
+      return;
+    }
+    this.playNow(p);
   }
 
   /** Plays, then sets the rate again: on iOS, play() puts the rate back to 1. */
   private playNow(p: AudioPlaylist): void {
+    this.phase = transition(this.phase, { type: 'play' });
     p.play();
     if (this.rate !== 1) p.playbackRate = this.rate;
   }
 
   pause(): void {
+    this.intent += 1;
+    this.phase = transition(this.phase, { type: 'pause' });
     this.lastPosition = this.livePosition();
     this.statusPlaying = false;
     this.pendingPlay = false;
@@ -299,8 +386,12 @@ export class AudioEngine {
     if (this.playlist) this.playlist.playbackRate = rate;
   }
 
+  /** The volume of the playlist (0 to 1). It holds for a playlist that is made later too. */
+  private volume = 1;
+
   setVolume(volume: number): void {
-    if (this.playlist) this.playlist.volume = Math.max(0, Math.min(1, volume));
+    this.volume = Math.max(0, Math.min(1, volume));
+    if (this.playlist) this.playlist.volume = this.volume;
   }
 
   setLockScreen(info: LockScreenInfo, controls: LockScreenControls): void {
@@ -323,6 +414,7 @@ export class AudioEngine {
   unload(): void {
     const p = this.playlist;
     this.loadToken += 1;
+    this.phase = transition(this.phase, { type: 'pause' });
     this.loading = false;
     this.pendingStart = null;
     this.pendingPlay = false;

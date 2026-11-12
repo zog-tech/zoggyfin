@@ -184,6 +184,7 @@ Play → session.ts finds the completed record (local.ts) → plays the file →
 - Internet mode: `syncplay.ts` (Jellyfin SyncPlay), pure helpers in `syncplay-logic.ts`.
 - Nearby mode: `nearby.ts` (controller), `room.ts` (host: the clock and the authority), `follower.ts` (guest), `protocol.ts` (versioned JSON wire messages), `machine.ts` (state machine), `recovery.ts` (drops), `join-gate.ts`, `join-code.ts`, `budget.ts` (host upload).
 - Sync: `clock.ts` (NTP-style offset), `drift.ts`, `anchor-follower.ts`.
+- "Sound plays on" (nearby audio): `speaker.ts` (pure rule: the host's choice, the device that plays the sound, the fallback to the host), the `speaker` message and `welcome.speaker`; `speaker-output.ts` sets the audio engine volume to 0 on the other devices (`audioSession().setGroupMuted`) from the together store, so the end of a session restores it.
 - Transport: `link.ts` (handshake) over `link-native-types.ts`. Implementations: `modules/zoggyfin-native` (iOS Network.framework + BLE, Android NSD + BLE + local-only hotspot) and `link-desktop.ts` (the same Swift code in the Mac app).
 - `rendezvous.ts` + `rendezvous-crypto.ts`: the BLE rendezvous (X25519, cipher primitives in `rendezvous-cipher.ts` with @noble, `rendezvous-cipher.ios.ts` with CryptoKit). Both must give the same bytes as `__tests__/rendezvous-vectors.json`.
 - Player bindings: `player-binding.ts`, `player-port.ts`, `audio-binding.ts`.
@@ -337,7 +338,7 @@ The `ship-update` skill has the full procedure.
 **A change needs a native build when it touches:**
 
 - `modules/**` (Swift, Kotlin, podspecs, `expo-module.config.json`).
-- `patches/**` that patch native code. Both current patches do: `expo-video` (`NowPlayingManager.swift`) and the background downloader (Android Kotlin).
+- `patches/**` that patch native code. All current patches do: `expo-video` (`NowPlayingManager.swift`), `expo-audio` (`AudioPlaylist.swift`, `AudioModule.swift`: session activation before play, lock screen next and previous as a `remoteTrackCommand` event) and the background downloader (Android Kotlin).
 - A dependency with native code: added, removed or upgraded (`expo-*`, `react-native-*`, `@kesha-antonov/*`, Nitro modules).
 - `app.json` native config: `ios`, `android`, `plugins`, permissions, entitlements, `infoPlist`, icons, splash, `scheme`.
 - The Expo SDK or `react-native-tvos` version.
@@ -351,7 +352,7 @@ The Mac app and the web are different: the Mac app embeds the web build (`fronte
 - Because old binaries get new JS, **new JS must not need a native module that older binaries lack.** Load native modules with `requireOptionalNativeModule` (from `expo`) and give a safe fallback when it returns `null`. Examples: `src/native/zoggyfin-native.native.ts`, `src/together/nearby-native.native.ts`, `src/servers/discovery/backend.native.ts`, `src/invite/clipboard.ts`. Never add a top-level `import` of a new native package in code that an OTA update ships.
 - A JS workaround for a native bug stays until every supported binary has the native fix. Example: `engine.native.tsx` always passes `artist` and `artwork` to expo-video (see section 6), and the patch fixes the native side for new builds.
 - Patches apply through `pnpm.patchedDependencies` in `pnpm-workspace.yaml` during `pnpm install`. To change one: `pnpm patch <pkg>@<version>`, edit, then `pnpm patch-commit <dir>`. A patch file name pins the exact version: upgrade the package and the patch together.
-- **A native patch of an Expo module works only if that module builds from source.** On iOS, Expo uses precompiled xcframeworks for most `expo-*` modules (`EXPO_USE_PRECOMPILED_MODULES`). A precompiled module ignores the patched Swift in `node_modules`. Put each patched Expo module in the `expo.autolinking.ios.buildFromSource` list in `package.json` (now: `expo-video`). After `pnpm expo prebuild --clean --platform ios`, the module must not appear in the "Precompiled modules" list of the pod install output.
+- **A native patch of an Expo module works only if that module builds from source.** On iOS, Expo uses precompiled xcframeworks for most `expo-*` modules (`EXPO_USE_PRECOMPILED_MODULES`). A precompiled module ignores the patched Swift in `node_modules`. Put each patched Expo module in the `expo.autolinking.ios.buildFromSource` list in `package.json` (now: `expo-audio`, `expo-video`). After `pnpm expo prebuild --clean --platform ios`, the module must not appear in the "Precompiled modules" list of the pod install output.
 - **Verify a native patch in the build log.** Build for iOS and search the log for the patched file, for example `grep NowPlayingManager.swift <build-log>`. No match means the patch is not in the binary.
 - EAS profiles (`eas.json`): `development` (dev client), `preview`, `production`, `tv` (`EXPO_TV=1`, the sideloaded Android TV APK with the self-updater, on its own `tv` channel) and `tv-play` (the TV app bundle for Google Play, no self-updater, on `production` with the other Google Play builds). An OTA update to `production` does not reach TV builds: publish to `tv` too (`--platform android`), and check TV. TV APKs built before this change are on `production`.
 
