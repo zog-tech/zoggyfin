@@ -47,9 +47,14 @@ export function useDownloadArrival(id: string | null | undefined, state: Downloa
   return usePopIn(state, downloadFinished, ARRIVAL, id);
 }
 
-/** A row glyph (16 pt), next to the time or the title. Renders nothing for items that are not downloaded. */
-export const DownloadGlyph = memo(function DownloadGlyph({ id, size = 16 }: { id: string | null | undefined; size?: number }) {
-  const st = useDownloadStatus(id);
+/**
+ * A row glyph (16 pt), next to the time or the title. Renders nothing for items that are not downloaded.
+ * `status`: a row that already reads the status (for its screen-reader label) passes it, so the row
+ * keeps one store subscription.
+ */
+export const DownloadGlyph = memo(function DownloadGlyph({ id, size = 16, status }: { id: string | null | undefined; size?: number; status?: DownloadStatus }) {
+  const own = useDownloadStatus(status ? null : id);
+  const st = status ?? own;
   const { c } = useTheme();
   const arrival = useDownloadArrival(id, st.state);
   if (st.state === 'none') return null;

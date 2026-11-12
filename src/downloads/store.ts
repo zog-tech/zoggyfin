@@ -196,6 +196,26 @@ export function collectionStatus(c: DownloadCollection | undefined, records: Rec
   return { state: 'paused', progress };
 }
 
+/** How many items of a container are on the device, of how many: "3 of 12" on the album's button. */
+export interface CollectionCounts {
+  done: number;
+  total: number;
+}
+
+/** The counts of a container's downloads; null for an id that is not a downloaded container. Cancelled items do not count. */
+export function collectionCounts(c: DownloadCollection | undefined, records: Record<string, DownloadRecord>): CollectionCounts | null {
+  if (!c) return null;
+  let done = 0;
+  let total = 0;
+  for (const id of c.itemIds) {
+    const r = records[id];
+    if (!r || r.state === 'cancelled') continue;
+    total += 1;
+    if (r.state === 'completed') done += 1;
+  }
+  return total ? { done, total } : null;
+}
+
 /** The status of any item id: a record, or a collection. */
 export function statusOf(id: string, s: Pick<DownloadsState, 'records' | 'collections'>): DownloadStatus {
   const r = s.records[id];

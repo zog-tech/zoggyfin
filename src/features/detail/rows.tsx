@@ -2,11 +2,12 @@ import { memo, type ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
 import type { BaseItemDto, BaseItemPerson } from '@/api/types';
-import { DownloadGlyph } from '@/components/download-indicator';
+import { DownloadGlyph, downloadLabel } from '@/components/download-indicator';
 import { Icon } from '@/components/icon';
 import { SwipeRow } from '@/components/swipe-row';
 import { ItemImage } from '@/components/item-image';
 import { Touchable } from '@/components/touchable';
+import { useDownloadStatus } from '@/downloads';
 import { canQueue, queueAccessibilityActions, type QueueSwipe, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { episodeLabel, formatClock, formatDuration, playedFraction } from '@/lib/format';
 import { isTV } from '@/platform/tv';
@@ -69,6 +70,7 @@ export const TrackRow = memo(function TrackRow({
   const playing = usePlayerStore((st) => !!item.Id && st.now?.item.Id === item.Id);
   const artist = [item.Artists?.join(', ') ?? item.AlbumArtist, note].filter(Boolean).join(' · ') || undefined;
   const time = formatClock(item.RunTimeTicks);
+  const download = useDownloadStatus(item.Id);
   // TV: the More button is a sibling of the row, so the focus can move to it.
   const tvMore = isTV && !!onLongPress;
   const inset = isTV ? tvRowInset(l.gutter) : null;
@@ -83,7 +85,7 @@ export const TrackRow = memo(function TrackRow({
       onPress={() => onPress(item)}
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
-      accessibilityLabel={[item.Name, artist, time, playing ? 'playing' : null].filter(Boolean).join(', ')}
+      accessibilityLabel={[item.Name, artist, time, playing ? 'playing' : null, downloadLabel(download)].filter(Boolean).join(', ')}
       accessibilityActions={a11yActions.length ? a11yActions : undefined}
       onAccessibilityAction={(e) => {
         if (queueSwipe.runAccessibility(e.nativeEvent.actionName, item)) return;
@@ -110,7 +112,7 @@ export const TrackRow = memo(function TrackRow({
             </Text>
           ) : null}
         </View>
-        <DownloadGlyph id={item.Id} />
+        <DownloadGlyph id={item.Id} status={download} />
         {time ? <Text style={s.trackTime}>{time}</Text> : null}
         {trailing}
       </View>
@@ -200,6 +202,7 @@ export const EpisodeRow = memo(function EpisodeRow({
   const l = useLayout();
   const progress = playedFraction(item);
   const label = [episodeLabel(item), formatDuration(item.RunTimeTicks)].filter(Boolean).join(' · ');
+  const download = useDownloadStatus(item.Id);
   const inset = isTV ? tvRowInset(l.gutter) : null;
   return (
     <Touchable
@@ -211,7 +214,7 @@ export const EpisodeRow = memo(function EpisodeRow({
       accessibilityActions={onLongPress ? [{ name: 'longpress', label: 'More actions' }] : undefined}
       onAccessibilityAction={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
-      accessibilityLabel={[item.Name, label, item.UserData?.Played ? 'played' : null].filter(Boolean).join(', ')}
+      accessibilityLabel={[item.Name, label, item.UserData?.Played ? 'played' : null, downloadLabel(download)].filter(Boolean).join(', ')}
       style={({ pressed, hovered, focused }) => [s.episode, { paddingHorizontal: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
       <View>
         <ItemImage item={item} variant="landscape" width={scaled(sizes.episodeThumb)} aspectRatio={16 / 9} rounded={radius.sm} hideArtTitle />
@@ -229,7 +232,7 @@ export const EpisodeRow = memo(function EpisodeRow({
       <View style={s.flex}>
         <View style={s.epTop}>
           <Text style={[s.epLabel, s.flex]}>{label}</Text>
-          <DownloadGlyph id={item.Id} size={14} />
+          <DownloadGlyph id={item.Id} size={14} status={download} />
         </View>
         <Text style={[s.epTitle, scriptStyle(item.Name, s.epTitle)]} numberOfLines={2}>
           {item.Name}

@@ -13,6 +13,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Download state on more places.** The Download button of an album or a playlist counts its
+  songs while it downloads ("3 of 12"). The top result in Search shows the download glyph. Song and
+  episode rows tell a screen reader that an item is downloaded or downloading. On iPhone, iPad,
+  Android and the Mac app only: the web and TV have no downloads.
 - **Load the whole video ahead.** A new switch in Settings, Playback (on by default). When on, the
   player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
   less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android
