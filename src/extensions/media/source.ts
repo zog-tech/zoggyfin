@@ -145,6 +145,8 @@ export function extensionSource(extId: string, deps: ExtensionMediaDeps, refs = 
   return {
     providerId: `ext:${extId}`,
     label: deps.extension(extId)?.manifest.name,
+    // A video's last seconds are content, not credits: no countdown before the end.
+    nextAtEnd: true,
     itemId: (ref) => mediaItemId(extId, ref.id),
     async resolve(ref) {
       if (otherAccount()) return none('This title was opened by another account. Open it again.');

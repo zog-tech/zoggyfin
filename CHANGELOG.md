@@ -192,6 +192,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Extension videos play to the end.** A YouTube video with a next title stopped about 20 s early:
+  the Up Next card counted down from 30 s before the end (or from a SponsorBlock outro) and then
+  started the next video. For extension media the card now shows in the last 10 s, its ring shows
+  the time left in the video, and the next video starts only when the video ends. Cancel keeps
+  the player at the end. Jellyfin episodes keep the countdown at the credits.
 - **Invite links open in full from Messages.** iPhone Messages linked only `…/join`, because it stops a
   link before a long run of letters. The link now has a dot every 200 characters; the app and the
   /join page remove them. Old links still work.

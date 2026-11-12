@@ -118,11 +118,29 @@ export const NEXT_UP_FALLBACK_SECONDS = 30;
 export const NEXT_UP_COUNTDOWN_SECONDS = 10;
 
 /**
- * When the next-episode card appears: at the start of the end credits, or
- * 30 s before the end. Null for short videos, where it would cover the content.
+ * How the next title follows.
+ * - `credits`: Jellyfin items and IPTV episodes. The end credits (or the last
+ *   30 s) are not content, so the card counts down there and starts the next
+ *   episode before the file ends.
+ * - `end`: extension media (a YouTube video). The last seconds are content:
+ *   the card shows in the last 10 s, its ring follows the time left in the
+ *   video, and only the real end of the video starts the next title.
  */
-export function nextUpStartsAt(segments: readonly Segment[], duration: number): number | null {
+export type NextUpMode = 'credits' | 'end';
+
+/** The mode of what plays: `end` when the external source asks for it. */
+export function nextUpModeOf(now: { external?: { source: { nextAtEnd?: boolean } } } | null | undefined): NextUpMode {
+  return now?.external?.source.nextAtEnd ? 'end' : 'credits';
+}
+
+/**
+ * When the next-episode card appears. `credits`: at the start of the end
+ * credits, or 30 s before the end. `end`: 10 s before the end. Null for short
+ * videos, where it would cover the content.
+ */
+export function nextUpStartsAt(segments: readonly Segment[], duration: number, mode: NextUpMode = 'credits'): number | null {
   if (!(duration > 0)) return null;
+  if (mode === 'end') return duration < NEXT_UP_COUNTDOWN_SECONDS * 3 ? null : duration - NEXT_UP_COUNTDOWN_SECONDS;
   const credits = segments.find((s) => s.label === 'outro' && s.end >= duration - END_CREDITS_SLACK);
   if (credits) return credits.start;
   if (duration < NEXT_UP_FALLBACK_SECONDS * 4) return null;
@@ -173,4 +191,29 @@ export function setCountdownRunning(clock: CountdownClock, running: boolean, now
 export function countdownLeft(clock: CountdownClock, nowMs: number, seconds = NEXT_UP_COUNTDOWN_SECONDS): number {
   const spent = clock.spentMs + (clock.since !== null ? Math.max(0, nowMs - clock.since) : 0);
   return Math.max(0, seconds - spent / 1000);
+}
+
+/** `end` mode: the seconds left on the card's ring, which is the time left in the video. */
+export function endCountdownLeft(position: number, duration: number, seconds = NEXT_UP_COUNTDOWN_SECONDS): number {
+  if (!(duration > 0)) return seconds;
+  return Math.min(seconds, Math.max(0, duration - position));
+}
+
+/**
+ * Whether the end of the video starts the next title by itself. `credits`
+ * mode keeps the old rule (autoplay on, a next title). `end` mode also
+ * respects Cancel on the card: the countdown never fired, so the end is the
+ * only place the next title can start.
+ */
+export function endPlaysNext(input: {
+  mode: NextUpMode;
+  autoplay: boolean;
+  hasNext: boolean;
+  startsAt: number | null;
+  dismissedAt: number | null;
+}): boolean {
+  const { mode, autoplay, hasNext, startsAt, dismissedAt } = input;
+  if (!autoplay || !hasNext) return false;
+  if (mode === 'credits') return true;
+  return !(startsAt !== null && dismissedAt !== null && dismissedAt >= startsAt);
 }

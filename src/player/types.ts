@@ -228,6 +228,12 @@ export interface ExternalSource {
    * Never the Jellyfin client: its token must not go to another server.
    */
   loadText?(url: string): Promise<string>;
+  /**
+   * The last seconds of a title are content (extension media, such as a
+   * YouTube video): the next title starts only when the video ends, never
+   * from a countdown before it (`segments.ts` `NextUpMode`).
+   */
+  nextAtEnd?: boolean;
 }
 
 /** What a screen asks the player for to play an external title. */
