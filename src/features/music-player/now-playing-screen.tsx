@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { type Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
@@ -166,6 +166,9 @@ export function NowPlayingScreen() {
 
   const lyrics = lyricsState?.status === 'ready' && lyricsState.itemId === now?.item.Id ? lyricsState.lyrics : null;
   const effectivePanel: Panel = panel === 'lyrics' && !lyrics ? (wide ? 'queue' : 'none') : panel;
+  // The lyrics panel mounts hundreds of word views. Render it after the tap's
+  // feedback (button state, press release), not in the same blocking render.
+  const shownPanel = useDeferredValue(effectivePanel);
 
   // Artwork: full width on a phone, smaller when the window is short; 0.88 while paused.
   const artScale = useSharedValue(1);
@@ -461,9 +464,9 @@ export function NowPlayingScreen() {
   );
 
   const panelView =
-    effectivePanel === 'lyrics' && lyrics ? (
+    shownPanel === 'lyrics' && lyrics ? (
       <LyricsPanel lyrics={lyrics} />
-    ) : effectivePanel === 'queue' ? (
+    ) : shownPanel === 'queue' ? (
       <QueuePanel selectedKey={selected} onSelect={setSelected} />
     ) : null;
 
