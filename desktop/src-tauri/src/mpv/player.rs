@@ -61,7 +61,17 @@ impl Mpv {
             }
             let mpv = Mpv { handle };
             let options: &[(&str, &str)] = &[
+                // macOS: the render API draws into the layer of `view_macos.rs`. Windows: libmpv
+                // draws itself (Direct3D 11) into the child window of `view_windows.rs` (`wid`).
+                #[cfg(not(windows))]
                 ("vo", "libmpv"),
+                #[cfg(windows)]
+                ("vo", "gpu-next"),
+                // The web page under the mouse owns the cursor and the input, not libmpv's window.
+                #[cfg(windows)]
+                ("input-cursor", "no"),
+                #[cfg(windows)]
+                ("cursor-autohide", "no"),
                 ("hwdec", "auto-safe"),
                 ("config", "no"),
                 ("load-scripts", "no"),
@@ -100,6 +110,8 @@ impl Mpv {
         }
     }
 
+    /// For the render API (`view_macos.rs`); Windows uses `wid` instead.
+    #[cfg(target_os = "macos")]
     pub fn raw(&self) -> *mut mpv_handle {
         self.handle
     }

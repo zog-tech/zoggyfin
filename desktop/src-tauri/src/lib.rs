@@ -16,6 +16,7 @@ mod iptv;
 mod links;
 #[cfg(target_os = "macos")]
 mod media_macos;
+#[cfg(target_os = "macos")]
 mod menu;
 mod mpv;
 mod nearby;
@@ -26,7 +27,8 @@ use std::sync::Arc;
 
 use tauri::{Manager, RunEvent, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
-/// Runs a command in the web app (`src/platform/desktop.ts`).
+/// Runs a command in the web app (`src/platform/desktop.ts`). The menus use it (macOS).
+#[cfg(target_os = "macos")]
 pub(crate) fn send_to_web<R: tauri::Runtime>(window: &WebviewWindow<R>, command: &str) {
     let js = format!(
         "window.__zoggyfinDesktop&&window.__zoggyfinDesktop.menu({})",
@@ -46,13 +48,6 @@ fn desktop_toggle_fullscreen(window: WebviewWindow) -> Result<bool, String> {
 fn desktop_is_fullscreen(window: WebviewWindow) -> bool {
     window.is_fullscreen().unwrap_or(false)
 }
-
-#[cfg(target_os = "macos")]
-fn media_state() -> media_macos::MediaState {
-    media_macos::MediaState::default()
-}
-#[cfg(not(target_os = "macos"))]
-fn media_state() {}
 
 #[cfg(target_os = "macos")]
 use media_macos::{now_playing_clear, now_playing_update};
@@ -83,11 +78,16 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build());
     #[cfg(target_os = "macos")]
     let builder = builder.manage(update::PendingUpdate::default());
-    let app = builder
-        .manage(mpv::MpvState::default())
-        .manage(media_state())
+    // The Mac menu bar. Windows has no app menu bar: the page handles the same shortcuts
+    // (Ctrl+, Ctrl+F, Ctrl+1/2/3 and the others; `src/platform/desktop.ts`).
+    // Now Playing for libmpv video (macOS).
+    #[cfg(target_os = "macos")]
+    let builder = builder
         .menu(menu::build)
         .on_menu_event(menu::on_event)
+        .manage(media_macos::MediaState::default());
+    let app = builder
+        .manage(mpv::MpvState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_toggle_fullscreen,
             desktop_is_fullscreen,
@@ -160,11 +160,14 @@ pub fn run() {
             let window = WebviewWindowBuilder::from_config(handle, &config)?
                 .initialization_script(format!(
                     "window.__ZOGGYFIN_MPV__ = {with_mpv}; window.__ZOGGYFIN_DATA_DIR__ = {}; \
-                     window.__ZOGGYFIN_VERSION__ = {}; window.__ZOGGYFIN_AUTO_UPDATE__ = {};",
+                     window.__ZOGGYFIN_VERSION__ = {}; window.__ZOGGYFIN_AUTO_UPDATE__ = {}; \
+                     window.__ZOGGYFIN_PLATFORM__ = {};",
                     serde_json::json!(data_dir.to_string_lossy()),
                     serde_json::json!(handle.package_info().version.to_string()),
                     // Debug builds do not look for updates by themselves (a menu check still works).
-                    cfg!(all(target_os = "macos", not(debug_assertions)))
+                    cfg!(all(target_os = "macos", not(debug_assertions))),
+                    // "macos" or "windows": the page draws its own title bar on macOS only.
+                    serde_json::json!(std::env::consts::OS)
                 ))
                 .build()?;
             if with_mpv {
@@ -176,10 +179,11 @@ pub fn run() {
             debug::start(handle);
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::ScaleFactorChanged { .. } = event {
-                mpv::scale_changed(window.app_handle());
-            }
+        .on_window_event(|window, event| match event {
+            WindowEvent::ScaleFactorChanged { .. } => mpv::scale_changed(window.app_handle()),
+            // The video window (Windows) follows the main window.
+            WindowEvent::Resized(_) | WindowEvent::Moved(_) => mpv::resized(window.app_handle()),
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("build the Tauri app");

@@ -97,6 +97,13 @@ fn socket() -> std::io::Result<UdpSocket> {
     Ok(s)
 }
 
+/// The OS error of a send that the system refused (no route, or no local network access).
+#[cfg(unix)]
+const HOST_UNREACHABLE: i32 = libc::EHOSTUNREACH;
+/// `WSAEHOSTUNREACH`: Winsock errors are not the C library's errno values.
+#[cfg(windows)]
+const HOST_UNREACHABLE: i32 = 10065;
+
 /// Sends the question to every target. `Ok(true)` when one send went out;
 /// `Ok(false)` when the system refused all of them with EHOSTUNREACH
 /// (local network access is off, or the prompt is open).
@@ -111,7 +118,7 @@ fn send_all(s: &UdpSocket) -> std::io::Result<bool> {
     }
     match (sent, last) {
         (true, _) | (false, None) => Ok(true),
-        (false, Some(e)) if e.raw_os_error() == Some(libc::EHOSTUNREACH) => Ok(false),
+        (false, Some(e)) if e.raw_os_error() == Some(HOST_UNREACHABLE) => Ok(false),
         (false, Some(e)) => Err(e),
     }
 }

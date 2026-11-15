@@ -4,6 +4,8 @@ mod ffi;
 mod player;
 #[cfg(target_os = "macos")]
 mod view_macos;
+#[cfg(windows)]
+mod view_windows;
 
 use std::sync::{Arc, Mutex};
 
@@ -17,6 +19,8 @@ pub struct MpvState {
     mpv: Mutex<Option<Arc<Mpv>>>,
     #[cfg(target_os = "macos")]
     view: Mutex<Option<Arc<view_macos::VideoView>>>,
+    #[cfg(windows)]
+    view: Mutex<Option<Arc<view_windows::VideoView>>>,
 }
 
 impl MpvState {
@@ -56,6 +60,13 @@ pub fn attach<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) -> Resu
         *state.view.lock().unwrap() = Some(view.clone());
         view
     };
+    #[cfg(windows)]
+    {
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+        let view = Arc::new(view_windows::VideoView::attach(hwnd.0 as isize, mpv.clone())?);
+        view.set_visible(false);
+        *state.view.lock().unwrap() = Some(view);
+    }
     let target = window.clone();
     mpv.clone().run_events(move |event| {
         // The surface follows libmpv's idle state: black when nothing plays, never an old frame.
@@ -83,7 +94,20 @@ pub fn scale_changed<R: Runtime>(app: &AppHandle<R>) {
     if let Some(view) = app.state::<MpvState>().view.lock().unwrap().clone() {
         let _ = app.run_on_main_thread(move || view.update_scale());
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    resized(app);
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = app;
+}
+
+/// The window moved or changed size (also full screen, maximize and minimize): the
+/// video window follows it.
+pub fn resized<R: Runtime>(app: &AppHandle<R>) {
+    #[cfg(windows)]
+    if let Some(view) = app.state::<MpvState>().view.lock().unwrap().clone() {
+        let _ = app.run_on_main_thread(move || view.fit());
+    }
+    #[cfg(not(windows))]
     let _ = app;
 }
 
@@ -122,7 +146,7 @@ pub fn mpv_get_property(state: State<'_, MpvState>, name: String) -> Result<Opti
 /// Shows the video under the web view (the player is open) or hides it.
 #[tauri::command]
 pub fn mpv_set_video_visible<R: Runtime>(app: AppHandle<R>, visible: bool) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     {
         let view = app
             .state::<MpvState>()
@@ -134,7 +158,7 @@ pub fn mpv_set_video_visible<R: Runtime>(app: AppHandle<R>, visible: bool) -> Re
         app.run_on_main_thread(move || view.set_visible(visible))
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = (app, visible);
     Ok(())
 }

@@ -90,7 +90,10 @@ pub struct mpv_opengl_fbo {
 
 pub type mpv_render_update_fn = Option<unsafe extern "C" fn(cb_ctx: *mut c_void)>;
 
-#[link(name = "mpv")]
+// Windows: link the DLL by name (`raw-dylib`), so no MSVC import library is needed.
+// The DLL sits next to Zoggyfin.exe (build.rs copies it there for development).
+#[cfg_attr(not(windows), link(name = "mpv"))]
+#[cfg_attr(windows, link(name = "libmpv-2", kind = "raw-dylib"))]
 extern "C" {
     pub fn mpv_create() -> *mut mpv_handle;
     pub fn mpv_initialize(ctx: *mut mpv_handle) -> c_int;
