@@ -2,7 +2,8 @@
 
 The desktop app is a [Tauri 2](https://tauri.app) window around the Zoggyfin web build.
 Video plays through [libmpv](https://mpv.io), the model of Jellyfin Media Player.
-The first target is macOS on Apple Silicon. Windows and Linux come later from the same code.
+The first target is macOS on Apple Silicon. Windows runs from the same code (see [Windows](#windows));
+Linux comes later.
 
 ## How it works
 
@@ -304,8 +305,48 @@ a terminal uses the terminal's permission and does not show this.
 `macOSPrivateApi` (transparent web view) is acceptable for Developer ID distribution but not
 for the Mac App Store.
 
+## Windows
+
+The same app builds on Windows 10 and 11 (x86_64). The web build, the Rust commands,
+downloads and IPTV are shared; the differences:
+
+- **Video surface** (`src/mpv/view_windows.rs`): libmpv draws itself (`vo=gpu-next`,
+  Direct3D 11, `hwdec=auto-safe` → D3D11VA) into a borderless window *behind* the main
+  window, through `wid`. The main window stays transparent, so the clear parts of the page
+  show the video. A child window under the web view does not work on Windows: a child
+  window is clipped to what its siblings above leave free, and WebView2's host windows
+  cover the whole client area. The video window owns the main window (`GWLP_HWNDPARENT`),
+  so Windows keeps the main window right above it; it follows the client area on every
+  move and resize, hides while the main window is minimized, never takes focus and is not
+  in the taskbar.
+- **Linking**: `src/mpv/ffi.rs` links `libmpv-2.dll` with `raw-dylib` (no import library).
+  `build.rs` copies the DLL next to the executable for development; the installer has it
+  as a resource (`tauri.windows.conf.json`). The app does not start without the DLL.
+- **Window**: the normal Windows title bar (the page has no 28 px strip) and no menu bar.
+  The page handles the shortcuts: Ctrl+, Settings, Ctrl+F Search, Ctrl+1/2/3 Home, Library
+  and Music, Ctrl+[ or Alt+← Back, Ctrl+R reload, F11 full screen.
+- **Asset URLs**: WebView2 serves Tauri's asset protocol as `http://asset.localhost/`.
+- **Not on Windows yet**: updates (no Windows feed; `update.rs` is macOS only), Now Playing
+  and the media keys for libmpv video (SMTC), Nearby mode (Swift), the network interface
+  list for discovery (only the 255.255.255.255 broadcast), and test-automation pictures.
+
+Develop on Windows. You need the Visual Studio C++ Build Tools, Rust (stable, MSVC), Node
+and pnpm, and a libmpv development build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop/scripts/windows/setup-libmpv.ps1
+pnpm install
+pnpm expo start --web --port 8082   # Metro web, in one terminal
+pnpm desktop:dev                    # the desktop app, in another terminal
+```
+
+`pnpm desktop:build:windows` makes an NSIS installer (not signed). The development libmpv
+from `setup-libmpv.ps1` (shinchiro/mpv-winbuild-cmake) is a GPL build: do not ship it.
+A release needs an LGPL libmpv build for Windows, as on macOS.
+
 ## Left to do
 
 - Picture in Picture for libmpv video (see above).
-- Windows and Linux: the same Rust code with a native child window (`wid`) or the OpenGL
-  render API in place of `view_macos.rs`.
+- Windows: an LGPL libmpv build, code signing, an update feed, SMTC media keys, the
+  interface list for discovery.
+- Linux: the same Rust code with a native window (`wid`) in place of `view_macos.rs`.
