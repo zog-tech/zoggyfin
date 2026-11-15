@@ -36,6 +36,8 @@ type DesktopWindow = Window & {
   __ZOGGYFIN_VERSION__?: string;
   /** True in release builds: the app looks for updates by itself. */
   __ZOGGYFIN_AUTO_UPDATE__?: boolean;
+  /** The operating system ("macos", "windows"). Desktop builds before 0.1.16 leave it out (macOS). */
+  __ZOGGYFIN_PLATFORM__?: string;
 };
 
 function tauri(): TauriInternals | null {
@@ -57,6 +59,13 @@ export const appVersion: string | null = (isDesktop && (window as DesktopWindow)
 
 /** True when the desktop app looks for updates by itself (release builds). */
 export const autoUpdate: boolean = isDesktop && (window as DesktopWindow).__ZOGGYFIN_AUTO_UPDATE__ === true;
+
+/** The operating system of the desktop app, else null. */
+export const desktopPlatform: 'macos' | 'windows' | null = !isDesktop
+  ? null
+  : (window as DesktopWindow).__ZOGGYFIN_PLATFORM__ === 'windows'
+    ? 'windows'
+    : 'macos';
 
 export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const t = tauri();
@@ -161,8 +170,11 @@ export const nowPlaying = {
   },
 };
 
-/** The URL prefix of Tauri's asset protocol, which serves local files to the page (macOS). */
-const ASSET_PREFIX = 'asset://localhost/';
+/**
+ * The URL prefix of Tauri's asset protocol, which serves local files to the page.
+ * WebView2 (Windows) serves custom protocols as `http://<scheme>.localhost/`.
+ */
+const ASSET_PREFIX = desktopPlatform === 'windows' ? 'http://asset.localhost/' : 'asset://localhost/';
 
 /**
  * A page URL for a folder on the disk. The page cannot load `file://` URLs;
@@ -265,8 +277,51 @@ export function showVideoThrough(host: HTMLElement): () => void {
  * a strip to drag the window, and the rules that make the page transparent
  * over the video while the player is open.
  */
-/** The height of the transparent title bar with the window buttons. */
-const TITLE_BAR = 28;
+/**
+ * The height of the transparent title bar with the window buttons (macOS).
+ * Windows keeps its own title bar, so the page starts at the top.
+ */
+const TITLE_BAR = desktopPlatform === 'windows' ? 0 : 28;
+
+/**
+ * Windows has no app menu bar: the same shortcuts as the Mac menus, with Ctrl.
+ * Ctrl+R reloads, F11 toggles full screen, Alt+Left goes back.
+ */
+const WINDOWS_SHORTCUTS: Record<string, string> = {
+  ',': 'settings',
+  f: 'search',
+  '1': 'home',
+  '2': 'library',
+  '3': 'music',
+  '[': 'back',
+};
+
+function installWindowsShortcuts(): void {
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      let command: string | undefined;
+      if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+        if (e.key.toLowerCase() === 'r') {
+          e.preventDefault();
+          window.location.reload();
+          return;
+        }
+        command = WINDOWS_SHORTCUTS[e.key.toLowerCase()];
+      } else if (e.altKey && !e.ctrlKey && e.key === 'ArrowLeft') {
+        command = 'back';
+      } else if (e.key === 'F11' && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        void desktopWindow.toggleFullscreen().catch(() => undefined);
+        return;
+      }
+      if (!command) return;
+      e.preventDefault();
+      onMenu(command);
+    },
+    true,
+  );
+}
 
 function installChrome(): void {
   if (typeof document === 'undefined') return;
@@ -287,6 +342,10 @@ function installChrome(): void {
     html.${VIDEO_CLASS} *:has(~ [${PATH_ATTRIBUTE}]) * { visibility: hidden !important; }
   `;
   document.head.appendChild(style);
+  if (desktopPlatform === 'windows') {
+    installWindowsShortcuts();
+    return;
+  }
   const bar = document.createElement('div');
   bar.id = 'zf-titlebar';
   // Tauri starts a window drag on mouse down in an element with this attribute.

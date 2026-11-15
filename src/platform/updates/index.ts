@@ -20,7 +20,7 @@ import { create } from 'zustand';
 
 import { storage } from '@/storage/kv';
 
-import { appVersion, autoUpdate, invoke, isDesktop, onMenuCommand, onUpdateEvent } from '../desktop';
+import { appVersion, autoUpdate, desktopPlatform, invoke, isDesktop, onMenuCommand, onUpdateEvent } from '../desktop';
 
 import { initialUpdateState, retryAction, type UpdateEvent, updateReducer, type UpdateState } from './machine';
 import { parseReleaseNotes } from './notes';
@@ -32,7 +32,8 @@ export type { UpdateOffer, UpdatePhase, UpdateState } from './machine';
 export const FIRST_CHECK_MS = 10_000;
 export const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
 
-const desktopSupported = isDesktop && appVersion !== null;
+// The Windows app has no update feed yet (desktop/src-tauri/src/update.rs is macOS only).
+const desktopSupported = isDesktop && appVersion !== null && desktopPlatform === 'macos';
 
 /** True in the desktop app on macOS and in the sideloaded Android TV app, where updates work. */
 export const updatesSupported: boolean = desktopSupported || tvUpdates !== null;
