@@ -97,7 +97,10 @@ const iconInset = (railWidth: number) => Math.round((railWidth - SAFE.x - ITEM_E
 export function TvTabsLayout() {
   const l = useLayout();
   const rail = Math.round(tv.railWidth * tvScale(l.width));
-  const home = usePathname() === '/';
+  const pathname = usePathname();
+  const home = pathname === '/';
+  // Home and item pages draw their art from the screen's top edge; their text keeps clear of the inset.
+  const fullBleed = home || /\/item\//.test(pathname);
   const content = useRef<ComponentRef<typeof View> | null>(null);
   // The visible page of the tab stacks (Android TV). A focus that comes into the
   // content goes there, never to a page under it that is still in the window.
@@ -124,9 +127,11 @@ export function TvTabsLayout() {
       {/*
         The pages start inside the overscan-safe area at the top and the bottom (theme/layout
         `tv.safeY`). Home is the exception at the top: its billboard art runs to the top edge, and
-        its text and rows start well below the safe line.
+        its text and rows start well below the safe line. At the bottom every page runs on to the edge
+        (the next row peeks in, as in the streaming apps) instead of stopping at a hard line; scroll
+        views pad their own end.
       */}
-      <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: home ? 0 : l.safe.y, paddingBottom: l.safe.y }]}>
+      <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: fullBleed ? 0 : l.safe.y, paddingBottom: 0 }]}>
         <TabSlot />
       </TvFocusGuide>
       <SideMenu content={content} />
@@ -228,6 +233,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
     opacity: progress.get(),
     transform: [{ translateX: (progress.get() - 1) * slide }],
   }));
+  const dim = useAnimatedStyle(() => ({ opacity: progress.get() }));
   // The clip's trailing edge is the panel's; the items inside stay still.
   const clip = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.get() - 1) * slide }] }));
   const unclip = useAnimatedStyle(() => ({ transform: [{ translateX: (1 - progress.get()) * slide }] }));
@@ -247,6 +253,16 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      {/* Open, the page behind dims (as in the streaming apps), so the eye goes to the menu. It fades with the panel. */}
+      <Animated.View pointerEvents="none" style={[s.panel, { width: l.width }, dim]}>
+        <LinearGradient
+          colors={[withAlpha(c.bg, 0.92), withAlpha(c.bg, 0.55)]}
+          locations={[menuW / Math.max(1, l.width), 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
       {/* Open, the panel is solid: the labels never sit on the content's text. It slides in from under the rail. */}
       <Animated.View pointerEvents="none" style={[s.panel, s.panelBg, { width: menuW }, panel]} />
       {/*

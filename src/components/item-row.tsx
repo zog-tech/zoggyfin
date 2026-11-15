@@ -66,12 +66,13 @@ export function ItemRow({
   const l = useLayout();
   const width = l.rowTile[shape === 'thumb' ? 'thumb' : shape];
   const press = onPress ?? open;
-  // Long press (right click on the web and the Mac app) opens the item actions. Not on TV: Select is the press there.
+  // Long press (right click on the web and the Mac app) opens the item actions. On TV only a row that
+  // asks for one has it (a row whose Select plays: its long press opens the item page).
   const menu = useItemMenu();
-  const longPress = l.tv ? undefined : (onLongPress ?? menu.open);
-  // TV Home: art-only tiles; the billboard above shows the focused one.
+  const longPress = l.tv ? onLongPress : (onLongPress ?? menu.open);
+  // TV Home: art-only tiles (Continue watching keeps its progress bar); the billboard above shows the focused one.
   const billboard = useContext(BillboardRows) && l.tv;
-  const artOnly = billboard && !titleOnArt;
+  const artOnly = billboard;
   const section = useRef<ComponentRef<typeof View> | null>(null);
   // TV: Select on a tile that kept the focus a moment opens a page whose data is loaded.
   const prefetch = usePrefetchItem();
@@ -154,7 +155,7 @@ export function ItemRow({
               onLongPress={longPress}
               title={tileTitle?.(item)}
               subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
-              titleOnArt={titleOnArt}
+              titleOnArt={titleOnArt && !artOnly}
               preferredFocus={preferredFocus && index === 0}
               artOnly={artOnly}
               index={index}

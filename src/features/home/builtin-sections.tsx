@@ -31,7 +31,8 @@ import { useDay } from '@/features/home/use-day';
 import { LiveTvHomeRow } from '@/features/iptv/home-row';
 import { isSupportedView } from '@/features/library/library-kind';
 import { episodeLabel, formatDuration } from '@/lib/format';
-import { itemHref, useTabGroup, videoGenreHref } from '@/lib/navigation';
+import { itemHref, useOpenItem, useTabGroup, videoGenreHref } from '@/lib/navigation';
+import { usePlayer } from '@/player';
 import { isTV } from '@/platform/tv';
 import { homeSections } from '@/registry/home-sections';
 import { openTabRoot } from '@/features/extensions/tab-nav';
@@ -41,8 +42,20 @@ const runtimeSubtitle = (item: BaseItemDto) => formatDuration(item.RunTimeTicks)
 const episodeSubtitle = (item: BaseItemDto) =>
   item.Type === 'Episode' ? [episodeLabel(item), item.Name].filter(Boolean).join(' · ') : undefined;
 
+/**
+ * TV: Select on a tile of a "watch now" row plays it at once (from where it was left), like the
+ * streaming apps; a long press opens its page. Elsewhere the tile opens the page.
+ */
+function useWatchNowPress(): { onPress?: (item: BaseItemDto) => void; onLongPress?: (item: BaseItemDto) => void } {
+  const player = usePlayer();
+  const open = useOpenItem();
+  if (!isTV) return {};
+  return { onPress: (item) => void player.play({ item }), onLongPress: open };
+}
+
 function ContinueWatching() {
   const q = useResume('Video');
+  const press = useWatchNowPress();
   return (
     <ItemRow
       title="Continue watching"
@@ -54,12 +67,14 @@ function ContinueWatching() {
       onRetry={q.refetch}
       tileSubtitle={episodeSubtitle}
       preferredFocus={isTV}
+      {...press}
     />
   );
 }
 
 function NextUp() {
   const q = useNextUp();
+  const press = useWatchNowPress();
   return (
     <ItemRow
       title="Next up"
@@ -69,6 +84,7 @@ function NextUp() {
       error={q.error}
       onRetry={q.refetch}
       tileSubtitle={episodeSubtitle}
+      {...press}
     />
   );
 }

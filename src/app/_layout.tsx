@@ -35,6 +35,7 @@ import { startIptvSync } from '@/iptv';
 import { installAppContextMenu } from '@/components/context-menu';
 import { isDesktop } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
+import { TV_PAGE_BG } from '@/lib/stack-options';
 import { mediaColors, useTheme } from '@/theme';
 import { nearby } from '@/together/nearby';
 import { AppThemeProvider } from '@/theme/provider';
@@ -123,7 +124,11 @@ function Root({ session }: { session: boolean }) {
   return (
           <View style={[styles.flex, { backgroundColor: c.bg }]}>
             {/* TV changes screens at once (no push animation), like the streaming apps. */}
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, ...(isTV ? { animation: 'none' as const } : null) }}>
+            {/*
+              TV: the root view is the one page background (see TV_PAGE_BG in lib/stack-options). Every
+              opaque layer over it is drawn again for the whole screen, and on a TV stick that cost frames.
+            */}
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: isTV ? TV_PAGE_BG : c.bg }, ...(isTV ? { animation: 'none' as const } : null) }}>
               <Stack.Protected guard={session}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />

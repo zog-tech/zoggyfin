@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createContext, useState } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 import { create } from 'zustand';
 
 import { useItem, useResume } from '@/api/queries';
@@ -27,6 +27,7 @@ import {
   createStyles,
   font,
   motion,
+  radius,
   scaled,
   scriptStyle,
   sizes,
@@ -73,18 +74,22 @@ function metaLine(item: BaseItemDto): string {
   if (item.Type === 'Episode') return [episodeLabel(item), item.Name].filter(Boolean).join(' · ');
   const parts = [
     item.ProductionYear ? String(item.ProductionYear) : null,
-    item.OfficialRating ?? null,
     item.Type === 'Series' ? null : formatDuration(item.RunTimeTicks),
     item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null,
     item.Genres?.slice(0, 3).join(', ') || null,
   ];
-  return parts.filter(Boolean).join(' · ');
+  // Each fact in its own text direction: an Arabic genre must not reorder the others.
+  return parts
+    .filter(Boolean)
+    .map((p) => `\u2068${p}\u2069`)
+    .join('  ·  ');
 }
 
 export function Billboard() {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();
+  const reduced = useReducedMotion();
   const focused = useBillboardStore((st) => st.item);
   // Before any tile has the focus: the first item to continue.
   const first = useResume('Video').data?.[0] ?? null;
@@ -107,6 +112,7 @@ export function Billboard() {
   if (!item) return <View style={{ height }} />;
   const title = (item.Type === 'Episode' ? item.SeriesName : null) ?? item.Name ?? '';
   const meta = metaLine(item);
+  const rated = item.Type === 'Episode' ? null : (item.OfficialRating ?? null);
   return (
     <View style={[s.root, { height }]} accessibilityLiveRegion="polite">
       {/* No key: the old backdrop stays until the new one has loaded, then cross-fades. */}
@@ -125,34 +131,52 @@ export function Billboard() {
           <ItemImage item={item} variant="backdrop" width={artW} aspectRatio={16 / 9} rounded={0} hideArtTitle hairline={false} />
         )}
       </View>
-      <View style={[s.fade, { height: artH }]} pointerEvents="none">
-        {/* The art fades into the page on the left and at the bottom. */}
-        <LinearGradient
-          colors={[c.bg, withAlpha(c.bg, 0.85), withAlpha(c.bg, 0)]}
-          locations={[0.28, 0.45, 0.75]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* The billboard ends at about 60% of the art: the rest fades out under the first row. */}
-        <LinearGradient
-          colors={[withAlpha(c.bg, 0), withAlpha(c.bg, 0.6), c.bg]}
-          locations={[0.42, 0.62, 0.92]}
-          style={StyleSheet.absoluteFill}
-        />
-      </View>
-      <Animated.View key={item.Id} entering={FadeIn.duration(motion.duration.fast)} style={[s.text, { left: l.gutter, width: width * 0.46, bottom: spacing.md }]}>
+      {/*
+        The art fades into the page on the left and at the bottom. Each fade covers only the strip of
+        the art it fades: a TV GPU fills few pixels a second, and full-screen fades cost frames.
+      */}
+      <LinearGradient
+        colors={[c.bg, withAlpha(c.bg, 0.85), withAlpha(c.bg, 0)]}
+        locations={[0, 0.36, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[s.fade, { left: width - artW, width: Math.round(artW * 0.65), height: artH }]}
+        pointerEvents="none"
+      />
+      {/* The billboard ends at about 60% of the art: the rest fades out under the first row. */}
+      <LinearGradient
+        colors={[withAlpha(c.bg, 0), withAlpha(c.bg, 0.6), c.bg]}
+        locations={[0, 0.35, 0.86]}
+        style={[s.fade, { top: Math.round(artH * 0.42), right: 0, width: artW, height: artH - Math.round(artH * 0.42) }]}
+        pointerEvents="none"
+      />
+      {/*
+        The old text fades out while the new one fades in (both are absolute). The overview keeps
+        its two lines while the full item loads, so the title and the facts never jump up.
+      */}
+      <Animated.View
+        key={item.Id}
+        entering={reduced ? undefined : FadeIn.duration(motion.duration.base)}
+        exiting={reduced ? undefined : FadeOut.duration(motion.duration.fast)}
+        style={[s.text, { left: l.gutter, width: width * 0.46, bottom: spacing.xl }]}>
         <Title item={item} title={title} />
-        {meta ? (
-          <Text style={s.meta} numberOfLines={1}>
-            {meta}
-          </Text>
+        {meta || rated ? (
+          <View style={s.facts}>
+            {rated ? (
+              <View style={s.rated}>
+                <Text style={s.ratedText}>{rated}</Text>
+              </View>
+            ) : null}
+            {meta ? (
+              <Text style={s.meta} numberOfLines={1}>
+                {meta}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
-        {item.Overview ? (
-          <Text style={[s.overview, scriptStyle(item.Overview, s.overview, true)]} numberOfLines={2}>
-            {item.Overview}
-          </Text>
-        ) : null}
+        <Text style={[s.overview, item.Overview ? scriptStyle(item.Overview, s.overview, true) : null, { minHeight: (s.overview.lineHeight ?? 0) * 2 }]} numberOfLines={2}>
+          {item.Overview ?? ''}
+        </Text>
       </Animated.View>
     </View>
   );
@@ -190,13 +214,16 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   // Visible: the art runs on below the billboard, under the rows (the Home ScrollView draws over it).
   root: { overflow: 'visible' as const },
   art: { position: 'absolute' as const, top: 0, right: 0 },
-  fade: { position: 'absolute' as const, top: 0, left: 0, right: 0 },
+  fade: { position: 'absolute' as const, top: 0 },
   text: { position: 'absolute' as const, gap: spacing.xs },
   title: { ...font(type.title1), color: c.text },
   logoBox: { width: scaled(sizes.logoMaxWidth), height: scaled(sizes.logoMaxHeight * 0.8) },
   logo: { width: '100%' as const, height: '100%' as const },
-  meta: { ...font(type.headline), color: c.text2 },
-  overview: { ...font(type.callout), color: c.text },
+  facts: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md },
+  meta: { ...font(type.headline, { tabular: true }), color: c.text, flexShrink: 1 },
+  rated: { borderWidth: 1, borderColor: c.text2, borderRadius: radius.xs, paddingHorizontal: spacing.xs },
+  ratedText: { ...font(type.caption1), color: c.text },
+  overview: { ...font(type.callout), color: c.text2 },
 }));
 
 /** True inside the TV Home rows: their tiles show only art and report focus to the billboard. */

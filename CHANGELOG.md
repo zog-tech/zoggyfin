@@ -13,6 +13,24 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **TV: streaming-app item pages.** On Android TV a movie, show or episode page now opens like the
+  big streaming apps: the backdrop fills the screen and fades into the page, with the logo, the
+  facts (the age rating in its own badge), the overview and one row of buttons on the left. Play or
+  Resume has the focus, so one press plays. The buttons light up white when focused.
+- **TV: episodes on the show page.** A show's page lists its seasons as chips and the episodes of
+  the chosen season in a row (the season of the next episode first). Select on an episode plays it;
+  a long press opens its page. Before, it took a season page and an episode page to start one.
+- **TV: Continue watching and Next up play at once.** Select on one of their tiles resumes it; a
+  long press opens its page.
+- **TV: smoother scrolling and streaming-app sizes.** Rows and grids use smaller tiles that sit
+  closer together (about seven posters or four and a half wide tiles across), and the next row
+  peeks in at the bottom instead of stopping at a hard line. Home tiles show only their art (and
+  the progress bar); the billboard shows the title. On TV the page background is painted once
+  instead of four times, and the billboard fades cover only the art they fade: on a Google TV
+  Streamer the GPU time per frame fell from about 18 ms to 11 ms and janky frames from 24 % to 13 %.
+- **TV: smoother Home billboard.** The billboard text cross-fades when the focus rests on another
+  tile, and its overview keeps its two lines while it loads, so the title no longer jumps. The age
+  rating shows as a badge. The open side menu dims the page behind it.
 - **Sound plays on (listen together).** In a nearby listen-together session, the host picks where
   the sound comes out: every device (as before) or one device, for example the phone on the car
   stereo. The other devices keep playing in sync with no sound, so a change is instant, and their

@@ -7,6 +7,14 @@ import { isTV } from '@/platform/tv';
 import { type AppTheme, font, fontFamily, spacing, type, useLayout, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 
+/**
+ * TV: the background of a stack screen. Transparent: the root view paints the page colour once.
+ * A stack screen under a pushed page is detached on Android TV (no push animation), so nothing
+ * shows through. Four opaque full-screen layers (root, root stack, tab stack, page) made every
+ * frame paint the screen four times over, and scrolling dropped to about 20 frames a second.
+ */
+export const TV_PAGE_BG = 'transparent';
+
 /** Native stack options for a tab stack, in the active scheme. */
 export function stackOptionsFor({ c }: AppTheme): NativeStackNavigationOptions {
   return {
@@ -17,7 +25,7 @@ export function stackOptionsFor({ c }: AppTheme): NativeStackNavigationOptions {
     headerTransparent: false,
     headerStyle: { backgroundColor: c.bg },
     headerBackButtonDisplayMode: 'minimal',
-    contentStyle: { backgroundColor: c.bg },
+    contentStyle: { backgroundColor: isTV ? TV_PAGE_BG : c.bg },
     // TV: the rail is the navigation; no header bar. Web keeps a slim header.
     headerShown: !isTV,
     // Web and TV change pages at once: a push animation on a TV stick costs frames and feels slow.
@@ -67,7 +75,7 @@ export function useRootScreenOptions({ bar = false, background }: { bar?: boolea
   const { gutter } = useLayout();
   const top = useSafeAreaInsets().top;
   const sidebar = useSidebarInset();
-  const bg = background ?? c.bg;
+  const bg = background ?? (isTV ? TV_PAGE_BG : c.bg);
   return useMemo((): NativeStackNavigationOptions => {
     // iPad: the content starts after the sidebar, as in useTabStackOptions (a screen's contentStyle replaces the stack's).
     const side = sidebar > 0 ? { paddingLeft: sidebar } : null;
