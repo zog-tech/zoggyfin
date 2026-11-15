@@ -74,6 +74,8 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
                     debug_log(format!("snap {path}: {result:?}"));
                 });
             }
+            #[cfg(not(target_os = "macos"))]
+            debug_log(format!("snap {}: window pictures are macOS only", path.trim()));
         }
     });
 }

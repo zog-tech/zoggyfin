@@ -92,6 +92,7 @@
     "test": "jest",
     "desktop:dev": "tauri dev --config desktop/src-tauri/tauri.conf.json",
     "desktop:build": "expo export --platform web && tauri build --bundles app --config desktop/src-tauri/tauri.conf.json",
+    "desktop:build:windows": "expo export --platform web && tauri build --bundles nsis --config desktop/src-tauri/tauri.conf.json",
     "desktop:release": "bash desktop/scripts/release.sh",
     "desktop:publish": "bash desktop/scripts/publish.sh",
     "desktop:version": "bash desktop/scripts/version.sh",

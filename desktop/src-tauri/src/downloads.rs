@@ -698,6 +698,21 @@ pub struct DiskSpace {
     total: u64,
 }
 
+#[cfg(windows)]
+#[tauri::command]
+pub fn files_disk_space(state: State<'_, DownloadsState>) -> Option<DiskSpace> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let _ = std::fs::create_dir_all(state.root());
+    let path: Vec<u16> = state.root().as_os_str().encode_wide().chain(Some(0)).collect();
+    let (mut free, mut total) = (0u64, 0u64);
+    // SAFETY: a NUL-terminated wide string and out pointers to two u64s.
+    unsafe { GetDiskFreeSpaceExW(PCWSTR(path.as_ptr()), Some(&mut free), Some(&mut total), None) }.ok()?;
+    Some(DiskSpace { free, total })
+}
+
+#[cfg(unix)]
 #[tauri::command]
 pub fn files_disk_space(state: State<'_, DownloadsState>) -> Option<DiskSpace> {
     use std::os::unix::ffi::OsStrExt;
@@ -731,13 +746,30 @@ mod tests {
         assert!(safe_join(root, "./x").is_err());
     }
 
+    /// An absolute path ("/data" has no drive on Windows, so it is not absolute there).
+    #[cfg(unix)]
+    const ABS: &str = "";
+    #[cfg(windows)]
+    const ABS: &str = "C:";
+
     #[test]
     fn inside_rejects_other_folders() {
-        let root = Path::new("/data");
-        assert!(inside(root, Path::new("/data/downloads/a/media.mkv")).is_ok());
-        assert!(inside(root, Path::new("/data/../etc/passwd")).is_err());
-        assert!(inside(root, Path::new("/tmp/x")).is_err());
-        assert!(inside(root, Path::new("data/x")).is_err());
+        let at = |p: &str| PathBuf::from(format!("{ABS}{p}"));
+        let root = at("/data");
+        assert!(inside(&root, &at("/data/downloads/a/media.mkv")).is_ok());
+        assert!(inside(&root, &at("/data/../etc/passwd")).is_err());
+        assert!(inside(&root, &at("/tmp/x")).is_err());
+        assert!(inside(&root, Path::new("data/x")).is_err());
+    }
+
+    /// The page joins its paths with "/" onto the data folder that Windows gives with "\".
+    #[cfg(windows)]
+    #[test]
+    fn inside_accepts_mixed_separators_on_windows() {
+        let root = Path::new(r"C:\Users\me\AppData\Roaming\com.zogtech.zoggyfin.desktop");
+        let page = r"C:\Users\me\AppData\Roaming\com.zogtech.zoggyfin.desktop/downloads/a/media.mkv";
+        assert!(inside(root, Path::new(page)).is_ok());
+        assert!(inside(root, Path::new(r"C:\Users\me\AppData\Roaming\other/x")).is_err());
     }
 
     #[test]

@@ -28,3 +28,6 @@ coverage/
 public/config.json
 .playwright-mcp/
 .wrangler/
+
+# The Windows libmpv dev build (desktop/scripts/windows/setup-libmpv.ps1)
+desktop/libmpv-windows/
