@@ -27,6 +27,7 @@ export function TvButton({
   progress,
   active,
   accessibilityLabel,
+  onFocus,
 }: {
   label: string;
   icon?: IconName;
@@ -38,6 +39,7 @@ export function TvButton({
   /** A toggle that is on (My List, Played): the icon shows it. */
   active?: boolean;
   accessibilityLabel?: string;
+  onFocus?: () => void;
 }) {
   const s = useStyles(makeStyles);
   return (
@@ -46,6 +48,7 @@ export function TvButton({
       ring={false}
       firstFocus={firstFocus}
       hasTVPreferredFocus={firstFocus}
+      onFocus={onFocus}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}

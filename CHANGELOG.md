@@ -20,6 +20,20 @@ first commit to today. All of it was built in the first weeks of the project.
 - **TV: episodes on the show page.** A show's page lists its seasons as chips and the episodes of
   the chosen season in a row (the season of the next episode first). Select on an episode plays it;
   a long press opens its page. Before, it took a season page and an episode page to start one.
+- **TV: Home opens on the featured title.** Play (or Resume) and More info sit under the
+  billboard and Play has the focus, so one press plays what you were watching. Down goes into the
+  rows; Up brings the featured title back.
+- **TV: previews.** When the focus rests on a movie or an episode for a few seconds, a clip of it
+  plays over the billboard art, from a point past its opening, and fades out after 40 seconds or
+  as soon as the focus moves. It streams the original file (no work for the server). Settings,
+  Playback, "Autoplay previews on Home" turns them off.
+- **TV: faster tab switches.** Going back to a tab no longer builds it again from scratch:
+  revisiting Music went from about 3.6 s to about 1 s on a Google TV Streamer.
+- **TV: steadier held D-pad.** A held key steps about 5.5 times a second, so each step glides
+  instead of the focus running ahead and the row catching up in jumps.
+- **Search: no separate voice button.** The mic beside the search field is gone; the keyboard's
+  own voice typing works in the field (on Android the field is no longer overwritten while the
+  keyboard composes).
 - **TV: a music player made for the remote.** The art on the left, the song on the right with a
   progress line, one row of large buttons (shuffle, previous, play or pause, next, repeat; Play has
   the focus) and three pills: Up next, Lyrics and Favourite, with the rest under More. The queue

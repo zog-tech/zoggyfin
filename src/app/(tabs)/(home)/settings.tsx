@@ -242,6 +242,25 @@ function PlaybackSection() {
           />
         }
       />
+      {isTV ? (
+        <SettingsRow
+          icon="play.rectangle"
+          label="Autoplay previews on Home"
+          onPress={() => st.update({ previews: !st.previews })}
+          role="switch"
+          checked={st.previews}
+          trailing={
+            <Switch
+              value={st.previews}
+              onValueChange={(v) => st.update({ previews: v })}
+              trackColor={{ true: c.accent, false: c.surface3 }}
+              thumbColor={mediaColors.white}
+              {...webSwitchColors}
+              accessibilityLabel="Autoplay previews on Home"
+            />
+          }
+        />
+      ) : null}
       <SettingsRow
         icon="square.stack.3d.up"
         label="Load the whole video ahead"

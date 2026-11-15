@@ -9,19 +9,26 @@
  */
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { createContext, useLayoutEffect, useState } from 'react';
-import { PixelRatio, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useEventListener } from 'expo';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { type ComponentRef, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { AppState, PixelRatio, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { create } from 'zustand';
 
-import { useItem, useResume } from '@/api/queries';
+import { useItem, useNextUp, useResume } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { useImageServer } from '@/api/use-api';
 import { useSessionStore } from '@/auth/session-store';
 import { ItemImage } from '@/components/item-image';
 import { buildImageUrl, imageSource } from '@/images/image-url';
 import { resolveImage } from '@/images/resolve-image';
-import { episodeLabel, formatDuration } from '@/lib/format';
+import { episodeLabel, formatDuration, playedFraction } from '@/lib/format';
+import { useOpenItem } from '@/lib/navigation';
+import { usePlayer } from '@/player';
+import { usePlayerStore } from '@/player/store';
+import { usePlaybackSettings } from '@/settings/playback';
 import {
   type AppTheme,
   createStyles,
@@ -41,6 +48,9 @@ import {
 } from '@/theme';
 
 import { tvFocusRest } from './focus-settle';
+import { PREVIEW_DELAY_MS, PREVIEW_LENGTH_MS, previewStart, previewUrl } from './preview';
+import { TvRowScroll, useRowFade } from './shelf';
+import { TvButton } from './tv-button';
 
 interface BillboardState {
   item: BaseItemDto | null;
@@ -94,7 +104,7 @@ export function Billboard() {
   const fade = useAnimatedStyle(() => ({ opacity: opacity.get() }));
   const focused = useBillboardStore((st) => st.item);
   // Before any tile has the focus: the first item to continue.
-  const first = useResume('Video').data?.[0] ?? null;
+  const first = useHeroItem();
   // The store changes only after the focus rests (the tiles settle), so no pause here.
   const shown = focused ?? first;
   // The tiles carry no overview: the full item fills it in.
@@ -140,6 +150,8 @@ export function Billboard() {
         ) : (
           <ItemImage item={item} variant="backdrop" width={artW} aspectRatio={16 / 9} rounded={0} hideArtTitle hairline={false} />
         )}
+        {/* After a rest, a clip of the title fades in over the art (under the fades, like the art). */}
+        <BillboardPreview item={item} />
       </View>
       {/*
         The art fades into the page on the left and at the bottom. Each fade covers only the strip of
@@ -233,6 +245,120 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   ratedText: { ...font(type.caption1), color: c.text },
   overview: { ...font(type.callout), color: c.text2 },
 }));
+
+/** The title Home features before a row has the focus: the first to continue, else the next episode. */
+export function useHeroItem(): BaseItemDto | null {
+  const resume = useResume('Video').data?.[0];
+  const next = useNextUp().data?.[0];
+  return resume ?? next ?? null;
+}
+
+/**
+ * Home's first row on TV, like the streaming apps: Play (or Resume) and More info for the
+ * featured title, right under the billboard. Play has the first focus, so Select plays at once;
+ * Down goes into the rows and Up comes back here, and the billboard shows the featured title
+ * again. The row fades out as it scrolls up, like the rows of tiles (useRowFade).
+ */
+export function HomeHero() {
+  const l = useLayout();
+  const item = useHeroItem();
+  const player = usePlayer();
+  const open = useOpenItem();
+  const page = useContext(TvRowScroll);
+  const row = useRef<ComponentRef<typeof View> | null>(null);
+  const fade = useRowFade(Math.round(l.height * 0.14));
+  useEffect(() => page?.track(row, fade.top), [page, fade.top]);
+  if (!item) return null;
+  const resumed = (item.UserData?.PlaybackPositionTicks ?? 0) > 0;
+  const ep = item.Type === 'Episode' ? episodeLabel(item) : null;
+  const label = [resumed ? 'Resume' : 'Play', ep].filter(Boolean).join(' ');
+  const onFocus = () => {
+    // The featured title at once (no rest): a tile's pending billboard change must not follow.
+    tvFocusRest.cancel();
+    useBillboardStore.setState({ item });
+    page?.scrollTo(row.current);
+  };
+  return (
+    <Animated.View ref={row} style={[{ flexDirection: 'row', gap: spacing.md, paddingHorizontal: l.gutter, paddingTop: spacing.sm }, fade.style]}>
+      <TvButton label={label} icon="play.fill" progress={resumed ? playedFraction(item) : null} firstFocus onFocus={onFocus} onPress={() => void player.play({ item })} />
+      <TvButton label="More info" icon="info.circle" onFocus={onFocus} onPress={() => open(item)} />
+    </Animated.View>
+  );
+}
+
+/**
+ * The preview on the billboard: when the billboard has shown a title for PREVIEW_DELAY_MS (the
+ * focus rested), a clip of it plays over the art (preview.ts). Only on the visible Home, with the
+ * app in front, nothing else playing and the setting on. A focus move ends it at once.
+ */
+function BillboardPreview({ item }: { item: BaseItemDto }) {
+  const enabled = usePlaybackSettings((st) => st.previews);
+  // Not while music or a video plays (a paused queue restored at start does not count).
+  const busy = usePlayerStore((st) => !!st.now && st.playing);
+  const [visible, setVisible] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setVisible(true);
+      return () => setVisible(false);
+    }, []),
+  );
+  const [front, setFront] = useState(() => AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => setFront(st === 'active'));
+    return () => sub.remove();
+  }, []);
+  const start = previewStart(item);
+  const id = item.Id ?? null;
+  const allowed = enabled && !busy && visible && front && start !== null && !!id;
+  const [armed, setArmed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!allowed) return;
+    const t = setTimeout(() => setArmed(id), PREVIEW_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [allowed, id]);
+  if (!allowed || armed !== id || start === null || !id) return null;
+  return <PreviewVideo key={id} itemId={id} start={start} />;
+}
+
+function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
+  const server = useImageServer();
+  const uri = server?.token ? previewUrl({ baseUrl: server.baseUrl, itemId, token: server.token }) : null;
+  const player = useVideoPlayer(uri ? { uri } : null, (p) => {
+    // A preview is no "now playing" for the system (lock screen, media buttons stay with the app's player).
+    p.showNowPlayingNotification = false;
+    p.volume = 0.8;
+    p.currentTime = start;
+    p.play();
+  });
+  const opacity = useSharedValue(0);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  // The clip fades in when it plays (the first-frame event alone did not come on Android TV).
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    if (isPlaying) opacity.set(withTiming(1, { duration: 500 }));
+  });
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      opacity.set(withTiming(0, { duration: 600 }));
+      setTimeout(() => setDone(true), 650);
+    }, PREVIEW_LENGTH_MS);
+    return () => clearTimeout(t);
+  }, [opacity]);
+  if (done || !uri) return null;
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, style]} pointerEvents="none">
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        nativeControls={false}
+        // A TextureView, so the clip can fade in over the art (a SurfaceView ignores the opacity).
+        surfaceType="textureView"
+        onFirstFrameRender={() => opacity.set(withTiming(1, { duration: 500 }))}
+      />
+    </Animated.View>
+  );
+}
 
 /** True inside the TV Home rows: their tiles show only art and report focus to the billboard. */
 export const BillboardRows = createContext(false);

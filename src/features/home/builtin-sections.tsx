@@ -66,7 +66,7 @@ function ContinueWatching() {
       error={q.error}
       onRetry={q.refetch}
       tileSubtitle={episodeSubtitle}
-      preferredFocus={isTV}
+      // TV: the first focus is on Home's Play button (HomeHero), not on this row.
       {...press}
     />
   );

@@ -10,7 +10,7 @@ import { Avatar } from '@/components/avatar';
 import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
 import { Touchable } from '@/components/touchable';
 import { registerBuiltinHomeSections } from '@/features/home/builtin-sections';
-import { Billboard, BillboardRows } from '@/features/tv/billboard';
+import { Billboard, BillboardRows, HomeHero } from '@/features/tv/billboard';
 import type { FocusTarget } from '@/features/tv/focus';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
@@ -176,6 +176,7 @@ export default function HomeScreen() {
                 grow();
               }}>
               <View ref={tvContent} onLayout={(e) => measureEnd(e.nativeEvent.layout.height)}>
+                <HomeHero />
                 <OfflineBanner entries />
                 {sections.slice(0, mounted).map((sec) => (
                   <View key={sec.id}>
