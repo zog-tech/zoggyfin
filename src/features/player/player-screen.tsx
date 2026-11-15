@@ -58,6 +58,7 @@ import { useSessionStore } from '@/auth/session-store';
 import { type FocusTarget, focusView, TvFocusGuide } from '@/features/tv/focus';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
+import { setTitleBarShade } from '@/platform/desktop';
 import { features, isNativeTV, isTV } from '@/platform/tv';
 import {
   createDoublePress,
@@ -234,6 +235,11 @@ export function PlayerScreen() {
     fade.set(withTiming(visible ? 1 : 0, { duration: motion.duration.fast, easing: visible ? ease.enter : ease.exit }));
   }, [visible, fade]);
   const controlsStyle = useAnimatedStyle(() => ({ opacity: fade.get() }));
+  // Mac app: the window buttons sit in a strip above the page, out of reach of the top scrim.
+  useEffect(() => {
+    setTitleBarShade(visible ? player.topScrim[0] : null);
+  }, [visible]);
+  useEffect(() => () => setTitleBarShade(null), []);
 
   // Swipe down to minimize; the frame follows the finger.
   const dragY = useSharedValue(0);
