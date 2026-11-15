@@ -47,6 +47,7 @@ import {
   withAlpha,
 } from '@/theme';
 
+import { noteHomeMove, setPreviewPause, useTvChrome } from './chrome-store';
 import { tvFocusRest } from './focus-settle';
 import { PREVIEW_DELAY_MS, PREVIEW_LENGTH_MS, previewStart, previewUrl } from './preview';
 import { TvRowScroll, useRowFade } from './shelf';
@@ -273,6 +274,7 @@ export function HomeHero() {
   const ep = item.Type === 'Episode' ? episodeLabel(item) : null;
   const label = [resumed ? 'Resume' : 'Play', ep].filter(Boolean).join(' ');
   const onFocus = () => {
+    noteHomeMove();
     // The featured title at once (no rest): a tile's pending billboard change must not follow.
     tvFocusRest.cancel();
     useBillboardStore.setState({ item });
@@ -295,6 +297,8 @@ function BillboardPreview({ item }: { item: BaseItemDto }) {
   const enabled = usePlaybackSettings((st) => st.previews);
   // Not while music or a video plays (a paused queue restored at start does not count).
   const busy = usePlayerStore((st) => !!st.now && st.playing);
+  // The side menu is open: the user is on the way somewhere else.
+  const menuOpen = useTvChrome((st) => st.menuOpen);
   const [visible, setVisible] = useState(true);
   useFocusEffect(
     useCallback(() => {
@@ -309,15 +313,26 @@ function BillboardPreview({ item }: { item: BaseItemDto }) {
   }, []);
   const start = previewStart(item);
   const id = item.Id ?? null;
-  const allowed = enabled && !busy && visible && front && start !== null && !!id;
-  const [armed, setArmed] = useState<string | null>(null);
+  const allowed = enabled && !busy && !menuOpen && visible && front && start !== null && !!id;
+  // The preview of `id`, armed after a rest. A move pauses it at once (noteHomeMove) and starts
+  // the rest again; the moves are followed outside React, so a move renders nothing here.
+  const [armed, setArmed] = useState<{ id: string; at: number } | null>(null);
   useEffect(() => {
-    if (!allowed) return;
-    const t = setTimeout(() => setArmed(id), PREVIEW_DELAY_MS);
-    return () => clearTimeout(t);
+    if (!allowed || !id) return;
+    const arm = () => setTimeout(() => setArmed({ id, at: Date.now() }), PREVIEW_DELAY_MS);
+    let t = arm();
+    const off = useTvChrome.subscribe((st, prev) => {
+      if (st.moves === prev.moves) return;
+      clearTimeout(t);
+      t = arm();
+    });
+    return () => {
+      clearTimeout(t);
+      off();
+    };
   }, [allowed, id]);
-  if (!allowed || armed !== id || start === null || !id) return null;
-  return <PreviewVideo key={id} itemId={id} start={start} />;
+  if (!allowed || !armed || armed.id !== id || start === null || !id) return null;
+  return <PreviewVideo key={`${id}:${armed.at}`} itemId={id} start={start} />;
 }
 
 function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
@@ -334,8 +349,18 @@ function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
   const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
   // The clip fades in when it plays (the first-frame event alone did not come on Android TV).
   useEventListener(player, 'playingChange', ({ isPlaying }) => {
-    if (isPlaying) opacity.set(withTiming(1, { duration: 500 }));
+    if (isPlaying && !paused.current) opacity.set(withTiming(1, { duration: 500 }));
   });
+  // A focus move pauses and hides it at once (noteHomeMove); it stays mounted until the next rest.
+  const paused = useRef(false);
+  useEffect(() => {
+    setPreviewPause(() => {
+      paused.current = true;
+      player.pause();
+      opacity.set(withTiming(0, { duration: 150 }));
+    });
+    return () => setPreviewPause(null);
+  }, [player, opacity]);
   const [done, setDone] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => {
@@ -354,7 +379,9 @@ function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
         nativeControls={false}
         // A TextureView, so the clip can fade in over the art (a SurfaceView ignores the opacity).
         surfaceType="textureView"
-        onFirstFrameRender={() => opacity.set(withTiming(1, { duration: 500 }))}
+        onFirstFrameRender={() => {
+          if (!paused.current) opacity.set(withTiming(1, { duration: 500 }));
+        }}
       />
     </Animated.View>
   );

@@ -16,6 +16,9 @@
 import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, type TabsDescriptor, TabSlot, type TabsSlotRenderOptions, TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { Screen } from 'react-native-screens';
+import { TvVisibility } from '@/native/tv-visibility';
+
+import { useTvChrome } from './chrome-store';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ComponentRef, memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -134,6 +137,7 @@ function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> |
   // The visible page of the tab stacks (Android TV). A focus that comes into the
   // content goes there, never to a page under it that is still in the window.
   const [page, setPage] = useState<FocusTarget | null>(null);
+  const shownTab = useTvChrome((st) => st.shownTab);
   useEffect(() => {
     setContentGuide(content.current);
     const sync = () => setPage(tvPages.active()?.guide.current ?? null);
@@ -152,7 +156,7 @@ function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> |
       edge (the next row peeks in, as in the streaming apps); scroll views pad their own end.
     */
     <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: fullBleed ? 0 : l.safe.y, paddingBottom: 0 }]}>
-      <TabSlot renderFn={renderTvTab} />
+      <TabSlot detachInactiveScreens={!TvVisibility} renderFn={(d, o) => renderTvTab(d, o, shownTab)} />
     </TvFocusGuide>
   );
 }
@@ -241,6 +245,9 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
       }),
     );
   }, [open, reduced, progress]);
+  useEffect(() => {
+    useTvChrome.setState({ menuOpen: open });
+  }, [open]);
   const slide = menuW - railW;
   const panel = useAnimatedStyle(() => ({
     opacity: progress.get(),
@@ -357,8 +364,23 @@ function MenuItem({
     } else if (destination.name) {
       // Reset only a tab with pages pushed on it (an album, an item). A tab at its first page opens
       // as it was: a reset dropped its state and built the whole tab again (seconds on a TV stick).
-      const pushed = (tab.trigger?.route?.state?.index ?? 0) > 0;
-      tab.switchTab(destination.name, { resetOnFocus: pushed });
+      const route = tab.trigger?.route;
+      const pushed = (route?.state?.index ?? 0) > 0;
+      const name = destination.name;
+      // A built tab at its first page shows now; the router follows after this frame.
+      if (TvVisibility && route?.state && !pushed) {
+        useTvChrome.setState({ shownTab: route.name });
+        // The menu closes now; the focus goes into the new page once the router knows it is the page.
+        onDone();
+        setTimeout(() => {
+          tab.switchTab(name, { resetOnFocus: false });
+          setTimeout(() => {
+            useTvChrome.setState({ shownTab: null });
+            onDone();
+          }, 0);
+        }, 16);
+        return;
+      } else tab.switchTab(name, { resetOnFocus: pushed });
     }
     else router.navigate(destination.href);
     // Let the new screen mount, then give it the focus.
@@ -451,13 +473,16 @@ function NowPlayingItem({
 }
 
 /**
- * The tab screens on TV. Like expo-router's own (lazy; the hidden tabs stay mounted and keep their
- * state, focus memory and scroll), without what made a tab switch take seconds:
- * - A hidden tab is not `display: none`. The new renderer drops the native views of a hidden
- *   subtree and made them all again on the next visit (and dropped them on the way out).
- *   react-native-screens detaches the inactive screen from the window instead (`activityState`
- *   0): its views live on, nothing in it draws or takes the focus, and a visit attaches it again.
+ * The tab screens on TV. Like expo-router's own (the hidden tabs stay mounted and keep their state,
+ * focus memory and scroll), without what made a tab switch take seconds:
+ * - A hidden tab is not `display: none`, which made the new renderer drop every native view under
+ *   it and build them all again on the next visit. It sits in `TvVisibility` (Android
+ *   `View.INVISIBLE`): not drawn, no focus, its views and images kept. A build without that
+ *   module detaches the hidden tab with react-native-screens instead (a detached tab could come
+ *   back with images it never drew, so the visibility container comes first).
  * - No `freezeOnBlur`: a frozen tab is hidden through Suspense, which sets `display: none` again.
+ * - A tab picked in the side menu that is already built shows at once (`shownTab`): the router's
+ *   switch took about a second of JS work on a TV stick before anything changed on screen.
  */
 /**
  * A tab's screen renders again only when its own route changes (a push in its stack). The tab
@@ -470,8 +495,17 @@ const TabScreen = memo(
   (a, b) => a.descriptor.route === b.descriptor.route,
 );
 
-function renderTvTab(descriptor: TabsDescriptor, { isFocused, loaded, detachInactiveScreens }: TabsSlotRenderOptions) {
+function renderTvTab(descriptor: TabsDescriptor, { isFocused: routed, loaded, detachInactiveScreens }: TabsSlotRenderOptions, shown: string | null) {
+  // A tab picked in the menu shows at once, before the router switches (`shownTab`).
+  const isFocused = shown ? descriptor.route.name === shown : routed;
   if (!loaded && !isFocused) return null;
+  if (TvVisibility) {
+    return (
+      <TvVisibility key={descriptor.route.key} hidden={!isFocused} style={[StyleSheet.absoluteFill, isFocused ? styles.tabFocused : styles.tabHidden]}>
+        <TabScreen descriptor={descriptor} />
+      </TvVisibility>
+    );
+  }
   return (
     <Screen
       key={descriptor.route.key}

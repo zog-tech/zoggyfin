@@ -27,8 +27,16 @@ first commit to today. All of it was built in the first weeks of the project.
   plays over the billboard art, from a point past its opening, and fades out after 40 seconds or
   as soon as the focus moves. It streams the original file (no work for the server). Settings,
   Playback, "Autoplay previews on Home" turns them off.
-- **TV: faster tab switches.** Going back to a tab no longer builds it again from scratch:
-  revisiting Music went from about 3.6 s to about 1 s on a Google TV Streamer.
+- **TV: instant tab switches.** A tab you visited before shows about 30 ms after Select (it was
+  3.6 s): hidden tabs keep their views in a native container that only stops drawing them and
+  blocks their focus (`ZoggyfinTvVisibility`), and the menu shows the tab before the router has
+  switched. Pictures on a tab you come back to are all there (a detached tab came back with empty
+  tiles until they had the focus). Needs the new build; an older build detaches hidden tabs.
+- **Home: show music or not.** Settings, Home, "Show music on Home" leaves out Continue listening
+  and the Recently added rows of music libraries. Music keeps its own tab.
+- **TV: steadier vertical scrolling.** A preview pauses at once when the focus moves (its video
+  made every frame of the glide cost twice as much), Home builds its lower rows ahead while you
+  rest, and the side menu stops the preview while it is open.
 - **TV: steadier held D-pad.** A held key steps about 5.5 times a second, so each step glides
   instead of the focus running ahead and the row catching up in jumps.
 - **Search: no separate voice button.** The mic beside the search field is gone; the keyboard's

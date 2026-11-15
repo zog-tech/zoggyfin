@@ -31,6 +31,7 @@ import { toast } from '@/lib/toast';
 import { appVersion } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
 import { APPEARANCE_OPTIONS, useAppearance } from '@/settings/appearance';
+import { useHomeSettings } from '@/settings/home';
 import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from '@/settings/playback';
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
@@ -98,6 +99,8 @@ export default function SettingsScreen() {
 
           {/* TV is always dark. */}
           {isTV ? null : <AppearanceSection />}
+
+          <HomeSection />
 
           <PlaybackSection />
 
@@ -196,6 +199,34 @@ function AppearanceSection() {
           trailing={choice === o.value ? <Icon name="checkmark" size={scaled(iconSize.sm)} color={c.accent} weight="semibold" /> : <View />}
         />
       ))}
+    </Group>
+  );
+}
+
+function HomeSection() {
+  const music = useHomeSettings((st) => st.music);
+  const update = useHomeSettings((st) => st.update);
+  const { c } = useTheme();
+  return (
+    <Group title="Home" footer="Music keeps its own tab when its rows are off Home.">
+      <SettingsRow
+        icon="music.note"
+        label="Show music on Home"
+        onPress={() => update({ music: !music })}
+        role="switch"
+        checked={music}
+        last
+        trailing={
+          <Switch
+            value={music}
+            onValueChange={(v) => update({ music: v })}
+            trackColor={{ true: c.accent, false: c.surface3 }}
+            thumbColor={mediaColors.white}
+            {...webSwitchColors}
+            accessibilityLabel="Show music on Home"
+          />
+        }
+      />
     </Group>
   );
 }

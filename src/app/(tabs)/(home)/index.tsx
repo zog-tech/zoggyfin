@@ -30,6 +30,9 @@ registerBuiltinHomeSections();
 
 /** TV: the Home sections mounted before any are measured. */
 const FIRST_ROWS = 2;
+/** TV: one more section mounts ahead this often, unless the focus moved within WARM_IDLE_MS. */
+const WARM_STEP_MS = 1500;
+const WARM_IDLE_MS = 2000;
 
 export default function HomeScreen() {
   const s = useStyles(makeStyles);
@@ -71,6 +74,20 @@ export default function HomeScreen() {
       const next = rowsToMount({ mounted: cut, total: ids.length, contentHeight: contentH, rowTop: lastRowY.current, listHeight: h });
       return next === cut ? prev : new Set([...prev, ...ids.slice(0, next)]);
     });
+  }, [ids]);
+  // The sections below mount ahead, one at a time while the page rests, so a glide down never waits
+  // for a section to mount (a mount in the middle of a glide was a visible hitch on a TV stick).
+  const lastMove = useRef(0);
+  useEffect(() => {
+    if (!isTV) return;
+    const t = setInterval(() => {
+      if (Date.now() - lastMove.current < WARM_IDLE_MS) return;
+      setMountedIds((prev) => {
+        const cut = mountedCut(ids, prev, FIRST_ROWS);
+        return cut >= ids.length ? prev : new Set([...prev, ...ids.slice(0, cut + 1)]);
+      });
+    }, WARM_STEP_MS);
+    return () => clearInterval(t);
   }, [ids]);
   // New sections may add no height (empty rows hide): look again after they had time to lay out.
   useEffect(() => {
@@ -114,6 +131,7 @@ export default function HomeScreen() {
     () => ({
       scrollTo: (row) => {
         if (!row) return;
+        lastMove.current = Date.now();
         const first = !pendingRow.current;
         pendingRow.current = row;
         if (!first) return;

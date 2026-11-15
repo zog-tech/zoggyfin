@@ -8,7 +8,8 @@
       "expo.modules.zoggyfinnative.ZoggyfinAndroidModule",
       "expo.modules.zoggyfinnative.ZoggyfinTogetherModule",
       "expo.modules.zoggyfinnative.ZoggyfinUpdaterModule",
-      "expo.modules.zoggyfinnative.ZoggyfinVoiceModule"
+      "expo.modules.zoggyfinnative.ZoggyfinVoiceModule",
+      "expo.modules.zoggyfinnative.ZoggyfinTvVisibilityModule"
     ]
   }
 }

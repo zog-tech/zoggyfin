@@ -33,6 +33,7 @@ import { isSupportedView } from '@/features/library/library-kind';
 import { episodeLabel, formatDuration } from '@/lib/format';
 import { itemHref, useOpenItem, useTabGroup, videoGenreHref } from '@/lib/navigation';
 import { usePlayer } from '@/player';
+import { useHomeSettings } from '@/settings/home';
 import { isTV } from '@/platform/tv';
 import { homeSections } from '@/registry/home-sections';
 import { openTabRoot } from '@/features/extensions/tab-nav';
@@ -160,6 +161,8 @@ function Genres() {
 
 function ContinueListening() {
   const q = useResume('Audio');
+  const music = useHomeSettings((st) => st.music);
+  if (!music) return null;
   return (
     <ItemRow title="Continue listening" shape="square" items={q.data} isLoading={q.isPending} error={q.error} onRetry={q.refetch} />
   );
@@ -188,6 +191,8 @@ function LatestRow({ view }: { view: BaseItemDto }) {
 
 function RecentlyAdded() {
   const views = useViews();
+  // Settings, Home: "Show music on Home" off leaves the music libraries' rows out.
+  const music = useHomeSettings((st) => st.music);
   if (views.error && !views.data) {
     return <ItemRow title="Recently added" shape="poster" items={undefined} error={views.error} onRetry={views.refetch} />;
   }
@@ -197,7 +202,7 @@ function RecentlyAdded() {
   return (
     <>
       {(views.data ?? [])
-        .filter((v) => isSupportedView(v) && v.CollectionType !== 'playlists' && v.CollectionType !== 'boxsets')
+        .filter((v) => isSupportedView(v) && v.CollectionType !== 'playlists' && v.CollectionType !== 'boxsets' && (music || v.CollectionType !== 'music'))
         .map((v) => (
           <LatestRow key={v.Id} view={v} />
         ))}

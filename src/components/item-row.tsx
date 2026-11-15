@@ -6,6 +6,7 @@ import { usePrefetchItem } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
 import { BillboardRows, showOnBillboard } from '@/features/tv/billboard';
+import { noteHomeMove } from '@/features/tv/chrome-store';
 import { tvFocusRest } from '@/features/tv/focus-settle';
 import { TvShelf, useRowFade } from '@/features/tv/shelf';
 import Animated from 'react-native-reanimated';
@@ -83,6 +84,7 @@ export function ItemRow({
   // prefetch wait until the focus rests; a tile that the focus only passes does nothing.
   const onTileFocus = useCallback(
     (it: BaseItemDto) => {
+      if (billboard) noteHomeMove();
       tvFocusRest.push(() => {
         if (billboard) showOnBillboard(it);
         prefetch(it);
