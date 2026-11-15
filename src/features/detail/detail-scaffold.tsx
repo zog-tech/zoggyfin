@@ -370,6 +370,69 @@ export function DetailScaffold<Row>({
         {beforeRows ? <View style={[s.page, { width: pageWidth }]}>{beforeRows}</View> : null}
       </View>
     );
+  } else if (isTV) {
+    // TV, albums, playlists, artists and people: the art on the left, the text and one row of buttons beside it.
+    const artSide = Math.round(l.height * 0.42);
+    const tvActions: TvHeroAction[] = [
+      ...(onShuffle ? [{ icon: 'shuffle' as IconName, label: 'Shuffle', onPress: onShuffle }] : []),
+      ...(eyebrow && onEyebrowPress ? [{ icon: 'person' as IconName, label: eyebrow, onPress: onEyebrowPress }] : []),
+      // Add to playlist stays in More: one row of buttons.
+      ...secondary.filter((a) => a.key !== 'download' && a.label !== 'Together' && a.label !== 'Playlist'),
+    ];
+    header = (
+      <View>
+        <View style={[s.tvArtRow, { paddingHorizontal: l.gutter, paddingTop: l.safe.y + spacing.xl, gap: l.gutter }]}>
+          <ItemImage
+            item={item}
+            variant="square"
+            width={artSide}
+            aspectRatio={1}
+            rounded={layout === 'circle' ? artSide / 2 : radius.lg}
+            circle={layout === 'circle'}
+          />
+          <View style={s.tvArtText}>
+            {eyebrow && !onEyebrowPress ? (
+              <Text style={[s.tvEyebrow, scriptStyle(eyebrow, s.tvEyebrow, true)]} numberOfLines={1}>
+                {eyebrow}
+              </Text>
+            ) : null}
+            <Text style={[s.display, scriptStyle(item.Name ?? '', s.display, true)]} numberOfLines={2} accessibilityRole="header">
+              {item.Name}
+            </Text>
+            {eyebrow && onEyebrowPress ? (
+              <Text style={[s.tvArtSub, scriptStyle(eyebrow, s.tvArtSub, true)]} numberOfLines={1}>
+                {eyebrow}
+              </Text>
+            ) : null}
+            {facts.length ? (
+              <Text style={s.tvFactsText} numberOfLines={1}>
+                {isolateJoin(facts)}
+              </Text>
+            ) : null}
+            {item.Overview ? (
+              <Text style={[s.tvOverview, scriptStyle(item.Overview, s.tvOverview, true)]} numberOfLines={2}>
+                {item.Overview}
+              </Text>
+            ) : null}
+            <View style={s.tvButtons}>
+              {playable ? (
+                <TvButton
+                  label={room?.label ?? (onShuffle ? 'Play' : primaryLabel)}
+                  icon={room?.locked ? 'lock.fill' : 'play.fill'}
+                  progress={onShuffle ? null : progress}
+                  onPress={room?.locked ? () => undefined : (onPlay ?? (() => player.play({ item })))}
+                  firstFocus
+                />
+              ) : null}
+              {tvActions.map((a, i) => (
+                <TvButton key={a.label} label={a.label} icon={a.icon} active={a.active} accessibilityLabel={a.a11y} onPress={a.onPress} firstFocus={!playable && i === 0} />
+              ))}
+            </View>
+          </View>
+        </View>
+        {beforeRows ? <View style={[s.page, { width: pageWidth }]}>{beforeRows}</View> : null}
+      </View>
+    );
   } else if (twoColumn) {
     header = (
       <View>
@@ -833,4 +896,7 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   tvRatedText: { ...font(type.caption1), color: c.text },
   tvOverview: { ...font(type.subheadline), color: c.text },
   tvButtons: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: spacing.md, marginTop: spacing.sm },
+  tvArtRow: { flexDirection: 'row' as const, alignItems: 'flex-end' as const },
+  tvArtText: { flex: 1, gap: spacing.sm },
+  tvArtSub: { ...font(type.title3), fontWeight: '400' as const, color: c.text2 },
 }));

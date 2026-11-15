@@ -48,7 +48,16 @@ function haptic(kind: 'medium' | 'light' | 'selection') {
  * TV has no drag or swipe: each row has a More button with the moves and
  * Remove.
  */
-export function QueuePanel({ selectedKey, onSelect }: { selectedKey?: string | null; onSelect?: (key: string | null) => void }) {
+export function QueuePanel({
+  selectedKey,
+  onSelect,
+  toolbar = true,
+}: {
+  selectedKey?: string | null;
+  onSelect?: (key: string | null) => void;
+  /** Shuffle, repeat, Save and Clear above the list. The TV player has shuffle and repeat in its own row. */
+  toolbar?: boolean;
+}) {
   const queue = useAudioStore((s) => s.queue);
   const sections = useMemo(() => queueSections(queue), [queue]);
   const s = audioSession();
@@ -74,7 +83,8 @@ export function QueuePanel({ selectedKey, onSelect }: { selectedKey?: string | n
 
   return (
     <View style={styles.root}>
-      <View style={styles.controls}>
+      {toolbar ? (
+        <View style={styles.controls}>
         <Toggle icon="shuffle" label="Shuffle" active={queue.shuffle} onPress={() => s.toggleShuffle()} />
         <Toggle icon={repeatIcon} label={repeatLabel} active={queue.repeat !== 'off'} onPress={() => s.cycleRepeat()} />
         <View style={styles.flex} />
@@ -93,7 +103,8 @@ export function QueuePanel({ selectedKey, onSelect }: { selectedKey?: string | n
             <Text style={styles.clearText}>Clear</Text>
           </Touchable>
         ) : null}
-      </View>
+        </View>
+      ) : null}
       <ScrollView style={styles.flex} contentContainerStyle={[styles.content, isTV && styles.contentTV]} showsVerticalScrollIndicator={false}>
         {sections.current ? (
           <>

@@ -16,6 +16,7 @@
  */
 import { type ComponentRef, createContext, type ReactNode, type RefObject, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { interpolate, type SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import { type FocusTarget, TvFocusGuide } from './focus';
 import { tvDrivenScroll } from './scroll';
@@ -63,8 +64,30 @@ function subscribeShelves(l: () => void): () => void {
 /** Home on TV: the page that scrolls the row with the focus under the billboard. */
 export interface TvRowPage {
   scrollTo: (row: FocusTarget | null) => void;
-  /** A row mounts; the page sizes its end so the last row can scroll up and no further. Returns the cleanup. */
-  track: (row: RefObject<FocusTarget | null>) => () => void;
+  /**
+   * A row mounts; the page sizes its end so the last row can scroll up and no further. With
+   * `top`, the page writes the row's top in its content there (for the row fade). Returns the cleanup.
+   */
+  track: (row: RefObject<FocusTarget | null>, top?: SharedValue<number>) => () => void;
+  /** The page's scroll offset on the UI thread, when it has one (Home). */
+  scrollY?: SharedValue<number>;
+}
+
+/**
+ * Home on TV: a row fades out as it slides up past the line where the focused row sits (under
+ * the billboard), and fades back in when it comes down to it, like the streaming apps. Without
+ * it the row was cut at a hard line while it moved. `top` is the row's top in the page content
+ * (the page writes it, see `track`); the fade runs on the UI thread from the scroll offset.
+ */
+export function useRowFade(fadeDistance: number): { top: SharedValue<number>; style: ReturnType<typeof useAnimatedStyle> } {
+  const page = useContext(TvRowScroll);
+  const scrollY = page?.scrollY ?? null;
+  const top = useSharedValue(-1);
+  const style = useAnimatedStyle(() => {
+    if (!scrollY || top.get() < 0) return { opacity: 1 };
+    return { opacity: interpolate(top.get() - scrollY.get(), [-fadeDistance, 0], [0, 1], 'clamp') };
+  });
+  return { top, style };
 }
 
 export const TvRowScroll = createContext<TvRowPage | null>(null);
@@ -78,6 +101,7 @@ export function TvShelf<T>({
   bleed,
   padV,
   anchor,
+  top,
   onFocusItem,
   renderTile,
 }: {
@@ -92,6 +116,8 @@ export function TvShelf<T>({
   padV: number;
   /** The view the page scrolls to (the row with its header). Default: the tiles. */
   anchor?: RefObject<FocusTarget | null>;
+  /** Where the page writes the row's top (`useRowFade`). */
+  top?: SharedValue<number>;
   /** A tile took the focus, after the row scrolled to it. Keep it stable (useCallback). */
   onFocusItem?: (item: T, index: number) => void;
   /** `onFocus(item, index)` must run when the tile takes the focus. It is stable: pass it as it is. */
@@ -102,7 +128,7 @@ export function TvShelf<T>({
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const row = useRef<FocusTarget | null>(null);
   const target = anchor ?? row;
-  useEffect(() => page?.track(target), [page, target]);
+  useEffect(() => page?.track(target, top), [page, target, top]);
 
   const count = items.length;
   const perScreen = useWindowDimensions().width / step;

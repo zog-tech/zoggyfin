@@ -63,15 +63,67 @@ export function TvButton({
   );
 }
 
-/** The pill: its fill and scale follow the focus mark. */
-function Fill({ children }: { children: ReactNode }) {
+/**
+ * TV: a round icon button in the same style (the music player's transport). The focus fills the
+ * circle white. `active` marks a toggle that is on (shuffle, repeat) with a dot under it; the
+ * dot sits inside the button's box, so nothing hangs outside it and nothing is clipped.
+ */
+export function TvIconButton({
+  icon,
+  label,
+  onPress,
+  size,
+  firstFocus,
+  active,
+  plain,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  /** The circle's diameter in points (before the screen scale). */
+  size: number;
+  firstFocus?: boolean;
+  active?: boolean;
+  /** No fill at rest (the secondary transport buttons): only the focus fills the circle. */
+  plain?: boolean;
+}) {
+  const d = scaled(size);
+  return (
+    <Touchable
+      kind="plain"
+      ring={false}
+      firstFocus={firstFocus}
+      hasTVPreferredFocus={firstFocus}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={active === undefined ? undefined : { selected: active }}>
+      <View style={{ alignItems: 'center', gap: scaled(4) }}>
+        <Fill round={d} plain={plain}>
+          <TvButtonIcon name={icon} size={Math.round(d * 0.46)} />
+        </Fill>
+        <View style={[dotStyle, { opacity: active ? 1 : 0 }]} />
+      </View>
+    </Touchable>
+  );
+}
+
+const dotStyle = { width: 5, height: 5, borderRadius: 3, backgroundColor: mediaColors.white } as const;
+
+/** The pill (or a circle of diameter `round`): its fill and scale follow the focus mark. */
+function Fill({ children, round, plain }: { children: ReactNode; round?: number; plain?: boolean }) {
   const s = useStyles(makeStyles);
   const mark = useContext(TouchFocusMark);
+  const rest = plain ? mediaColors.tvButtonClear : REST_FILL;
   const style = useAnimatedStyle(() => {
     const m = mark ? mark.get() : 0;
-    return { backgroundColor: interpolateColor(m, [0, 1], [REST_FILL, FOCUS_FILL]), transform: [{ scale: 1 + 0.06 * m }] };
+    return { backgroundColor: interpolateColor(m, [0, 1], [rest, FOCUS_FILL]), transform: [{ scale: 1 + 0.06 * m }] };
   });
-  return <Animated.View style={[s.pill, style]}>{children}</Animated.View>;
+  return (
+    <Animated.View style={[round ? { width: round, height: round, borderRadius: round / 2, alignItems: 'center', justifyContent: 'center' } : s.pill, style]}>
+      {children}
+    </Animated.View>
+  );
 }
 
 function TvButtonLabel({ children, style }: { children: string; style: object }) {
@@ -85,9 +137,9 @@ function TvButtonLabel({ children, style }: { children: string; style: object })
 }
 
 /** The icon in two colours, cross-faded on the focus mark (an icon's colour is not animatable). */
-function TvButtonIcon({ name }: { name: IconName }) {
+function TvButtonIcon({ name, size: sizeIn }: { name: IconName; size?: number }) {
   const mark = useContext(TouchFocusMark);
-  const size = scaled(iconSize.sm);
+  const size = sizeIn ?? scaled(iconSize.sm);
   const lit = useAnimatedStyle(() => ({ opacity: mark ? mark.get() : 0 }));
   const dim = useAnimatedStyle(() => ({ opacity: mark ? 1 - mark.get() : 1 }));
   return (

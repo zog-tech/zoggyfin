@@ -17,11 +17,14 @@ import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, TabSlot, TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon, type IconName } from '@/components/icon';
+import { ItemImage } from '@/components/item-image';
+import { openFullPlayer } from '@/player';
+import { usePlayerStore } from '@/player/store';
 import { pageHref, pagePathname } from '@/features/extensions/nav';
 import { usePagePlacement } from '@/features/extensions/use-placement';
 import { tvKeyFromEvent } from '@/player/tv-keys';
@@ -275,6 +278,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
             <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
           </View>
           <View style={s.items}>
+            <NowPlayingItem open={wide} railWidth={railW} progress={progress} onFocus={onItemFocus} onBlur={onItemBlur} />
             {destinations.map((d) => (
               <MenuItem
                 key={d.key}
@@ -376,6 +380,61 @@ function MenuItem({
   );
 }
 
+/**
+ * While music plays: the first entry of the menu, with the cover in place of an icon (so the
+ * closed rail shows what plays). One Left and Select open the player from any page; on TV
+ * there is no mini player over the content to reach with the D-pad.
+ */
+function NowPlayingItem({
+  open,
+  railWidth,
+  progress,
+  onFocus,
+  onBlur,
+}: {
+  open: boolean;
+  railWidth: number;
+  progress: SharedValue<number>;
+  onFocus: () => void;
+  onBlur: () => void;
+}) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const [focused, setFocused] = useState(false);
+  const item = usePlayerStore((st) => (st.now?.kind === 'audio' ? st.now.item : null));
+  const labelStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  if (!item) return null;
+  return (
+    <Pressable
+      onPress={openFullPlayer}
+      onFocus={() => {
+        setFocused(true);
+        onFocus();
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onBlur();
+      }}
+      accessibilityRole="menuitem"
+      accessibilityLabel={`Now playing: ${item.Name ?? ''}. Opens the player`}
+      style={[s.item, s.nowItem, webPressable]}>
+      <View style={[s.itemInner, { paddingLeft: iconInset(railWidth) }, focused && s.itemFocused]}>
+        <ItemImage item={item} variant="square" width={ICON} aspectRatio={1} rounded={radius.xs} hideArtTitle />
+        {open ? (
+          <Animated.View style={[s.nowText, labelStyle]}>
+            <Text style={[s.nowLabel, { color: focused ? c.bg : c.text2 }]} numberOfLines={1}>
+              Now playing
+            </Text>
+            <Text style={[s.label, { color: focused ? c.bg : c.text }]} numberOfLines={1}>
+              {item.Name ?? ''}
+            </Text>
+          </Animated.View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   hidden: { display: 'none' },
@@ -397,6 +456,9 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
       borderRadius: radius.md,
     },
     itemFocused: { backgroundColor: c.text },
+    nowItem: { marginBottom: spacing.lg },
+    nowText: { flex: 1 },
+    nowLabel: { ...font(type.caption1), textTransform: 'uppercase' as const, letterSpacing: 0.8 },
     selectedBar: { position: 'absolute' as const, left: 0, top: '25%' as const, bottom: '25%' as const, width: 3, borderRadius: 2, backgroundColor: c.accent },
     label: { ...font(type.title3), flexShrink: 1 },
     labelSelected: { fontWeight: '700' as const },

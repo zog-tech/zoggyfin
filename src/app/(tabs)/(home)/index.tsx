@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
+import Animated, { type SharedValue, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { queryKeys } from '@/api/query-keys';
 import { useApi } from '@/api/use-api';
@@ -48,7 +49,14 @@ export default function HomeScreen() {
   const tvScroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const tvContent = useRef<ComponentRef<typeof View> | null>(null);
   const lastRowY = useRef(-1);
-  const rows = useRef(new Set<RefObject<FocusTarget | null>>());
+  // The rows and, for those that fade (useRowFade), where their top in the content goes.
+  const rows = useRef(new Map<RefObject<FocusTarget | null>, SharedValue<number> | undefined>());
+  // The last measured top of each row view: a focus scrolls at once, with no measure first.
+  const rowTops = useRef(new Map<FocusTarget, number>());
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.set(e.contentOffset.y);
+  });
   const [listH, setListH] = useState(0);
   const [end, setEnd] = useState<{ rowsH: number; lastTop: number } | null>(null);
   // The sections mount as the focus comes near them (rowsToMount); once mounted they stay (kept by id).
@@ -76,7 +84,7 @@ export default function HomeScreen() {
     grow();
     const content = tvContent.current;
     if (!content) return;
-    const found = [...rows.current].map((r) => r.current).filter((v): v is FocusTarget => !!v);
+    const found = [...rows.current].filter((e): e is [RefObject<FocusTarget>, SharedValue<number> | undefined] => !!e[0].current);
     if (!found.length) return setEnd({ rowsH, lastTop: 0 });
     let lastTop = 0;
     let left = found.length;
@@ -84,11 +92,14 @@ export default function HomeScreen() {
       left -= 1;
       if (!left) setEnd({ rowsH, lastTop });
     };
-    for (const row of found) {
+    for (const [ref, top] of found) {
+      const row = ref.current;
       row.measureLayout(
         content,
         (_x, y) => {
           lastTop = Math.max(lastTop, y);
+          rowTops.current.set(row, y);
+          top?.set(y);
           done();
         },
         done,
@@ -111,26 +122,34 @@ export default function HomeScreen() {
           pendingRow.current = null;
           const content = tvContent.current;
           if (!last || !content) return;
+          const glide = (y: number) => {
+            if (Math.abs(y - lastRowY.current) < 1) return;
+            lastRowY.current = y;
+            tvScroll.current?.scrollTo({ y, animated: true });
+            grow();
+          };
+          // A known row glides at once; the measure then corrects a top that moved since.
+          const known = rowTops.current.get(last);
+          if (known !== undefined) glide(known);
           last.measureLayout(
             content,
             (_x, y) => {
-              if (Math.abs(y - lastRowY.current) < 1) return;
-              lastRowY.current = y;
-              tvScroll.current?.scrollTo({ y, animated: true });
-              grow();
+              rowTops.current.set(last, y);
+              glide(y);
             },
             () => undefined,
           );
         }, 0);
       },
-      track: (row) => {
-        rows.current.add(row);
+      track: (row, top) => {
+        rows.current.set(row, top);
         return () => {
           rows.current.delete(row);
         };
       },
+      scrollY,
     }),
-    [grow],
+    [grow, scrollY],
   );
 
   if (isTV) {
@@ -143,9 +162,11 @@ export default function HomeScreen() {
         <Billboard />
         <BillboardRows.Provider value>
           <TvRowScroll.Provider value={tvPage}>
-            <ScrollView
+            <Animated.ScrollView
               ref={tvScroll}
               {...tvDrivenScroll}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
               style={s.tvRows}
               contentContainerStyle={{ paddingBottom: Math.max(bottomPad, endPad) }}
               onLayout={(e) => {
@@ -162,7 +183,7 @@ export default function HomeScreen() {
                   </View>
                 ))}
               </View>
-            </ScrollView>
+            </Animated.ScrollView>
           </TvRowScroll.Provider>
         </BillboardRows.Provider>
       </View>

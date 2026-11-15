@@ -20,6 +20,17 @@ first commit to today. All of it was built in the first weeks of the project.
 - **TV: episodes on the show page.** A show's page lists its seasons as chips and the episodes of
   the chosen season in a row (the season of the next episode first). Select on an episode plays it;
   a long press opens its page. Before, it took a season page and an episode page to start one.
+- **TV: a music player made for the remote.** The art on the left, the song on the right with a
+  progress line, one row of large buttons (shuffle, previous, play or pause, next, repeat; Play has
+  the focus) and three pills: Up next, Lyrics and Favourite, with the rest under More. The queue
+  and the lyrics open in place of the art and are focus stops only then; Back closes them.
+- **TV: music from any page.** While music plays, the side menu's first entry shows the cover and
+  opens the player (one Left and Select). The floating mini player over the rows is gone on TV.
+- **TV: album, artist and playlist pages** have the art on the left and one row of buttons beside
+  the title, in place of the phone layout with full-width Play and Shuffle bars.
+- **TV: rows no longer cut off at the top.** On Home a row fades as it slides up past the focused
+  row, and pages of rows (Music, item pages) bring the focused row to the top, so no half row stays
+  under the tab bar. Home starts the glide at once with the row positions it knows.
 - **TV: Continue watching and Next up play at once.** Select on one of their tiles resumes it; a
   long press opens its page.
 - **TV: smoother scrolling and streaming-app sizes.** Rows and grids use smaller tiles that sit

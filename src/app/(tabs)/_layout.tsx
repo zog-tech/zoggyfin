@@ -14,6 +14,7 @@ import { RoomLayer } from '@/features/together/room-bar';
 import { TvTabsLayout } from '@/features/tv/side-menu';
 import { HAS_ACCESSORY, TAB_BAR_HEIGHT } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
+import { usePlayerStore } from '@/player/store';
 import { fontFamily, spacing, useLayout, useTheme } from '@/theme';
 
 
@@ -46,9 +47,14 @@ function FloatingMiniPlayer() {
  * The five native tabs. On iPad and Mac the bar can turn into a sidebar
  * (sidebarAdaptable). Each tab has its own stack.
  */
-/** TV: the side menu instead of the tab bar; the mini player floats at the bottom of the content. */
+/**
+ * TV: the side menu instead of the tab bar. Music has no mini player over the content (it covered
+ * a row and the D-pad reached it only past the last row): the side menu's first entry opens the
+ * player. Anything else that keeps playing in the background still gets the floating mini player.
+ */
 function TvLayout() {
-  const mini = useMiniPlayerVisible();
+  const audio = usePlayerStore((st) => st.now?.kind === 'audio');
+  const mini = useMiniPlayerVisible() && !audio;
   const l = useLayout();
   return (
     <View style={styles.flex}>
