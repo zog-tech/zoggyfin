@@ -1,5 +1,7 @@
 import { DEFAULT_HOME_SETTINGS, readHomeSettings } from '../home';
 
+jest.mock('@/storage/json', () => ({ readJson: jest.fn(() => null), writeJson: jest.fn() }));
+
 describe('readHomeSettings', () => {
   it('shows music by default', () => {
     expect(readHomeSettings(null)).toEqual(DEFAULT_HOME_SETTINGS);
