@@ -122,10 +122,11 @@ function Root({ session }: { session: boolean }) {
     startIptvSync();
   }, [session]);
   return (
-          <View style={[styles.flex, { backgroundColor: c.bg }]}>
+          <View style={[styles.flex, { backgroundColor: isTV ? TV_PAGE_BG : c.bg }]}>
+            {/* TV: no background on this view. The window paints the page colour (SystemUI in theme/provider), and a second full-screen fill cost GPU time on every frame. */}
             {/* TV changes screens at once (no push animation), like the streaming apps. */}
             {/*
-              TV: the root view is the one page background (see TV_PAGE_BG in lib/stack-options). Every
+              TV: the window is the one page background (see TV_PAGE_BG in lib/stack-options). Every
               opaque layer over it is drawn again for the whole screen, and on a TV stick that cost frames.
             */}
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: isTV ? TV_PAGE_BG : c.bg }, ...(isTV ? { animation: 'none' as const } : null) }}>

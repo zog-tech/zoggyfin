@@ -138,7 +138,7 @@ export default function HomeScreen() {
     const endPad = end && listH ? tvPageEndPadding(listH, end.rowsH, end.lastTop) : l.height * 0.5;
     // TV: the billboard for the focused item stays at the top; the rows scroll under it.
     return (
-      // No background: the root view paints it once (TV_PAGE_BG).
+      // No background: the window paints it once (TV_PAGE_BG).
       <View style={s.tvFlex}>
         <Billboard />
         <BillboardRows.Provider value>

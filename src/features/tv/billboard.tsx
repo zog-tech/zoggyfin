@@ -9,9 +9,9 @@
  */
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { createContext, useState } from 'react';
+import { createContext, useLayoutEffect, useState } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { create } from 'zustand';
 
 import { useItem, useResume } from '@/api/queries';
@@ -90,6 +90,8 @@ export function Billboard() {
   const { c } = useTheme();
   const l = useLayout();
   const reduced = useReducedMotion();
+  const opacity = useSharedValue(1);
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.get() }));
   const focused = useBillboardStore((st) => st.item);
   // Before any tile has the focus: the first item to continue.
   const first = useResume('Video').data?.[0] ?? null;
@@ -108,6 +110,14 @@ export function Billboard() {
   const art = item ? resolveImage(item, 'backdrop', { width: Math.round(artW * scale), height: Math.round(artH * scale) }, server) : null;
   // A movie or show with no wide art falls back to its tall poster: show all of it at the edge, not a slice.
   const tall = art?.kind === 'remote' && item?.Type !== 'Episode' && (art.source === 'Primary' || art.source === 'SeriesPrimary');
+
+  // A new item: its text fades in (from the first render with it; the effect runs before the paint settles).
+  const shownId = item?.Id ?? null;
+  useLayoutEffect(() => {
+    if (reduced || !shownId) return;
+    opacity.set(0);
+    opacity.set(withTiming(1, { duration: motion.duration.base }));
+  }, [shownId, reduced, opacity]);
 
   if (!item) return <View style={{ height }} />;
   const title = (item.Type === 'Episode' ? item.SeriesName : null) ?? item.Name ?? '';
@@ -151,14 +161,12 @@ export function Billboard() {
         pointerEvents="none"
       />
       {/*
-        The old text fades out while the new one fades in (both are absolute). The overview keeps
-        its two lines while the full item loads, so the title and the facts never jump up.
+        The new text fades in on a view that stays mounted (an opacity on the UI thread). Reanimated
+        layout animations (entering and exiting) cost about 8 ms of UI-thread work on every frame of
+        the fade on a TV stick. The overview keeps its two lines while the full item loads, so the
+        title and the facts never jump up.
       */}
-      <Animated.View
-        key={item.Id}
-        entering={reduced ? undefined : FadeIn.duration(motion.duration.base)}
-        exiting={reduced ? undefined : FadeOut.duration(motion.duration.fast)}
-        style={[s.text, { left: l.gutter, width: width * 0.46, bottom: spacing.xl }]}>
+      <Animated.View style={[s.text, { left: l.gutter, width: width * 0.46, bottom: spacing.xl }, fade]}>
         <Title item={item} title={title} />
         {meta || rated ? (
           <View style={s.facts}>

@@ -8,7 +8,8 @@ import { type AppTheme, font, fontFamily, spacing, type, useLayout, useTheme } f
 import { useSidebarInset } from '@/theme/sidebar-inset';
 
 /**
- * TV: the background of a stack screen. Transparent: the root view paints the page colour once.
+ * TV: the background of a stack screen. Transparent: the window paints the page colour once
+ * (`SystemUI.setBackgroundColorAsync` in theme/provider).
  * A stack screen under a pushed page is detached on Android TV (no push animation), so nothing
  * shows through. Four opaque full-screen layers (root, root stack, tab stack, page) made every
  * frame paint the screen four times over, and scrolling dropped to about 20 frames a second.

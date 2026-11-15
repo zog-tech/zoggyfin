@@ -27,7 +27,10 @@ first commit to today. All of it was built in the first weeks of the project.
   peeks in at the bottom instead of stopping at a hard line. Home tiles show only their art (and
   the progress bar); the billboard shows the title. On TV the page background is painted once
   instead of four times, and the billboard fades cover only the art they fade: on a Google TV
-  Streamer the GPU time per frame fell from about 18 ms to 11 ms and janky frames from 24 % to 13 %.
+  Streamer the GPU time per frame fell from about 18 ms to 10 ms and janky frames from 24 % to 7 %.
+  Rows away from the focus mount only the tiles on screen (the focused row gets its full window
+  once the focus settles), tiles have no hairline on TV, and the billboard text fades with a plain
+  opacity instead of a layout animation, so the page glides at 60 frames a second.
 - **TV: smoother Home billboard.** The billboard text cross-fades when the focus rests on another
   tile, and its overview keeps its two lines while it loads, so the title no longer jumps. The age
   rating shows as a badge. The open side menu dims the page behind it.

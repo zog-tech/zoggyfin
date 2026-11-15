@@ -775,7 +775,7 @@ const styles = StyleSheet.create({
 const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   flex: { flex: 1 },
   list: { flex: 1, backgroundColor: c.bg },
-  // No background on TV: the root view paints it once (TV_PAGE_BG in lib/stack-options).
+  // No background on TV: the window paints it once (TV_PAGE_BG in lib/stack-options).
   tvList: {},
   page: { alignSelf: 'center' as const },
   body: { gap: spacing.lg },
