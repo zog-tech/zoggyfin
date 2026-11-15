@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { type Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -10,6 +11,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { describeError } from '@/api/errors';
 import * as jf from '@/api/jellyfin';
+import { queryKeys } from '@/api/query-keys';
 import type { BaseItemDto } from '@/api/types';
 import { useApi } from '@/api/use-api';
 import { Icon, type IconName } from '@/components/icon';
@@ -119,7 +121,8 @@ export function NowPlayingScreen() {
   // The size comes with the insets, so a rotation renders the new layout once (use-window-frame.ts).
   const { width, height } = useWindowFrame();
   const reduced = useReducedMotion();
-  const { api, userId } = useApi();
+  const { api, userId, scope } = useApi();
+  const qc = useQueryClient();
   const signedIn = useSessionStore((st) => !!st.session);
   const s = audioSession();
 
@@ -226,6 +229,8 @@ export function NowPlayingScreen() {
     haptic();
     try {
       await jf.setFavorite(api, userId, item.Id, on);
+      // The heart here is the Like button: the Liked Songs tab follows it.
+      void qc.invalidateQueries(queryKeys.likedSongs(scope));
     } catch (e) {
       setFavourite({ id: item.Id, on: !on });
       toast(describeError(e).title, { icon: 'exclamationmark.triangle' });

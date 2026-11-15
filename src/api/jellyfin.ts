@@ -384,7 +384,7 @@ export async function getGenreVideos(api: Api, userId: string, genreId: string, 
 
 // ---- Music ------------------------------------------------------------------------
 
-export type MusicTab = 'albums' | 'artists' | 'playlists' | 'songs' | 'genres' | 'audiobooks' | 'authors';
+export type MusicTab = 'liked' | 'albums' | 'artists' | 'playlists' | 'songs' | 'genres' | 'audiobooks' | 'authors';
 
 export interface MusicOptions {
   sortBy: ItemSortBy;
@@ -448,6 +448,19 @@ export async function getMusicPage(
         sortBy,
         sortOrder,
         filters,
+      });
+      return toPage(res.data);
+    }
+    case 'liked': {
+      // Liked Songs are the user's favourite songs. The favourite filter is the point of the tab, so it is always on.
+      const res = await getLibraryApi(api).getItems({
+        ...base,
+        parentId: libraryId,
+        includeItemTypes: ['Audio'],
+        recursive: true,
+        sortBy,
+        sortOrder,
+        filters: ['IsFavorite'],
       });
       return toPage(res.data);
     }
