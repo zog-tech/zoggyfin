@@ -13,6 +13,7 @@ import { downloads, downloadsSupported } from '@/downloads';
 import { loadItemFacts, needsItemFacts } from '@/extensions/runtime';
 import { useExtensions } from '@/extensions/store';
 import { downloadsState, statusOf, useDownloadsStore } from '@/downloads/store';
+import { setFavouriteOverride } from '@/features/actions/favourite-overrides';
 import { openAddToPlaylist, openRenamePlaylist } from '@/features/playlists/add-to-playlist';
 import * as playlistOps from '@/features/playlists/ops';
 import { openPlayOn } from '@/features/remote/play-on-sheet';
@@ -63,7 +64,11 @@ export function useItemActions(item: BaseItemDto | undefined) {
       instantMix: (it) => player.instantMix(it),
       openItem,
       setFavorite: (it, fav) =>
-        guard(() => jf.setFavorite(api, userId, it.Id ?? '', fav), fav ? 'Added to favourites' : 'Removed from favourites'),
+        guard(async () => {
+          await jf.setFavorite(api, userId, it.Id ?? '', fav);
+          // The music player heart reads this, so it matches a change made here.
+          if (it.Id) setFavouriteOverride(userId, it.Id, fav);
+        }, fav ? 'Added to favourites' : 'Removed from favourites'),
       setPlayed: (it, played) =>
         guard(() => jf.setPlayed(api, userId, it.Id ?? '', played), played ? 'Marked as played' : 'Marked as unplayed'),
       addToPlaylist: (it) => openAddToPlaylist(it),

@@ -220,6 +220,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Music player heart after reopening.** The heart showed the song's state from when it started
+  playing, so after a like or an unlike, closing and opening the player showed the old state and the
+  next tap undid the change. It now follows likes made in the player and in the item menu.
 - **Music has sound again after an interruption on iPhone.** When the camera or another app stopped
   the music and never said it was done, a later play showed "playing" with no sound. The app now
   activates the audio session again before that play, also a play from the lock screen.
