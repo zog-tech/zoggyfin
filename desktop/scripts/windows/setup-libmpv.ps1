@@ -29,6 +29,14 @@ $archive = Join-Path $env:TEMP $asset.name
 Write-Host "Downloading $($asset.name) ($([math]::Round($asset.size / 1MB, 1)) MB) from $($release.tag_name)"
 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
 if ((Get-Item $archive).Length -ne $asset.size) { throw "The download has the wrong size." }
+# GitHub gives the SHA-256 of each release asset ("sha256:<hex>"). A size check alone does not
+# catch a changed or broken file.
+if ($asset.digest -match '^sha256:([0-9a-f]{64})$') {
+    $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+    if ($hash -ne $Matches[1]) { Remove-Item $archive; throw "The download has the wrong SHA-256." }
+} else {
+    Write-Warning "The release gives no SHA-256 for $($asset.name): only the size is checked."
+}
 
 Get-ChildItem $dest -Force | Remove-Item -Recurse -Force
 tar -xf $archive -C $dest
