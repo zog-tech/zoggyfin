@@ -14,9 +14,10 @@
  * until the panel is gone.
  */
 import { type Href, router, usePathname } from 'expo-router';
-import { TabList, Tabs, TabSlot, TabTrigger, useTabTrigger } from 'expo-router/ui';
+import { TabList, Tabs, type TabsDescriptor, TabSlot, type TabsSlotRenderOptions, TabTrigger, useTabTrigger } from 'expo-router/ui';
+import { Screen } from 'react-native-screens';
 import { LinearGradient } from 'expo-linear-gradient';
-import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentRef, memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -96,15 +97,40 @@ const ITEM_END = spacing.sm;
 /** The icon's inset in its item, so the icon sits centred in the closed item. */
 const iconInset = (railWidth: number) => Math.round((railWidth - SAFE.x - ITEM_END - ICON) / 2);
 
-/** The (tabs) layout on TV: the tab content after the rail, and the side menu over it. */
+/**
+ * The (tabs) layout on TV: the tab content after the rail, and the side menu over it. It reads no
+ * route state itself (the parts that follow the page are in `TvContent` and `SideMenu`), so a
+ * navigation does not render the tab navigator again from here: that cost about 270 ms on a TV
+ * stick, twice per tab switch.
+ */
 export function TvTabsLayout() {
+  const content = useRef<ComponentRef<typeof View> | null>(null);
+  // Every remote key, so a page can tell a move into the side menu from a focus Android put there.
+  useTvRemote(isNativeTV, (e) => {
+    const k = tvKeyFromEvent(e);
+    if (k) noteRemoteKey(k.key);
+  });
+  return (
+    <Tabs style={styles.flex}>
+      {/* First in the tree, so the content (not the menu) takes the first focus. */}
+      <TvContent content={content} />
+      <SideMenu content={content} />
+      <TabList style={styles.hidden}>
+        {DESTINATIONS.map((d) => (
+          <TabTrigger key={d.name} name={d.name ?? ''} href={d.href} />
+        ))}
+      </TabList>
+    </Tabs>
+  );
+}
+
+/** The tab content after the rail. It follows the page (its top inset, the visible page for the focus). */
+function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> | null> }) {
   const l = useLayout();
   const rail = Math.round(tv.railWidth * tvScale(l.width));
   const pathname = usePathname();
-  const home = pathname === '/';
   // Home and item pages draw their art from the screen's top edge; their text keeps clear of the inset.
-  const fullBleed = home || /\/item\//.test(pathname);
-  const content = useRef<ComponentRef<typeof View> | null>(null);
+  const fullBleed = pathname === '/' || /\/item\//.test(pathname);
   // The visible page of the tab stacks (Android TV). A focus that comes into the
   // content goes there, never to a page under it that is still in the window.
   const [page, setPage] = useState<FocusTarget | null>(null);
@@ -118,32 +144,16 @@ export function TvTabsLayout() {
       off();
       setContentGuide(null);
     };
-  }, []);
-  // Every remote key, so a page can tell a move into the side menu from a focus Android put there.
-  useTvRemote(isNativeTV, (e) => {
-    const k = tvKeyFromEvent(e);
-    if (k) noteRemoteKey(k.key);
-  });
+  }, [content]);
   return (
-    <Tabs style={styles.flex}>
-      {/* First in the tree, so the content (not the menu) takes the first focus. */}
-      {/*
-        The pages start inside the overscan-safe area at the top and the bottom (theme/layout
-        `tv.safeY`). Home is the exception at the top: its billboard art runs to the top edge, and
-        its text and rows start well below the safe line. At the bottom every page runs on to the edge
-        (the next row peeks in, as in the streaming apps) instead of stopping at a hard line; scroll
-        views pad their own end.
-      */}
-      <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: fullBleed ? 0 : l.safe.y, paddingBottom: 0 }]}>
-        <TabSlot />
-      </TvFocusGuide>
-      <SideMenu content={content} />
-      <TabList style={styles.hidden}>
-        {DESTINATIONS.map((d) => (
-          <TabTrigger key={d.name} name={d.name ?? ''} href={d.href} />
-        ))}
-      </TabList>
-    </Tabs>
+    /*
+      The pages start inside the overscan-safe area at the top (theme/layout `tv.safeY`), except
+      Home and item pages, whose art runs to the top edge. At the bottom every page runs on to the
+      edge (the next row peeks in, as in the streaming apps); scroll views pad their own end.
+    */
+    <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: fullBleed ? 0 : l.safe.y, paddingBottom: 0 }]}>
+      <TabSlot renderFn={renderTvTab} />
+    </TvFocusGuide>
   );
 }
 
@@ -344,7 +354,12 @@ function MenuItem({
     // page) goes back to its first page through its stack.
     if (destination.name && tab.trigger?.isFocused) {
       if (router.canDismiss()) router.dismissTo(destination.href);
-    } else if (destination.name) tab.switchTab(destination.name, { resetOnFocus: true });
+    } else if (destination.name) {
+      // Reset only a tab with pages pushed on it (an album, an item). A tab at its first page opens
+      // as it was: a reset dropped its state and built the whole tab again (seconds on a TV stick).
+      const pushed = (tab.trigger?.route?.state?.index ?? 0) > 0;
+      tab.switchTab(destination.name, { resetOnFocus: pushed });
+    }
     else router.navigate(destination.href);
     // Let the new screen mount, then give it the focus.
     setTimeout(onDone, 80);
@@ -435,8 +450,43 @@ function NowPlayingItem({
   );
 }
 
+/**
+ * The tab screens on TV. Like expo-router's own (lazy; the hidden tabs stay mounted and keep their
+ * state, focus memory and scroll), without what made a tab switch take seconds:
+ * - A hidden tab is not `display: none`. The new renderer drops the native views of a hidden
+ *   subtree and made them all again on the next visit (and dropped them on the way out).
+ *   react-native-screens detaches the inactive screen from the window instead (`activityState`
+ *   0): its views live on, nothing in it draws or takes the focus, and a visit attaches it again.
+ * - No `freezeOnBlur`: a frozen tab is hidden through Suspense, which sets `display: none` again.
+ */
+/**
+ * A tab's screen renders again only when its own route changes (a push in its stack). The tab
+ * navigator renders every tab on each switch; the hidden Music browser took 370 ms of it.
+ */
+const TabScreen = memo(
+  function TabScreen({ descriptor }: { descriptor: TabsDescriptor }) {
+    return descriptor.render();
+  },
+  (a, b) => a.descriptor.route === b.descriptor.route,
+);
+
+function renderTvTab(descriptor: TabsDescriptor, { isFocused, loaded, detachInactiveScreens }: TabsSlotRenderOptions) {
+  if (!loaded && !isFocused) return null;
+  return (
+    <Screen
+      key={descriptor.route.key}
+      enabled={detachInactiveScreens}
+      activityState={isFocused ? 2 : 0}
+      style={[StyleSheet.absoluteFill, isFocused ? styles.tabFocused : styles.tabHidden]}>
+      <TabScreen descriptor={descriptor} />
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  tabFocused: { zIndex: 1 },
+  tabHidden: { zIndex: -1 },
   hidden: { display: 'none' },
 });
 

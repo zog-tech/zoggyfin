@@ -148,9 +148,9 @@ export function TvShelf<T>({
   // the row (Left would open the side menu). The traps change only at the ends of the row.
   const [edgeFocus, setEdgeFocus] = useState(-1);
   const traps = rowTraps(edgeFocus, count);
-  const live = useRef({ shown: full, count, perScreen, traps, active, resting: shown });
+  const live = useRef({ shown: full, count, perScreen, traps, active });
   useEffect(() => {
-    live.current = { shown: full, count, perScreen, traps, active, resting: shown };
+    live.current = { shown: full, count, perScreen, traps, active };
   });
   const follow = useCallback((index: number) => {
     const { shown: cur, count: n, perScreen: per, traps: had } = live.current;
@@ -168,10 +168,12 @@ export function TvShelf<T>({
   const onFocusAt = useCallback(
     (item: T, index: number) => {
       scroll.current?.scrollTo({ x: index * step, animated: true });
+      const moved = index !== lastFocus.current;
       lastFocus.current = index;
-      // Near the end of the tiles a resting row holds: the full window now, so the next presses find tiles.
-      const { active: on, resting } = live.current;
-      if (!on && (index <= resting.start || index >= resting.end - 2)) activateNow(id);
+      // A move along the row (Left or Right, maybe held) needs the full window now, before the
+      // presses outrun the tiles a resting row holds. Coming in from another row waits (setActiveShelf).
+      const { active: on } = live.current;
+      if (!on && moved) activateNow(id);
       else setActiveShelf(id);
       follow(index);
       page?.scrollTo(target.current);
