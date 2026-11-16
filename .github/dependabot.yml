@@ -5,12 +5,22 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # Expo pins its own versions. Update Expo and React Native by hand with `expo install`.
+    # Expo pins its own versions, and a native package needs a native build. Update Expo, React
+    # and the React Native packages by hand with `expo install`, then test a release build on iOS:
+    # expo 58.0.24 brought a precompiled expo-modules-core that does not load with
+    # react-native-tvos, and the app stopped at launch.
     ignore:
-      - dependency-name: expo
-        update-types: ["version-update:semver-major"]
-      - dependency-name: react-native
-        update-types: ["version-update:semver-major"]
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "jest-expo"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@react-native/*"
+      - dependency-name: "@shopify/flash-list"
+      - dependency-name: "@kesha-antonov/*"
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
