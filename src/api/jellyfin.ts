@@ -29,6 +29,7 @@ import { devOffline } from '@/lib/dev-offline';
 
 import { type OnDemandHome, parseOnDemandHome } from './ondemand';
 import { buildAuthHeader } from './auth-header';
+import { musicSort } from './music-sort';
 import type { LibraryQuery } from './query-keys';
 import { serverUrlCandidates } from './server-url';
 import type {
@@ -404,9 +405,7 @@ export async function getMusicPage(
   options: MusicOptions = DEFAULT_MUSIC_OPTIONS,
 ): Promise<Page> {
   const base = { userId, startIndex, limit, enableTotalRecordCount: true, ...tile };
-  const sortBy: ItemSortBy[] = options.sortBy === 'SortName' ? ['SortName'] : [options.sortBy, 'SortName'];
-  // The server wants one sort order per sort field.
-  const sortOrder: ('Ascending' | 'Descending')[] = sortBy.map((_, i) => (i === 0 ? options.sortOrder : 'Ascending'));
+  const { sortBy, sortOrder } = musicSort(tab, options.sortBy, options.sortOrder);
   const filters: ItemFilter[] | undefined = options.favorites ? ['IsFavorite'] : undefined;
   const isFavorite = options.favorites ? true : undefined;
   switch (tab) {
