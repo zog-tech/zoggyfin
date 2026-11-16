@@ -4,6 +4,17 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.16 (2026-11-15)
+
+- Music: a Liked Songs tab with your favourite songs, and a Downloaded tab with the songs on this Mac, each with Play and Shuffle
+- Music player: the heart keeps its state when you open the player again
+- Player: the strip with the window buttons now darkens with the controls, so bright video no longer shows there
+- Player: a setting loads the whole video ahead, and it is on by default
+- Search: one filter row with a genre picker, and results from extension searches
+- Listen together: the host picks which device plays the sound
+- Downloads: an album or playlist button counts its songs while they download
+- Extensions: new pages apply without a question, and videos show their length
+
 ## 0.1.15 (2026-11-10)
 
 - Music: a Home tab with recently played, mixes, new releases, playlists and genres, plus catalog rows such as trending songs when the server offers them
