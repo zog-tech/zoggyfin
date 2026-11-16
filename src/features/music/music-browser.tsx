@@ -16,7 +16,9 @@ import { TabPager } from '@/components/tab-pager';
 import type { PagerTab } from '@/components/tab-pager-types';
 import { ArtistRow, TrackRow } from '@/features/detail/rows';
 import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
+import { DownloadedSongs } from '@/features/music/downloaded-songs';
 import { MusicHome } from '@/features/music/music-home';
+import { SongListHeader } from '@/features/music/song-list-header';
 import { musicGenreHref, useOpenItem, useTabGroup } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
 import { usePlayer } from '@/player';
@@ -27,16 +29,19 @@ import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 export type AudioLibraryKind = 'music' | 'books';
 
-/** A pager tab: a music tab, or the music Home page. */
-type BrowserTab = MusicTab | 'home';
+/** A pager tab: a music tab, the music Home page, or the songs on the device. */
+type BrowserTab = MusicTab | 'home' | 'downloaded';
 
 const MUSIC_TABS: (PagerTab & { key: BrowserTab })[] = [
   { key: 'home', title: 'Home' },
+  { key: 'liked', title: 'Liked Songs' },
   { key: 'albums', title: 'Albums' },
   { key: 'artists', title: 'Artists' },
   { key: 'playlists', title: 'Playlists' },
   { key: 'songs', title: 'Songs' },
   { key: 'genres', title: 'Genres' },
+  // Last: it is about this device, not the library.
+  { key: 'downloaded', title: 'Downloaded' },
 ];
 
 const BOOK_TABS: (PagerTab & { key: BrowserTab })[] = [
@@ -45,6 +50,7 @@ const BOOK_TABS: (PagerTab & { key: BrowserTab })[] = [
 ];
 
 const EMPTY: Record<MusicTab, string> = {
+  liked: 'No liked songs yet',
   albums: 'No albums',
   artists: 'No artists',
   playlists: 'No playlists yet',
@@ -63,6 +69,7 @@ const COUNT: SortChoice = { value: 'PlayCount', label: 'Play count' };
 const RANDOM: SortChoice = { value: 'Random', label: 'Random' };
 
 const SORTS: Record<MusicTab, SortChoice[]> = {
+  liked: [ADDED, NAME, { value: 'Album', label: 'Album' }, { value: 'Artist', label: 'Artist' }, PLAYED, COUNT, RANDOM],
   albums: [NAME, { value: 'AlbumArtist', label: 'Artist' }, { value: 'ProductionYear', label: 'Year' }, ADDED, PLAYED, COUNT, RANDOM],
   artists: [NAME, ADDED],
   playlists: [NAME, ADDED],
@@ -74,9 +81,10 @@ const SORTS: Record<MusicTab, SortChoice[]> = {
 
 
 /**
- * Home / Albums / Artists / Playlists / Songs / Genres (or Audiobooks /
- * Authors), as a pager that follows a horizontal swipe. The saved tab opens
- * first; with none saved, the first tab (Home for music).
+ * Home / Liked Songs / Albums / Artists / Playlists / Songs / Genres /
+ * Downloaded (or Audiobooks / Authors), as a pager that follows a horizontal
+ * swipe. The saved tab opens first; with none saved, the first tab (Home for
+ * music).
  */
 export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string; kind?: AudioLibraryKind }) {
   const tabs = kind === 'books' ? BOOK_TABS : MUSIC_TABS;
@@ -88,15 +96,30 @@ export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string;
       initialIndex={initial}
       onIndexChange={(i) => storage.set(lastKey, tabs[i]?.key ?? tabs[0]?.key ?? 'home')}
       renderPage={(tab) =>
-        tab.key === 'home' ? <MusicHome libraryId={libraryId} /> : <MusicPage libraryId={libraryId} tab={tab.key as MusicTab} />
+        tab.key === 'home' ? (
+          <MusicHome libraryId={libraryId} />
+        ) : tab.key === 'downloaded' ? (
+          <DownloadedSongs />
+        ) : (
+          <MusicPage libraryId={libraryId} tab={tab.key as MusicTab} />
+        )
       }
     />
   );
 }
 
+/**
+ * Liked Songs opens with the newest songs first, like the liked list of other
+ * music apps. Jellyfin keeps no date for a like, so the date the song was
+ * added to the library stands in for it.
+ */
+const TAB_DEFAULTS: Partial<Record<MusicTab, Partial<MusicOptions>>> = {
+  liked: { sortBy: 'DateCreated', sortOrder: 'Descending' },
+};
+
 function useMusicOptions(libraryId: string, tab: MusicTab): [MusicOptions, (patch: Partial<MusicOptions>) => void] {
   const key = `music.options.${libraryId}.${tab}`;
-  const [options, setOptions] = useState<MusicOptions>(() => ({ ...DEFAULT_MUSIC_OPTIONS, ...readJson<Partial<MusicOptions>>(key, {}) }));
+  const [options, setOptions] = useState<MusicOptions>(() => ({ ...DEFAULT_MUSIC_OPTIONS, ...TAB_DEFAULTS[tab], ...readJson<Partial<MusicOptions>>(key, {}) }));
   const update = (patch: Partial<MusicOptions>) => {
     const next = { ...options, ...patch };
     setOptions(next);
@@ -123,7 +146,7 @@ function SortBar({ tab, options, onChange }: { tab: MusicTab; options: MusicOpti
             onPress={() => onChange({ sortOrder: options.sortOrder === 'Ascending' ? 'Descending' : 'Ascending' })}
           />
         ) : null}
-        {tab !== 'genres' ? <Chip label="Favourites" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
+        {tab !== 'genres' && tab !== 'liked' ? <Chip label="Favourites" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
       </ScrollView>
       <OptionSheet
         visible={open}
@@ -157,20 +180,36 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
   };
 
   const bar = <SortBar tab={tab} options={options} onChange={setOptions} />;
+  const rows = tab === 'songs' || tab === 'liked' || tab === 'artists' || tab === 'authors';
 
   if (q.isPending) {
     return (
       <View style={styles.flex}>
         {bar}
-        {tab === 'songs' || tab === 'artists' || tab === 'authors' ? <LoadingState /> : <GridSkeleton shape="square" />}
+        {rows ? <LoadingState /> : <GridSkeleton shape="square" />}
       </View>
     );
   }
   if (q.error && !q.data) return <ErrorState error={q.error} onRetry={q.refetch} />;
 
-  const empty = <EmptyState icon="music.note" title={EMPTY[tab]} message={options.favorites ? 'No favourites here yet.' : undefined} />;
+  const empty =
+    tab === 'liked' ? (
+      <EmptyState icon="heart" title={EMPTY.liked} message="Add a song to your favourites to see it here." />
+    ) : (
+      <EmptyState icon="music.note" title={EMPTY[tab]} message={options.favorites ? 'No favourites here yet.' : undefined} />
+    );
+  const total = q.data?.pages[0]?.total ?? items.length;
+  const header =
+    tab === 'liked' && items.length ? (
+      <>
+        <SongListHeader count={total} songs={() => allPages(q)} context={LIKED_CONTEXT} />
+        {bar}
+      </>
+    ) : (
+      bar
+    );
 
-  if (tab === 'songs' || tab === 'artists' || tab === 'authors') {
+  if (rows) {
     return (
       <>
         <FlashList
@@ -179,13 +218,13 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
           data={items}
           keyExtractor={(it, i) => it.Id ?? String(i)}
           renderItem={({ item, index }) =>
-            tab === 'songs' ? (
+            tab === 'songs' || tab === 'liked' ? (
               <TrackRow
                 item={item}
                 index={index}
                 showArt
                 last={index === items.length - 1}
-                onPress={() => player.play({ item, list: items, index })}
+                onPress={() => player.play({ item, list: items, index, context: tab === 'liked' ? LIKED_CONTEXT : undefined })}
                 onLongPress={setMenu}
                 queue="both"
               />
@@ -193,7 +232,7 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
               <ArtistRow item={item} last={index === items.length - 1} onPress={open} onLongPress={l.tv ? undefined : setMenu} />
             )
           }
-          ListHeaderComponent={bar}
+          ListHeaderComponent={header}
           onEndReached={more}
           onEndReachedThreshold={0.8}
           refreshControl={pull.onRefresh ? <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={refreshTint(c.text2)} /> : undefined}
@@ -221,6 +260,24 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
       itemMenu={tab !== 'genres'}
     />
   );
+}
+
+const LIKED_CONTEXT: BaseItemDto = { Name: 'Liked Songs' };
+
+/** Most songs Play and Shuffle load for one queue (100 pages of the music page size). */
+const MAX_PAGES = 100;
+
+/** Loads the pages that are not loaded yet, then gives every song of the list. */
+async function allPages(q: ReturnType<typeof useMusicTab>): Promise<BaseItemDto[]> {
+  let data = q.data;
+  let hasNext = q.hasNextPage;
+  for (let i = 0; hasNext && i < MAX_PAGES; i++) {
+    const res = await q.fetchNextPage();
+    if (res.isError) break;
+    data = res.data;
+    hasNext = res.hasNextPage;
+  }
+  return data?.pages.flatMap((p) => p.items) ?? [];
 }
 
 const styles = StyleSheet.create({

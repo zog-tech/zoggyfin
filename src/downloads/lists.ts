@@ -111,6 +111,17 @@ export function buildServerSections(
   return sections.sort((a, b) => (a.active === b.active ? b.bytes - a.bytes : a.active ? -1 : 1));
 }
 
+/**
+ * The songs downloaded from one server, for the music Downloaded tab: every
+ * completed Jellyfin song, the newest download first. Extension downloads are
+ * left out: they are not Jellyfin items. Pure.
+ */
+export function buildDownloadedSongs(records: Record<string, DownloadRecord>, serverId: string | null | undefined): DownloadRecord[] {
+  return Object.values(records)
+    .filter((r) => r.state === 'completed' && r.kind === 'audio' && r.item.Type === 'Audio' && isJellyfinRecord(r) && onServer(r, serverId))
+    .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0) || a.sort - b.sort);
+}
+
 /** Downloaded items (from every server) that match a search term, grouped like server results. Pure. */
 export function searchDownloads(records: Record<string, DownloadRecord>, term: string): BaseItemDto[] {
   const t = term.trim().toLowerCase();

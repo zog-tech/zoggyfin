@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { type Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -10,6 +11,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { describeError } from '@/api/errors';
 import * as jf from '@/api/jellyfin';
+import { queryKeys } from '@/api/query-keys';
 import type { BaseItemDto } from '@/api/types';
 import { useApi } from '@/api/use-api';
 import { Icon, type IconName } from '@/components/icon';
@@ -21,6 +23,7 @@ import { canDownload, downloads, findDownload } from '@/downloads';
 import { TogetherPill } from '@/features/together/together-pill';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
+import { setFavouriteOverride, useIsFavourite } from '@/features/actions/favourite-overrides';
 import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { useHideDevToolsButton } from '@/lib/dev-tools';
 import { itemHref } from '@/lib/navigation';
@@ -119,7 +122,8 @@ export function NowPlayingScreen() {
   // The size comes with the insets, so a rotation renders the new layout once (use-window-frame.ts).
   const { width, height } = useWindowFrame();
   const reduced = useReducedMotion();
-  const { api, userId } = useApi();
+  const { api, userId, scope } = useApi();
+  const qc = useQueryClient();
   const signedIn = useSessionStore((st) => !!st.session);
   const s = audioSession();
 
@@ -137,7 +141,6 @@ export function NowPlayingScreen() {
   const [panel, setPanel] = useState<Panel>(wide ? 'queue' : 'none');
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [favourite, setFavourite] = useState<{ id: string; on: boolean } | null>(null);
   const clock = useNow(sleep.kind === 'minutes');
   const [captionClock, setCaptionClock] = useState(() => Date.now());
 
@@ -217,17 +220,20 @@ export function NowPlayingScreen() {
   });
 
   const item = now?.item;
-  const isFav = item ? (favourite && favourite.id === item.Id ? favourite.on : !!item.UserData?.IsFavorite) : false;
+  // Not the queue's copy alone: it is from when playback started (favourite-overrides.ts).
+  const isFav = useIsFavourite(userId, item);
   // The React Compiler memoizes this; no useCallback.
   const toggleFavourite = async () => {
     if (!item?.Id) return;
     const on = !isFav;
-    setFavourite({ id: item.Id, on });
+    setFavouriteOverride(userId, item.Id, on);
     haptic();
     try {
       await jf.setFavorite(api, userId, item.Id, on);
+      // The heart here is the Like button: the Liked Songs tab follows it.
+      void qc.invalidateQueries(queryKeys.likedSongs(scope));
     } catch (e) {
-      setFavourite({ id: item.Id, on: !on });
+      setFavouriteOverride(userId, item.Id, !on);
       toast(describeError(e).title, { icon: 'exclamationmark.triangle' });
     }
   };
