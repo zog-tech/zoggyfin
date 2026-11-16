@@ -268,8 +268,21 @@ export function showVideoThrough(host: HTMLElement): () => void {
   return () => {
     path.forEach((el) => el.removeAttribute(PATH_ATTRIBUTE));
     document.documentElement.classList.remove(VIDEO_CLASS);
+    setTitleBarShade(null);
     void mpv.setVideoVisible(false).catch(() => undefined);
   };
+}
+
+/**
+ * Shades the title bar strip (macOS) with `color`, or clears it with null.
+ * The page starts under the strip, so the player's top shadow cannot reach
+ * the window buttons: the player sets the shadow's top colour here while its
+ * controls show. The strip fades like the controls (`motion.duration.fast`).
+ */
+export function setTitleBarShade(color: string | null): void {
+  if (!isDesktop || typeof document === 'undefined') return;
+  const bar = document.getElementById(TITLE_BAR_ID);
+  if (bar) bar.style.backgroundColor = color ?? 'transparent';
 }
 
 /**
@@ -282,6 +295,9 @@ export function showVideoThrough(host: HTMLElement): () => void {
  * Windows keeps its own title bar, so the page starts at the top.
  */
 const TITLE_BAR = desktopPlatform === 'windows' ? 0 : 28;
+const TITLE_BAR_ID = 'zf-titlebar';
+/** The fade of the title bar shade: the same as the player controls (`motion.duration.fast`). */
+const SHADE_FADE_MS = 160;
 
 /**
  * Windows has no app menu bar: the same shortcuts as the Mac menus, with Ctrl.
@@ -334,8 +350,8 @@ function installChrome(): void {
     html.zf-desktop body { background-color: #0B0B0E; }
     html.zf-desktop #root { position: fixed; top: ${TITLE_BAR}px; left: 0; right: 0; bottom: 0; height: auto; }
     html.zf-desktop.zf-fullscreen #root { top: 0; }
-    #zf-titlebar { position: fixed; top: 0; left: 0; right: 0; height: ${TITLE_BAR}px; z-index: 2147483647; }
-    html.zf-fullscreen #zf-titlebar { display: none; }
+    #${TITLE_BAR_ID} { position: fixed; top: 0; left: 0; right: 0; height: ${TITLE_BAR}px; z-index: 2147483647; transition: background-color ${SHADE_FADE_MS}ms ease; }
+    html.zf-fullscreen #${TITLE_BAR_ID} { display: none; }
     html.${VIDEO_CLASS}, html.${VIDEO_CLASS} body { background: transparent !important; }
     html.${VIDEO_CLASS} [${PATH_ATTRIBUTE}] { background-color: transparent !important; background-image: none !important; }
     html.${VIDEO_CLASS} *:has(~ [${PATH_ATTRIBUTE}]),
@@ -347,7 +363,7 @@ function installChrome(): void {
     return;
   }
   const bar = document.createElement('div');
-  bar.id = 'zf-titlebar';
+  bar.id = TITLE_BAR_ID;
   // Tauri starts a window drag on mouse down in an element with this attribute.
   bar.setAttribute('data-tauri-drag-region', '');
   // Full screen has no title bar: the page uses the whole screen.
