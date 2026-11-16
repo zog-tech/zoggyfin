@@ -109,7 +109,7 @@ Phase 1 ("Foundation"):
 - Home: Continue Watching, Next Up, Because you watched (movie recommendations), Continue Listening,
   Short on time (unwatched movies of 100 minutes or less), Recently Added per library, and a genre of the day.
 - Library: library grids with sort and filters, shows to seasons to episodes, collections.
-- Music: Albums, Artists, Playlists, Songs and Genres in a swipeable pager.
+- Music: Home, Liked Songs, Albums, Artists, Playlists, Songs, Genres and Downloaded in a swipeable pager.
 - Item pages for movies, shows, seasons, episodes, albums, artists, people and playlists.
   Movie and show pages have a Trailer button: a trailer file on the server plays in the app, a YouTube link opens outside it.
 - Search, with results grouped by type and recent searches.

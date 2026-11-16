@@ -13,6 +13,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Liked Songs and Downloaded in the music pager.** Liked Songs is the second tab, after Home: it
+  lists your favourite songs, newest first, with Play and Shuffle for the whole list and the usual
+  sort chips. A song you like in the player or the action sheet shows up there. Downloaded is the
+  last tab: every song on the device from this server, newest download first, and it works with no
+  connection. On iPhone, iPad, Android and the Mac app; the web and TV have no downloads, so the
+  Downloaded tab says so.
 - **Sound plays on (listen together).** In a nearby listen-together session, the host picks where
   the sound comes out: every device (as before) or one device, for example the phone on the car
   stereo. The other devices keep playing in sync with no sound, so a change is instant, and their
@@ -214,6 +220,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Music player heart after reopening.** The heart showed the song's state from when it started
+  playing, so after a like or an unlike, closing and opening the player showed the old state and the
+  next tap undid the change. It now follows likes made in the player and in the item menu.
 - **Music has sound again after an interruption on iPhone.** When the camera or another app stopped
   the music and never said it was done, a later play showed "playing" with no sound. The app now
   activates the audio session again before that play, also a play from the lock screen.

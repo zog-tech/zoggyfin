@@ -67,6 +67,14 @@ export const queryKeys = {
     [...scopeKey(s), 'children', parentId, kind] as const,
   music: (s: SessionScope, libraryId: string, tab: string, options?: object) =>
     [...scopeKey(s), 'music', libraryId, tab, options ?? {}] as const,
+  /**
+   * Every Liked Songs list of the account (any library, any sort), to
+   * refresh after a like changes outside the item action sheet.
+   */
+  likedSongs: (s: SessionScope) => ({
+    queryKey: [...scopeKey(s), 'music'] as const,
+    predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey[5] === 'liked',
+  }),
   /** A part of the music Home tab. Under `music`, so a refresh of the library refreshes it too. */
   musicHome: (s: SessionScope, libraryId: string, part: string, extra = '') =>
     [...scopeKey(s), 'music', libraryId, 'home', part, extra] as const,

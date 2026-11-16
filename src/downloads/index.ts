@@ -38,7 +38,7 @@ import { fileUri, localImageUri, localMediaUri } from './local';
 import { downloadManager, offerDownloadAgain } from './manager';
 import { isDownloadable } from './plan';
 import { collectionCounts, type CollectionCounts, downloadsState, statusOf, useDownloadsStore } from './store';
-import { buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, forServer, jellyfinOnly, onServer, type ServerSection, visibleTo } from './lists';
+import { buildDownloadedSongs, buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, forServer, jellyfinOnly, onServer, type ServerSection, visibleTo } from './lists';
 import { type DownloadOption, type ExtensionDownloadInput, extensionMediaState, type ExtensionMediaState, extensionRecordId, isExtensionRecord, localPlayRequest } from './extension-media';
 import type { DownloadRecord, DownloadStatus } from './types';
 
@@ -47,7 +47,7 @@ export type { DownloadOption, ExtensionDownloadInput } from './extension-media';
 export type { CollectionCounts } from './store';
 export { extensionMediaState, type ExtensionMediaState, extensionRecordId, isExtensionRecord } from './extension-media';
 export { DOWNLOAD_SCHEMA_VERSION } from './types';
-export { buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, onServer, type ServerSection, searchDownloads, visibleTo } from './lists';
+export { buildDownloadedSongs, buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, onServer, type ServerSection, searchDownloads, visibleTo } from './lists';
 
 export { DOWNLOAD_QUALITY_OPTIONS, isDownloadable } from './plan';
 export { etaSeconds, fraction, isFileMissing } from './state-machine';
@@ -188,6 +188,13 @@ export function useDownloadLists(): {
     const extensions = buildExtensionSections(records, account);
     return { inProgress: all.inProgress, activeCount: all.activeCount, appBytes, groups, sections, extensions };
   }, [records, collections, serverId, account]);
+}
+
+/** The songs downloaded from the active server, the newest first (the music Downloaded tab). */
+export function useDownloadedSongs(): DownloadRecord[] {
+  const records = useDownloadsStore((s) => s.records);
+  const serverId = useSessionStore((s) => s.session?.serverId ?? null);
+  return useMemo(() => buildDownloadedSongs(records, serverId), [records, serverId]);
 }
 
 const groupItems = new Map<string, BaseItemDto>();

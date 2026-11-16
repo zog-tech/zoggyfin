@@ -49,8 +49,12 @@ fn windows_libmpv() {
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     if let Some(exe_dir) = out.ancestors().nth(3) {
         let to = exe_dir.join("libmpv-2.dll");
+        // A new libmpv build can have the same size, so the time counts too.
         let fresh = std::fs::metadata(&to)
-            .and_then(|t| Ok(t.len() == std::fs::metadata(&dll)?.len()))
+            .and_then(|t| {
+                let from = std::fs::metadata(&dll)?;
+                Ok(t.len() == from.len() && t.modified()? >= from.modified()?)
+            })
             .unwrap_or(false);
         if !fresh {
             if let Err(e) = std::fs::copy(&dll, &to) {
