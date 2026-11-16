@@ -21,6 +21,9 @@ Zoggyfin runs on iPhone, iPad, Android, the web and the Mac app. A feature must 
   Do not let the feature fail without a word.
 - Use the shared code in `src/` first. Put code for one platform in a file with a platform suffix
   (for example `.web.tsx` or `.ios.ts`) or in `modules/` or `desktop/`.
+- The same applies to fixes and improvements. When you change platform code, check whether the other
+  platforms need the same change, and port it. [AGENTS.md](AGENTS.md) (section 3a) lists where each
+  platform keeps its version of the code.
 - Update the README and the docs when the feature changes what the app does.
 
 ## Setup

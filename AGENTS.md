@@ -284,6 +284,28 @@ Follow the code around you. These rules come from the code base and CONTRIBUTING
 - **Dependencies**: do not add one without a reason. A native dependency forces a native build (section 5).
 - **Tests** live in `__tests__/` next to the code. Fixtures are in `test-utils/` folders. Add or update a test when you fix a bug or add logic.
 
+## 3a. Port each change to the other platforms
+
+An improvement on one platform is often missing on the others. Each change is a chance to close that gap.
+Before you finish a change, ask: "Does another platform need the same change?"
+
+- **Shared code** (a file in `src/` with no platform suffix) reaches every platform in the next build. Still check that it works on each one: TV, the web and the Mac app often behave differently.
+- **Platform code** has a counterpart on the other platforms. When you change one side, look at the other sides:
+
+| You changed | Look also at |
+|---|---|
+| `x.native.ts` | `x.ts` (web and Mac app), and the reverse |
+| `x.ios.ts` | `x.native.ts` (Android) |
+| `player/engine.native.tsx` (expo-video) | `player/engine.tsx` (web, hls.js) and `player/engine-mpv.ts` (Mac app, libmpv) |
+| `modules/*/ios/*.swift` | `modules/*/android/*.kt`, and `desktop/src-tauri/swift/` for the nearby code |
+| `desktop/src-tauri/` (Rust) | the native code that does the same job, for example `downloads.rs` and `downloads/native-engine.ts` |
+| TV UI (`features/tv/`, `isTV` branches) | the touch and pointer UI, and the reverse |
+| A phone layout | iPad and Mac app wide layouts (`useLayout()`) |
+
+- **Port in the same pull request** when the port is small. Otherwise, say in the pull request which platforms still need it, and open an issue for each one.
+- **Some changes belong to one platform only** (for example, the Mac title bar or the iOS 26 refresh spinner). Say so in the pull request, so a reviewer knows that you checked.
+- A bug fix on one platform is a reason to look for the same bug on the others: the cause is often in shared logic or in a shared assumption.
+
 ## 4. Change → what to check
 
 Always run `pnpm typecheck`, `pnpm lint` and the tests of the area. Run the full `pnpm test` before a commit.
