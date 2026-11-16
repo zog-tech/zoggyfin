@@ -220,6 +220,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Songs in A to Z order.** The Songs and Liked Songs tabs sorted by Jellyfin's sort name, which
+  starts with the disc and track number, so the list went through every first track, then every
+  second track, and a song looked missing from its place in the alphabet. They now sort by the
+  song title. A sort by album still keeps the track order.
 - **Music player heart after reopening.** The heart showed the song's state from when it started
   playing, so after a like or an unlike, closing and opening the player showed the old state and the
   next tap undid the change. It now follows likes made in the player and in the item menu.
