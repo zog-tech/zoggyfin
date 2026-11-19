@@ -10,6 +10,7 @@ interface FakeTask extends NativeTask {
   options: { url: string; destination: string; headers?: Record<string, string>; metadata?: object };
   started: boolean;
   stopped: boolean;
+  resumed: boolean;
   fire: { begin?: Begin; progress?: Progress; done?: Done; error?: Fail };
 }
 
@@ -23,6 +24,7 @@ function fakeTask(o: FakeTask['options'], state = 'PENDING', bytes = 0): FakeTas
     options: o,
     started: false,
     stopped: false,
+    resumed: false,
     fire: {},
     begin: (h) => ((t.fire.begin = h), t),
     progress: (h) => ((t.fire.progress = h), t),
@@ -30,7 +32,7 @@ function fakeTask(o: FakeTask['options'], state = 'PENDING', bytes = 0): FakeTas
     error: (h) => ((t.fire.error = h), t),
     start: () => void (t.started = true),
     pause: async () => undefined,
-    resume: async () => undefined,
+    resume: async () => void (t.resumed = true),
     stop: async () => void (t.stopped = true),
   };
   return t;
@@ -188,5 +190,67 @@ describe('native engine: resume of a lost task', () => {
     expect(await engine.existing()).toEqual([]);
     expect(paused.stopped).toBe(true);
     expect(files[DEST]).toBe('abcd');
+  });
+});
+
+describe('native engine: iOS resume data after an error', () => {
+  // iOS writes to a system file until the end, so there is no partial file to continue
+  // with a Range request. The patched downloader keeps the resume data of an error
+  // (`resumable`), and the engine continues the task with it.
+  const hint = { expectedBytes: 9_000, validator: null };
+
+  it('reports the error, then a retry continues the task instead of starting again', async () => {
+    const { engine, created, h } = setup({});
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, headers: { Authorization: 'k' }, resume: hint });
+    created[0].fire.error?.({ error: 'The request timed out.', errorCode: -1001, resumable: true });
+    expect(h.onError).toHaveBeenCalledWith('a', 'The request timed out.', -1001);
+
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, headers: { Authorization: 'k' }, resume: hint });
+    const again = created[1];
+    expect(again.resumed).toBe(true);
+    expect(again.started).toBe(false);
+    again.fire.progress?.({ bytesDownloaded: 5_000, bytesTotal: 9_000 });
+    expect(h.onProgress).toHaveBeenLastCalledWith('a', 5_000, 9_000);
+    again.fire.done?.({ bytesDownloaded: 9_000 });
+    expect(h.onDone).toHaveBeenCalledWith('a', 9_000);
+  });
+
+  it('continues only once per error: a second error with no resume data starts from 0', () => {
+    const { engine, created } = setup({});
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    created[0].fire.error?.({ error: 'lost', errorCode: -1005, resumable: true });
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    created[1].fire.error?.({ error: 'bad', errorCode: -1011 });
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    expect(created[2].started).toBe(true);
+    expect(created[2].resumed).toBe(false);
+  });
+
+  it('drops the resume data when the start cannot continue (a transcode or no bytes)', () => {
+    const { engine, created } = setup({});
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    created[0].fire.error?.({ error: 'lost', errorCode: -1005, resumable: true });
+    engine.start({ id: 'a', url: 'https://s/y', destination: DEST });
+    expect(created[1].stopped).toBe(true);
+    expect(created[2].started).toBe(true);
+  });
+
+  it('drops the resume data on cancel', async () => {
+    const { engine, created } = setup({});
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    created[0].fire.error?.({ error: 'lost', errorCode: -1005, resumable: true });
+    await engine.stop('a');
+    expect(created[1].stopped).toBe(true);
+    // The library's JS needs a URL and a destination for the task object.
+    expect(created[1].options).toMatchObject({ url: 'https://s/x', destination: DEST });
+  });
+
+  it('keeps an error without resume data as it was', () => {
+    const { engine, created, h } = setup({});
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    created[0].fire.error?.({ error: 'Not found', errorCode: 404 });
+    expect(h.onError).toHaveBeenCalledWith('a', 'Not found', 404);
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    expect(created[1].started).toBe(true);
   });
 });
