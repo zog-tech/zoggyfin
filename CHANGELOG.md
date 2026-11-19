@@ -220,6 +220,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **iPhone downloads no longer start again from zero.** Each time the app started, it cancelled
+  the downloads that ran, and they started again from the first byte, so a large film never
+  finished. Downloads now go on through app starts. A download that fails over a weak connection
+  also continues from where it stopped, in builds from 0.1.1 (22).
 - **Films with Dolby audio that starts late.** Some 4K web releases have E-AC-3 audio that starts
   seconds after the video. The server's stream for them had an empty audio entry, and the iPhone
   stopped with "CoreMediaErrorDomain error -16172". After such a stream fails, the player now asks
