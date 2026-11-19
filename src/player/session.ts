@@ -37,7 +37,7 @@ import { autoRanges, type SkipContext, skippedNow, transitionAutoSkip, undoneRan
 import { chooseTracks, rememberChoice, titleKey } from './track-prefs';
 import { loadTrackPrefs, saveTrackPrefs } from './track-prefs-store';
 import { setPlayerState, initialPlayerState, playerState, type ExternalNow, type LiveNow, type NowPlaying } from './store';
-import { audioOptions, audioSwitchNeedsStream, pickSource, planStream, playbackInfoBody, type StreamPlan, type StreamServer } from './stream';
+import { audioOptions, audioSwitchNeedsStream, dolbyAudioFallback, pickSource, planStream, playbackInfoBody, type StreamPlan, type StreamServer } from './stream';
 import { chaptersOf, pickTrickplay } from './timeline';
 import type { ExternalPlayRequest, ExternalProgress, ExternalStream, LivePlayRequest, LiveStreamChoice, PlayRequest } from './types';
 import {
@@ -289,6 +289,7 @@ class VideoSession {
             break;
           }
           if (this.recoverAfterAddressSwitch()) break;
+          if (this.retryWithAacAudio()) break;
           setPlayerState({ status: 'error', error: e.error ?? 'The video could not be played.', playing: false });
           void this.reporter?.stop({ positionTicks: secondsToTicks(st.position) });
         } else if (st.status === 'error') {
@@ -1023,7 +1024,7 @@ class VideoSession {
     const { api, userId, server } = context();
     const settings = usePlaybackSettings.getState();
     const bitrate = opts.bitrateChoice ?? bitrateFor(settings, await onCellular());
-    const profile = buildDeviceProfile(mediaCapabilities(), { maxBitrate: bitrate });
+    const profile = buildDeviceProfile(mediaCapabilities(), { maxBitrate: bitrate, noDolbyHlsAudio: this.aacAudioItem === item.Id });
     const current = playerState().now;
     const keep = current && current.item.Id === item.Id ? current : null;
     const sameItem = keep !== null;
@@ -1123,6 +1124,26 @@ class VideoSession {
 
   /** The stream URL that was reloaded after an address switch, so a second failure shows the error. */
   private recovered: string | null = null;
+
+  /** The item whose HLS streams ask for AAC audio, after a stream with copied Dolby audio failed. */
+  private aacAudioItem: string | null = null;
+
+  /**
+   * A stream with copied AC-3 or E-AC-3 audio failed to load: ask the server
+   * again with AAC audio, once per item, at the same position. The server's
+   * remux can write an empty audio entry when the audio starts after the
+   * video (`dolbyAudioFallback` in `stream.ts`). Later loads of the item
+   * (a track or quality change) keep AAC.
+   */
+  private retryWithAacAudio(): boolean {
+    const now = playerState().now;
+    const id = now?.item.Id;
+    if (!now || !id || this.aacAudioItem === id || !dolbyAudioFallback(now.plan)) return false;
+    this.aacAudioItem = id;
+    if (__DEV__) console.log('[player] the stream with copied Dolby audio failed: asking for AAC audio');
+    void this.reload({});
+    return true;
+  }
 
   /**
    * The app moved to another address of the server while this stream played

@@ -58,6 +58,11 @@ export interface StreamPlan {
   original?: VideoTrackInfo | null;
   /** A transcode: the size and bitrate the server was asked for. */
   target?: TranscodeTarget | null;
+  /**
+   * The codec of the chosen audio track when the server may copy it into the
+   * HLS stream (lower case), else null. See `dolbyAudioFallback`.
+   */
+  copiedAudio?: string | null;
 }
 
 export interface PlaybackInfoInput {
@@ -200,7 +205,34 @@ export function planStream(
     playMethod: 'Transcode',
     burnedSubtitle: !!sub && !sub.isText,
     target: transcodeTarget(source.TranscodingUrl),
+    copiedAudio: copiedAudioCodec(source, audioIndex),
   };
+}
+
+/** The chosen track's codec when the transcode URL lets the server copy it. */
+function copiedAudioCodec(source: MediaSource, audioIndex: number | null): string | null {
+  const track = (source.MediaStreams ?? []).find((s) => s.Type === 'Audio' && s.Index === audioIndex);
+  const codec = track?.Codec?.toLowerCase();
+  if (!codec || !source.TranscodingUrl) return null;
+  const allowed = /[?&]AudioCodec=([^&]*)/i.exec(source.TranscodingUrl)?.[1];
+  if (!allowed) return null;
+  const list = decodeURIComponent(allowed).toLowerCase().split(',');
+  return list.includes(codec) ? codec : null;
+}
+
+/**
+ * True when a failed HLS stream should be asked for again with AAC audio.
+ *
+ * A file whose AC-3 or E-AC-3 track starts after the video (a common web
+ * release: the audio starts 15 s in) breaks the server's fMP4 HLS remux:
+ * FFmpeg must write the init segment before it saw an audio packet, so the
+ * audio entry stays empty ("Cannot write moov atom before EAC3 packets
+ * parsed"). AVPlayer then stops with CoreMediaErrorDomain -16172. The server's
+ * data does not show when a track starts, so the player tries AAC only after
+ * such a stream fails. AAC is encoded at once, so its entry is never empty.
+ */
+export function dolbyAudioFallback(plan: Pick<StreamPlan, 'isHls' | 'isLocal' | 'copiedAudio'>): boolean {
+  return plan.isHls && !plan.isLocal && (plan.copiedAudio === 'ac3' || plan.copiedAudio === 'eac3');
 }
 
 /**

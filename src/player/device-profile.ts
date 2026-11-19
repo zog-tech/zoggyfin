@@ -55,6 +55,19 @@ export interface MediaCapabilities {
 export interface ProfileOptions {
   /** Maximum bitrate in bits per second, from the quality setting. */
   maxBitrate: number;
+  /**
+   * Leave AC-3 and E-AC-3 out of the HLS audio codecs, so the server sends AAC
+   * instead of a copy. The player sets it after a stream with copied Dolby audio
+   * failed (see `dolbyAudioFallback` in `stream.ts`). Direct play does not change.
+   */
+  noDolbyHlsAudio?: boolean;
+}
+
+/** The HLS audio codecs for one load. */
+function hlsAudioFor(caps: MediaCapabilities, options: ProfileOptions): readonly AudioCodec[] {
+  if (!options.noDolbyHlsAudio) return caps.hlsAudioCodecs;
+  const list = caps.hlsAudioCodecs.filter((c) => c !== 'ac3' && c !== 'eac3');
+  return list.length ? list : ['aac'];
 }
 
 /** AVPlayer: what Apple's decoders play from an mp4/mov file. */
@@ -120,7 +133,7 @@ function mpvProfile(caps: MediaCapabilities, options: ProfileOptions): DevicePro
         Protocol: 'hls',
         Context: 'Streaming',
         VideoCodec: caps.hlsVideoCodecs.join(','),
-        AudioCodec: caps.hlsAudioCodecs.join(','),
+        AudioCodec: hlsAudioFor(caps, options).join(','),
         MaxAudioChannels: String(caps.maxAudioChannels),
         MinSegments: 2,
         BreakOnNonKeyFrames: true,
@@ -425,7 +438,7 @@ export function buildDeviceProfile(caps: MediaCapabilities, options: ProfileOpti
       Protocol: 'hls',
       Context: 'Streaming',
       VideoCodec: join(hlsVideo),
-      AudioCodec: join(caps.hlsAudioCodecs),
+      AudioCodec: join(hlsAudioFor(caps, options)),
       MaxAudioChannels: String(caps.maxAudioChannels),
       MinSegments: 2,
       BreakOnNonKeyFrames: true,

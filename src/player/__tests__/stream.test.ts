@@ -1,4 +1,4 @@
-import { absolute, audioSwitchNeedsStream, directPlayUrl, pickSource, planStream, playbackInfoBody, withStreamAuth, type MediaSource } from '../stream';
+import { absolute, audioSwitchNeedsStream, directPlayUrl, dolbyAudioFallback, pickSource, planStream, playbackInfoBody, withStreamAuth, type MediaSource } from '../stream';
 
 const server = { baseUrl: 'http://media.example.test:8096', token: 'tok123', deviceId: 'dev-1' };
 
@@ -119,5 +119,51 @@ describe('pickSource', () => {
     expect(pickSource([a, b], 'b')).toBe(b);
     expect(pickSource([a, b], 'zz')).toBe(a);
     expect(pickSource([], 'a')).toBeNull();
+  });
+});
+
+describe('dolbyAudioFallback', () => {
+  // A 4K file with E-AC-3 audio that starts 15 s after the video: the server copies
+  // the audio into fMP4 HLS, FFmpeg writes an empty audio entry into the init segment,
+  // and AVPlayer stops with CoreMediaErrorDomain -16172.
+  const remux = (audioCodec: string, url: string): MediaSource => ({
+    Id: 'src1',
+    SupportsDirectPlay: false,
+    SupportsDirectStream: true,
+    TranscodingSubProtocol: 'hls',
+    TranscodingUrl: url,
+    DefaultAudioStreamIndex: 1,
+    MediaStreams: [
+      { Type: 'Video', Index: 0, Codec: 'hevc', Width: 3840, Height: 2160 },
+      { Type: 'Audio', Index: 1, Codec: audioCodec, IsDefault: true },
+      { Type: 'Audio', Index: 2, Codec: 'aac' },
+    ],
+  });
+  const copyUrl = '/videos/item1/master.m3u8?MediaSourceId=src1&VideoCodec=hevc,h264&AudioCodec=aac,ac3,eac3,mp3&AudioStreamIndex=1';
+
+  it('records the audio codec that the server may copy into HLS', () => {
+    expect(planStream(server, 'item1', remux('eac3', copyUrl), 'ps').copiedAudio).toBe('eac3');
+    expect(planStream(server, 'item1', remux('EAC3', copyUrl), 'ps').copiedAudio).toBe('eac3');
+  });
+
+  it('asks for AAC after a failed HLS stream with copied AC-3 or E-AC-3', () => {
+    expect(dolbyAudioFallback(planStream(server, 'item1', remux('eac3', copyUrl), 'ps'))).toBe(true);
+    expect(dolbyAudioFallback(planStream(server, 'item1', remux('ac3', copyUrl), 'ps'))).toBe(true);
+  });
+
+  it('does not when the server converts the audio or the track is not Dolby', () => {
+    const aacOnly = '/videos/item1/master.m3u8?MediaSourceId=src1&AudioCodec=aac,mp3&AudioStreamIndex=1';
+    expect(dolbyAudioFallback(planStream(server, 'item1', remux('eac3', aacOnly), 'ps'))).toBe(false);
+    expect(dolbyAudioFallback(planStream(server, 'item1', remux('aac', copyUrl), 'ps'))).toBe(false);
+  });
+
+  it('follows the chosen audio track', () => {
+    expect(dolbyAudioFallback(planStream(server, 'item1', remux('eac3', copyUrl), 'ps', { audioIndex: 2 }))).toBe(false);
+  });
+
+  it('does not for a direct-played file', () => {
+    const plan = planStream(server, 'item1', { ...remux('eac3', copyUrl), SupportsDirectPlay: true }, 'ps');
+    expect(plan.copiedAudio ?? null).toBeNull();
+    expect(dolbyAudioFallback(plan)).toBe(false);
   });
 });
