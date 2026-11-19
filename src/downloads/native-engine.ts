@@ -13,6 +13,13 @@
  * own, which replaces ours and counts from 0 in the second file. So a
  * continued task is never paused in the library: a pause stops it and keeps
  * the partial file, and a resume asks for the rest again.
+ *
+ * iOS writes to a system file until the end, so it has no partial file for
+ * a Range request. Instead, the patched library keeps the resume data that
+ * URLSession gives with a network error (`resumable` on the error). The
+ * engine reports the error as usual, and the next start of the same download
+ * with a resume hint (the manager's retry) continues the task with that data
+ * through `resume()`. A start without a hint, or a cancel, drops the data.
  */
 import type { DownloadEngine, EngineHandlers, ExistingTask } from './engine-types';
 import { joinStep, type RangeAnswer, rangeAnswer, rangeHeaders, type ResumeHint, validatorOf } from './resume';
@@ -27,7 +34,8 @@ export interface NativeTask {
   begin(h: (p: { expectedBytes: number; headers?: Record<string, string | null> }) => void): NativeTask;
   progress(h: (p: { bytesDownloaded: number; bytesTotal: number }) => void): NativeTask;
   done(h: (p: { bytesDownloaded: number }) => void): NativeTask;
-  error(h: (p: { error: string; errorCode: number }) => void): NativeTask;
+  /** `resumable`: the patched iOS library kept the task's resume data (see the note at the top). */
+  error(h: (p: { error: string; errorCode: number; resumable?: boolean }) => void): NativeTask;
   start(): void;
   pause(): Promise<void>;
   resume(): Promise<void>;
@@ -36,6 +44,13 @@ export interface NativeTask {
 
 export interface NativeDownloader {
   supported: boolean;
+  /**
+   * iOS: the library's `maxParallelDownloads` rebuilds the background session
+   * with invalidateAndCancel, which cancels every running download. The app
+   * calls setConfig at each start, so each start restarted the downloads from
+   * byte 0. The manager limits the downloads itself, so iOS leaves it unset.
+   */
+  parallelSettingCancelsTasks?: boolean;
   createDownloadTask(o: { id: string; url: string; destination: string; headers?: Record<string, string>; metadata?: object }): NativeTask;
   getExistingDownloadTasks(): Promise<NativeTask[]>;
   setConfig(c: Record<string, unknown>): void;
@@ -58,6 +73,13 @@ interface JoinMeta {
   destination: string;
   offset: number;
   total: number | null;
+}
+
+/** What a library task object needs. */
+interface TaskRequest {
+  url: string;
+  destination: string;
+  headers: Record<string, string>;
 }
 
 interface Job {
@@ -89,6 +111,25 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
   let handlers: EngineHandlers | null = null;
   const tasks = new Map<string, NativeTask>();
   const jobs = new Map<string, Job>();
+  /** Downloads that failed with resume data kept in the library (iOS), with the request of that task. */
+  const resumable = new Map<string, TaskRequest>();
+
+  /**
+   * A library task object for an id whose task the library still knows (it
+   * has resume data). The library's JS needs a URL and a destination, but the
+   * native side keeps those of the old task.
+   */
+  function handleFor(id: string, req: TaskRequest): NativeTask {
+    return lib.createDownloadTask({ id, url: req.url, destination: req.destination, headers: req.headers, metadata: {} });
+  }
+
+  /** Drops kept resume data: the library's stop removes it with the task. */
+  function dropResumable(id: string): void {
+    const req = resumable.get(id);
+    if (!req) return;
+    resumable.delete(id);
+    void handleFor(id, req).stop().catch(() => undefined);
+  }
 
   function stateOf(t: NativeTask): ExistingTask['state'] {
     switch (t.state) {
@@ -149,10 +190,12 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
           handlers?.onDone(id, bytes);
         });
       })
-      .error(({ error, errorCode }) => {
+      .error(({ error, errorCode, resumable: canContinue }) => {
         if (!live()) return;
         tasks.delete(id);
         const join = jobs.get(id)?.join;
+        const failed = jobs.get(id);
+        if (canContinue && !join && failed?.url) resumable.set(id, { url: failed.url, destination: failed.destination, headers: failed.headers });
         if (join) {
           fs.remove(restPath(join.destination));
           if (errorCode === 416 && join.total && fs.size(join.destination) === join.total) {
@@ -252,7 +295,7 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
       lib.setConfig({
         progressInterval: 1000,
         progressMinBytes: 256 * 1024,
-        maxParallelDownloads: opts.maxParallel,
+        ...(lib.parallelSettingCancelsTasks ? {} : { maxParallelDownloads: opts.maxParallel }),
         isLogsEnabled: false,
         // Android 14+ (user-initiated jobs): a progress notification with Cancel. Older Android: the foreground service notification (patched: progress and Cancel).
         showNotificationsEnabled: true,
@@ -262,6 +305,19 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
     start({ id, url, destination, headers, resume }) {
       const job: Job = { url, destination, headers: headers ?? {}, hint: resume ?? { expectedBytes: null, validator: null }, join: null, parked: false };
       jobs.set(id, job);
+      const kept = resumable.get(id);
+      if (resume && kept) {
+        // The library kept the resume data of the last error: continue from there.
+        resumable.delete(id);
+        const t = bind(handleFor(id, kept));
+        void t.resume().catch(() => {
+          if (tasks.get(id) !== t) return;
+          tasks.delete(id);
+          fresh(id, job);
+        });
+        return;
+      }
+      dropResumable(id);
       if (resume) launch(id, job);
       else fresh(id, job);
     },
@@ -296,6 +352,7 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
     async stop(id) {
       const t = tasks.get(id);
       const job = jobs.get(id);
+      dropResumable(id);
       tasks.delete(id);
       jobs.delete(id);
       const dest = job?.join?.destination ?? (t ? joinMetaOf(t)?.destination : undefined);

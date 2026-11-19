@@ -123,6 +123,50 @@ index deaecd095ff9099218267f26840675341bbda8ce..76a6ec51a941f3e68659e9e902e1aba1
    }
  
    private fun updateNotification() {
+diff --git a/ios/RNBackgroundDownloader.mm b/ios/RNBackgroundDownloader.mm
+index 9f693bf93861b3c5efcaa295d3295073cc95cb93..7af0cd913d3108b221b65b8b5b007731779b5fa0 100644
+--- a/ios/RNBackgroundDownloader.mm
++++ b/ios/RNBackgroundDownloader.mm
+@@ -1595,6 +1595,39 @@ - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didComp
+             }
+         }
+ 
++        // Zoggyfin: a network error (a timeout, a lost connection) often comes with
++        // resume data. Keep it like a pause does: save it to a file, keep the config
++        // (state Canceling, code -999, so getExistingDownloadTasks lists it as paused
++        // after a restart), and tell JS that resumeTask can continue the download.
++        // Without this the whole download started again from byte 0 on every error.
++        if (resumeData != nil && taskConfig.id) {
++            idToResumeDataMap[taskConfig.id] = resumeData;
++            if ([self saveResumeData:resumeData forTaskId:taskConfig.id]) {
++                taskConfig.hasResumeData = YES;
++            }
++            taskConfig.state = NSURLSessionTaskStateCanceling;
++            taskConfig.errorCode = -999;
++            [mmkv setData:[self serialize: taskToConfigMap] forKey:ID_TO_CONFIG_MAP_KEY];
++            [idToTaskMap removeObjectForKey:taskConfig.id];
++            DLog(taskConfig.id, @"[RNBackgroundDownloader] - [didCompleteWithError] kept resume data after error %ld", (long)error.code);
++#ifdef RCT_NEW_ARCH_ENABLED
++            [self safeEmitEvent:@"onDownloadFailed" value:@{
++                @"id": taskConfig.id,
++                @"error": [error localizedDescription],
++                @"errorCode": @(error.code),
++                @"resumable": @YES
++            }];
++#else
++            [self sendEventWithName:@"downloadFailed" body:@{
++                @"id": taskConfig.id,
++                @"error": [error localizedDescription],
++                @"errorCode": @(error.code),
++                @"resumable": @YES
++            }];
++#endif
++            return;
++        }
++
+         // Handle failure
+ #ifdef RCT_NEW_ARCH_ENABLED
+         [self safeEmitEvent:@"onDownloadFailed" value:@{
 diff --git a/plugin/package.json b/plugin/package.json
 deleted file mode 100644
 index 12570ba2083832d54760ee1df0518d1bfba6de20..0000000000000000000000000000000000000000

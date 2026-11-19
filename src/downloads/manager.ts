@@ -271,7 +271,20 @@ class DownloadManager {
           }
           break;
         case 'paused':
-          patchRecord(t.id, (x) => ({ ...x, state: 'paused', bytesDone: t.bytesDone || x.bytesDone }));
+          if (r.state === 'paused') {
+            patchRecord(t.id, (x) => ({ ...x, state: 'paused', bytesDone: t.bytesDone || x.bytesDone }));
+            break;
+          }
+          // iOS also lists a download that failed with resume data (a lost connection)
+          // as paused. The user did not pause it: continue it from that data.
+          patchRecord(t.id, (x) => ({ ...x, state: 'queued', error: null, retryAt: null, bytesDone: t.bytesDone || x.bytesDone }));
+          apply(t.id, { type: 'start', now: Date.now() });
+          void engine.resume(t.id).then((ok) => {
+            if (ok) return;
+            // The library had nothing to continue: the queue starts it again.
+            this.native.delete(t.id);
+            if (downloadsState().records[t.id]?.state === 'downloading') patchRecord(t.id, (x) => ({ ...x, state: 'queued', speed: 0 }));
+          });
           break;
         case 'done':
           this.native.delete(t.id);
