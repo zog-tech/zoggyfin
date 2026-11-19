@@ -254,3 +254,29 @@ describe('native engine: iOS resume data after an error', () => {
     expect(created[1].started).toBe(true);
   });
 });
+
+describe('native engine: library config', () => {
+  function configured(parallelSettingCancelsTasks: boolean) {
+    const setConfig = jest.fn();
+    const lib: NativeDownloader = {
+      supported: true,
+      parallelSettingCancelsTasks,
+      createDownloadTask: (o) => fakeTask(o),
+      getExistingDownloadTasks: async () => [],
+      setConfig,
+      completeHandler: () => undefined,
+    };
+    createNativeEngine(lib, fakeFs({})).configure({ onBegin: jest.fn(), onProgress: jest.fn(), onDone: jest.fn(), onError: jest.fn() }, { maxParallel: 2 });
+    return setConfig.mock.calls[0]?.[0] as Record<string, unknown>;
+  }
+
+  it('does not set the parallel limit where that cancels the running tasks (iOS)', () => {
+    // On iOS the library rebuilt its background session for it at every app start, with
+    // invalidateAndCancel: each running download stopped and started again from byte 0.
+    expect(configured(true)).not.toHaveProperty('maxParallelDownloads');
+  });
+
+  it('sets it elsewhere (Android)', () => {
+    expect(configured(false)).toMatchObject({ maxParallelDownloads: 2 });
+  });
+});

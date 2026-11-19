@@ -44,6 +44,13 @@ export interface NativeTask {
 
 export interface NativeDownloader {
   supported: boolean;
+  /**
+   * iOS: the library's `maxParallelDownloads` rebuilds the background session
+   * with invalidateAndCancel, which cancels every running download. The app
+   * calls setConfig at each start, so each start restarted the downloads from
+   * byte 0. The manager limits the downloads itself, so iOS leaves it unset.
+   */
+  parallelSettingCancelsTasks?: boolean;
   createDownloadTask(o: { id: string; url: string; destination: string; headers?: Record<string, string>; metadata?: object }): NativeTask;
   getExistingDownloadTasks(): Promise<NativeTask[]>;
   setConfig(c: Record<string, unknown>): void;
@@ -288,7 +295,7 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
       lib.setConfig({
         progressInterval: 1000,
         progressMinBytes: 256 * 1024,
-        maxParallelDownloads: opts.maxParallel,
+        ...(lib.parallelSettingCancelsTasks ? {} : { maxParallelDownloads: opts.maxParallel }),
         isLogsEnabled: false,
         // Android 14+ (user-initiated jobs): a progress notification with Cancel. Older Android: the foreground service notification (patched: progress and Cancel).
         showNotificationsEnabled: true,
