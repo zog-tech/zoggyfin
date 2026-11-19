@@ -220,6 +220,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Films with Dolby audio that starts late.** Some 4K web releases have E-AC-3 audio that starts
+  seconds after the video. The server's stream for them had an empty audio entry, and the iPhone
+  stopped with "CoreMediaErrorDomain error -16172". After such a stream fails, the player now asks
+  the server again with AAC audio, at the same place.
 - **Songs in A to Z order.** The Songs and Liked Songs tabs sorted by Jellyfin's sort name, which
   starts with the disc and track number, so the list went through every first track, then every
   second track, and a song looked missing from its place in the alphabet. They now sort by the

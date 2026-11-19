@@ -130,6 +130,25 @@ describe('mpv device profile (desktop app)', () => {
   });
 });
 
+describe('noDolbyHlsAudio', () => {
+  const hlsAudio = (p: DeviceProfile) => p.TranscodingProfiles?.find((t) => t.Protocol === 'hls')?.AudioCodec;
+
+  it('keeps AC-3 and E-AC-3 in HLS by default', () => {
+    expect(hlsAudio(buildDeviceProfile(appleCapabilities({ av1: false, hevc: true }), opts))).toBe('aac,ac3,eac3,mp3');
+  });
+
+  it('asks the server for AAC instead of a copy of Dolby audio', () => {
+    const o = { ...opts, noDolbyHlsAudio: true };
+    expect(hlsAudio(buildDeviceProfile(appleCapabilities({ av1: false, hevc: true }), o))).toBe('aac,mp3');
+    expect(hlsAudio(buildDeviceProfile(mpvCapabilities(), o))).toBe('aac,mp3');
+  });
+
+  it('leaves direct play alone', () => {
+    const p = buildDeviceProfile(appleCapabilities({ av1: false, hevc: true }), { ...opts, noDolbyHlsAudio: true });
+    expect(videoDirect(p)[0]?.AudioCodec).toBe('aac,ac3,eac3,mp3,flac,alac');
+  });
+});
+
 describe('ExoPlayer device profile (Android)', () => {
   const d = (hardware: boolean, maxLevel = 0, tenBit = false, maxWidth = 0, maxHeight = 0) => ({
     hardware,
