@@ -31,6 +31,8 @@ export interface NativeTask {
   bytesDownloaded: number;
   bytesTotal: number;
   metadata?: Record<string, unknown>;
+  /** The file path, when the library knows it (a task listed after an app start). */
+  destination?: string;
   begin(h: (p: { expectedBytes: number; headers?: Record<string, string | null> }) => void): NativeTask;
   progress(h: (p: { bytesDownloaded: number; bytesTotal: number }) => void): NativeTask;
   done(h: (p: { bytesDownloaded: number }) => void): NativeTask;
@@ -51,6 +53,11 @@ export interface NativeDownloader {
    * byte 0. The manager limits the downloads itself, so iOS leaves it unset.
    */
   parallelSettingCancelsTasks?: boolean;
+  /**
+   * iOS: the library keeps resume data under the task id (a pause, a system
+   * cancel, and with the patch a network error), and lists it as a paused task.
+   */
+  keepsResumeData?: boolean;
   createDownloadTask(o: { id: string; url: string; destination: string; headers?: Record<string, string>; metadata?: object }): NativeTask;
   getExistingDownloadTasks(): Promise<NativeTask[]>;
   setConfig(c: Record<string, unknown>): void;
@@ -90,8 +97,25 @@ interface Job {
   hint: ResumeHint;
   /** Set for a continued download. */
   join: (JoinMeta & { answer: RangeAnswer['kind'] | null }) | null;
-  /** Paused by a stop (a continued download): a resume asks for the rest again. */
+  /** Paused by a stop (a continued download), or paused while the library was asked: a resume starts the job again. */
   parked: boolean;
+  /** iOS: asking the library what it holds for the id (see `reclaim`). */
+  probing?: boolean;
+}
+
+/**
+ * The request for the task object of kept resume data. A task bound after an
+ * app start has no job (its request is not known in this launch), so it gets
+ * stand-in values: the library's JS only checks that they are not empty, and
+ * the native resume and stop find the task by its id alone. Without this, an
+ * error after an app start lost the resume data and the download began at 0.
+ */
+function keptRequest(job: Job | undefined, task?: NativeTask): TaskRequest {
+  return {
+    url: job?.url || 'zoggyfin://kept-resume-data',
+    destination: job?.destination || task?.destination || 'kept-resume-data',
+    headers: job?.headers ?? {},
+  };
 }
 
 /** Android DownloadManager: the server sent a range it did not ask for. */
@@ -195,7 +219,7 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
         tasks.delete(id);
         const join = jobs.get(id)?.join;
         const failed = jobs.get(id);
-        if (canContinue && !join && failed?.url) resumable.set(id, { url: failed.url, destination: failed.destination, headers: failed.headers });
+        if (canContinue && !join) resumable.set(id, keptRequest(failed, task));
         if (join) {
           fs.remove(restPath(join.destination));
           if (errorCode === 416 && join.total && fs.size(join.destination) === join.total) {
@@ -288,8 +312,120 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
     ).start();
   }
 
+  /**
+   * Starts a job. With a resume hint on iOS, it first asks the library what it
+   * still holds for the id (`reclaim`). Without a hint on iOS, it clears the
+   * id in the library first, so an old task or old resume data can never run
+   * next to the new task.
+   */
+  function go(id: string, job: Job, resume: boolean): void {
+    if (!resume) {
+      dropResumable(id);
+      if (lib.keepsResumeData) void handleFor(id, job).stop().catch(() => undefined);
+      fresh(id, job);
+      return;
+    }
+    if (lib.keepsResumeData) {
+      resumable.delete(id);
+      void reclaim(id, job);
+      return;
+    }
+    const kept = resumable.get(id);
+    if (kept) {
+      resumable.delete(id);
+      resumeKept(id, job, bind(handleFor(id, kept)));
+      return;
+    }
+    launch(id, job);
+  }
+
+  /** Continues a library task from its resume data; a refusal starts the job again. */
+  function resumeKept(id: string, job: Job, t: NativeTask): void {
+    void t.resume().catch(() => {
+      if (tasks.get(id) !== t) return;
+      tasks.delete(id);
+      launch(id, job);
+    });
+  }
+
+  /**
+   * iOS: the library may hold the download although this engine does not know
+   * it. Resume data can come after the restart's list (the system cancels a
+   * task with resume data at a force quit or an app update), an error event
+   * can come before the app listens, and a task can still run. So a resume
+   * start asks the library: resume data continues, a running task is bound
+   * again, and only nothing at all starts over.
+   */
+  async function reclaim(id: string, job: Job): Promise<void> {
+    job.probing = true;
+    let found: NativeTask | undefined;
+    try {
+      found = (await lib.getExistingDownloadTasks()).find((t) => t.id === id);
+    } catch {
+      found = undefined;
+    }
+    job.probing = false;
+    // Stopped, started again or paused while the library answered.
+    if (jobs.get(id) !== job || tasks.has(id) || job.parked) return;
+    if (found && !joinMetaOf(found)) {
+      if (found.state === 'PAUSED') {
+        resumeKept(id, job, bind(found));
+        return;
+      }
+      if (found.state === 'DOWNLOADING' || found.state === 'PENDING') {
+        bind(found);
+        return;
+      }
+    } else if (found) {
+      // A continued download is never resumed in the library (see the note at the top).
+      await found.stop().catch(() => undefined);
+      fs.remove(restPath(joinMetaOf(found)?.destination ?? job.destination));
+      if (jobs.get(id) !== job || tasks.has(id) || job.parked) return;
+    }
+    launch(id, job);
+  }
+
+  /** See `DownloadEngine.nudge`: pause (the library keeps the resume data), then continue at once. */
+  async function nudge(id: string, wanted: () => boolean): Promise<boolean> {
+    const t = tasks.get(id);
+    const job = jobs.get(id);
+    // A continued (Range) task is never paused in the library; a probe decides on its own.
+    if (!t || job?.join || job?.probing) return true;
+    try {
+      await t.pause();
+    } catch {
+      return true;
+    }
+    if (tasks.get(id) !== t) return true;
+    let found: NativeTask | undefined;
+    try {
+      found = (await lib.getExistingDownloadTasks()).find((x) => x.id === id);
+    } catch {
+      found = undefined;
+    }
+    // Stopped or started again meanwhile; or paused by the user: the data stays for the resume.
+    if (tasks.get(id) !== t || !wanted()) return true;
+    if (found && !joinMetaOf(found) && (found.state === 'DOWNLOADING' || found.state === 'PENDING')) {
+      bind(found);
+      return true;
+    }
+    if (found && !joinMetaOf(found) && found.state === 'PAUSED') {
+      const next = bind(found);
+      try {
+        await next.resume();
+        return true;
+      } catch {
+        if (tasks.get(id) === next) tasks.delete(id);
+        return false;
+      }
+    }
+    tasks.delete(id);
+    return false;
+  }
+
   return {
     supported: lib.supported,
+    ...(lib.keepsResumeData ? { nudge } : {}),
     configure(h, opts) {
       handlers = h;
       lib.setConfig({
@@ -305,24 +441,15 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
     start({ id, url, destination, headers, resume }) {
       const job: Job = { url, destination, headers: headers ?? {}, hint: resume ?? { expectedBytes: null, validator: null }, join: null, parked: false };
       jobs.set(id, job);
-      const kept = resumable.get(id);
-      if (resume && kept) {
-        // The library kept the resume data of the last error: continue from there.
-        resumable.delete(id);
-        const t = bind(handleFor(id, kept));
-        void t.resume().catch(() => {
-          if (tasks.get(id) !== t) return;
-          tasks.delete(id);
-          fresh(id, job);
-        });
-        return;
-      }
-      dropResumable(id);
-      if (resume) launch(id, job);
-      else fresh(id, job);
+      go(id, job, !!resume);
     },
     async pause(id) {
       const job = jobs.get(id);
+      if (job?.probing) {
+        // Still asking the library: the probe sees this and starts nothing.
+        job.parked = true;
+        return;
+      }
       if (job?.join) {
         // See the note at the top: a continued task stops, and its partial file stays.
         const t = tasks.get(id);
@@ -341,7 +468,7 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
       const job = jobs.get(id);
       if (job?.parked) {
         job.parked = false;
-        launch(id, job);
+        if (!job.probing) go(id, job, true);
         return true;
       }
       const t = tasks.get(id);
@@ -352,12 +479,15 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
     async stop(id) {
       const t = tasks.get(id);
       const job = jobs.get(id);
+      const kept = resumable.has(id);
       dropResumable(id);
       tasks.delete(id);
       jobs.delete(id);
       const dest = job?.join?.destination ?? (t ? joinMetaOf(t)?.destination : undefined);
       if (dest) fs.remove(restPath(dest));
-      await t?.stop();
+      if (t) await t.stop();
+      // iOS: resume data this engine does not know of (see `reclaim`) goes with the download.
+      else if (lib.keepsResumeData && !kept) await handleFor(id, keptRequest(job)).stop().catch(() => undefined);
     },
     async existing() {
       const found = await lib.getExistingDownloadTasks();

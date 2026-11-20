@@ -37,6 +37,8 @@ jest.mock('../engine', () => ({
     existing: async () => [
       { id: 'failed-1', state: 'paused', bytesDone: 4_000, bytesTotal: 9_000 },
       { id: 'paused-1', state: 'paused', bytesDone: 2_000, bytesTotal: 9_000 },
+      // A task that waits for an iOS retry: the library gives the bytes of the new try.
+      { id: 'waiting-1', state: 'downloading', bytesDone: 0, bytesTotal: 0 },
     ],
     start: (...a: unknown[]) => mockStart(...a),
     pause: (...a: unknown[]) => mockPause(...(a as [])),
@@ -61,6 +63,7 @@ describe('download reattach after a restart', () => {
     useDownloadsStore.setState({ records: {}, collections: {} });
     putRecord(rec({ itemId: 'failed-1', state: 'failed', bytesDone: 4_000, bytesTotal: 9_000, error: 'The request timed out.', attempts: 1, retryAt: Date.now() + 60_000 }));
     putRecord(rec({ itemId: 'paused-1', state: 'paused', bytesDone: 2_000, bytesTotal: 9_000 }));
+    putRecord(rec({ itemId: 'waiting-1', state: 'downloading', bytesDone: 821_000, bytesTotal: 2_459_000 }));
     await downloadManager.init();
     await flush();
 
@@ -73,5 +76,12 @@ describe('download reattach after a restart', () => {
     expect(downloadsState().records['paused-1']?.state).toBe('paused');
     expect(mockResume).not.toHaveBeenCalledWith('paused-1');
     expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('keeps the byte count of a task that iOS lists with 0 bytes while it waits for a retry', () => {
+    const waiting = downloadsState().records['waiting-1'];
+    expect(waiting?.state).toBe('downloading');
+    expect(waiting?.bytesDone).toBe(821_000);
+    expect(waiting?.bytesTotal).toBe(2_459_000);
   });
 });

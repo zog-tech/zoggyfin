@@ -245,6 +245,21 @@ describe('native engine: iOS resume data after an error', () => {
     expect(created[1].options).toMatchObject({ url: 'https://s/x', destination: DEST });
   });
 
+  it('continues a task from before an app restart after an error with resume data', async () => {
+    // A download that ran through an app start (OTA, update, the system ended the app):
+    // the engine binds the library's task, and no start() of this launch knows its request.
+    const old = fakeTask({ id: 'a', url: '', destination: '' } as FakeTask['options'], 'DOWNLOADING', 4_000);
+    const { engine, created, h } = setup({}, [old]);
+    await engine.existing();
+    old.fire.error?.({ error: 'The network connection was lost.', errorCode: -1005, resumable: true });
+    expect(h.onError).toHaveBeenCalledWith('a', 'The network connection was lost.', -1005);
+
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    const again = created[0];
+    expect(again.resumed).toBe(true);
+    expect(again.started).toBe(false);
+  });
+
   it('keeps an error without resume data as it was', () => {
     const { engine, created, h } = setup({});
     engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
@@ -278,5 +293,256 @@ describe('native engine: library config', () => {
 
   it('sets it elsewhere (Android)', () => {
     expect(configured(false)).toMatchObject({ maxParallelDownloads: 2 });
+  });
+});
+
+describe('native engine: iOS asks the library before a resume start', () => {
+  // The library can hold a download that the engine does not know: resume data that
+  // came after the restart's list (a force quit, an app update), an error before the
+  // app listened, or a task that still runs. A resume start asks it first.
+  const hint = { expectedBytes: 9_000, validator: null };
+  const req = { id: 'a', url: 'https://s/x', destination: DEST, resume: hint };
+
+  function ios(list: () => Promise<FakeTask[]> | FakeTask[] = () => []) {
+    const created: FakeTask[] = [];
+    const log: string[] = [];
+    const lib: NativeDownloader = {
+      supported: true,
+      parallelSettingCancelsTasks: true,
+      keepsResumeData: true,
+      createDownloadTask: (o) => {
+        const t = fakeTask(o);
+        const { start, stop } = t;
+        t.start = () => (log.push(`start ${o.url}`), start());
+        t.stop = () => (log.push(`stop ${o.id ?? t.id}`), stop());
+        created.push(t);
+        return t;
+      },
+      getExistingDownloadTasks: async () => list(),
+      setConfig: () => undefined,
+      completeHandler: () => undefined,
+    };
+    const engine = createNativeEngine(lib, fakeFs({}));
+    const h: jest.Mocked<EngineHandlers> = { onBegin: jest.fn(), onProgress: jest.fn(), onDone: jest.fn(), onError: jest.fn() };
+    engine.configure(h, { maxParallel: 2 });
+    return { engine, created, log, h };
+  }
+  const listed = (state: string, bytes = 4_000, metadata?: object) =>
+    fakeTask({ id: 'a', url: '', destination: '', metadata } as FakeTask['options'], state, bytes);
+
+  it('continues resume data that came after the restart list', async () => {
+    const held = listed('PAUSED');
+    const { engine, created } = ios(() => [held]);
+    engine.start(req);
+    await flush();
+    expect(held.resumed).toBe(true);
+    expect(created.some((t) => t.started)).toBe(false);
+  });
+
+  it('continues a task from before an app restart after an error with resume data', async () => {
+    const old = listed('DOWNLOADING');
+    let list = [old];
+    const { engine, created, h } = ios(() => list);
+    await engine.existing();
+    old.fire.error?.({ error: 'The network connection was lost.', errorCode: -1005, resumable: true });
+    expect(h.onError).toHaveBeenCalledWith('a', 'The network connection was lost.', -1005);
+    const held = listed('PAUSED');
+    list = [held];
+    engine.start(req);
+    await flush();
+    expect(held.resumed).toBe(true);
+    expect(created.some((t) => t.started)).toBe(false);
+    held.fire.progress?.({ bytesDownloaded: 6_000, bytesTotal: 9_000 });
+    expect(h.onProgress).toHaveBeenLastCalledWith('a', 6_000, 9_000);
+  });
+
+  it('continues again after each later error', async () => {
+    let held = listed('PAUSED');
+    const { engine, created } = ios(() => [held]);
+    for (let i = 0; i < 3; i++) {
+      engine.start(req);
+      await flush();
+      expect(held.resumed).toBe(true);
+      held.fire.error?.({ error: 'lost', errorCode: -1005, resumable: true });
+      held = listed('PAUSED', 5_000 + i);
+    }
+    expect(created.some((t) => t.started)).toBe(false);
+  });
+
+  it('binds a task that still runs instead of starting a second one', async () => {
+    const running = listed('DOWNLOADING');
+    const { engine, created, h } = ios(() => [running]);
+    engine.start(req);
+    await flush();
+    expect(created.some((t) => t.started)).toBe(false);
+    expect(running.resumed).toBe(false);
+    running.fire.progress?.({ bytesDownloaded: 7_000, bytesTotal: 9_000 });
+    expect(h.onProgress).toHaveBeenLastCalledWith('a', 7_000, 9_000);
+    running.fire.done?.({ bytesDownloaded: 9_000 });
+    expect(h.onDone).toHaveBeenCalledWith('a', 9_000);
+  });
+
+  it('starts from 0 only when the library holds nothing', async () => {
+    const { engine, created } = ios(() => []);
+    engine.start(req);
+    await flush();
+    expect(created.filter((t) => t.started).map((t) => t.options.url)).toEqual(['https://s/x']);
+  });
+
+  it('starts from 0 when the library cannot list its tasks', async () => {
+    const { engine, created } = ios(() => Promise.reject(new Error('ERR_SESSION_NIL')));
+    engine.start(req);
+    await flush();
+    expect(created.filter((t) => t.started)).toHaveLength(1);
+  });
+
+  it('starts from 0 when the library refuses the resume', async () => {
+    const held = listed('PAUSED');
+    held.resume = async () => {
+      throw new Error('ERR_RESUME_TASK');
+    };
+    const { engine, created } = ios(() => [held]);
+    engine.start(req);
+    await flush();
+    await flush();
+    expect(created.filter((t) => t.started)).toHaveLength(1);
+  });
+
+  it('starts nothing when paused while the library answers, and continues on resume', async () => {
+    let answer: (l: FakeTask[]) => void = () => undefined;
+    let held = listed('PAUSED');
+    let calls = 0;
+    const { engine, created } = ios(() => {
+      calls++;
+      return calls === 1 ? new Promise<FakeTask[]>((r) => (answer = r)) : [held];
+    });
+    engine.start(req);
+    await engine.pause('a');
+    answer([held]);
+    await flush();
+    expect(held.resumed).toBe(false);
+    expect(created.some((t) => t.started)).toBe(false);
+    held = listed('PAUSED');
+    expect(await engine.resume('a')).toBe(true);
+    await flush();
+    expect(held.resumed).toBe(true);
+  });
+
+  it('starts nothing when cancelled while the library answers, and clears the id there', async () => {
+    let answer: (l: FakeTask[]) => void = () => undefined;
+    const held = listed('PAUSED');
+    const { engine, created, log } = ios(() => new Promise<FakeTask[]>((r) => (answer = r)));
+    engine.start(req);
+    await engine.stop('a');
+    answer([held]);
+    await flush();
+    expect(held.resumed).toBe(false);
+    expect(created.some((t) => t.started)).toBe(false);
+    expect(log).toContain('stop a');
+  });
+
+  it('a second start while the library answers wins; the first answer does nothing', async () => {
+    let calls = 0;
+    const answers: ((l: FakeTask[]) => void)[] = [];
+    const { engine, created } = ios(() => {
+      calls++;
+      return new Promise<FakeTask[]>((r) => answers.push(r));
+    });
+    engine.start(req);
+    engine.start(req);
+    answers[1]([]);
+    await flush();
+    answers[0]([]);
+    await flush();
+    expect(calls).toBe(2);
+    expect(created.filter((t) => t.started)).toHaveLength(1);
+  });
+
+  it('stops a continued (Range) task instead of resuming it in the library', async () => {
+    const joined = listed('PAUSED', 100, { zfJoin: { destination: DEST, offset: 4_000, total: 9_000 } });
+    const { engine, created } = ios(() => [joined]);
+    engine.start(req);
+    await flush();
+    expect(joined.resumed).toBe(false);
+    expect(joined.stopped).toBe(true);
+    expect(created.filter((t) => t.started)).toHaveLength(1);
+  });
+
+  it('a start without a hint clears the id in the library before the new task', () => {
+    const { engine, log } = ios();
+    engine.start({ id: 'a', url: 'https://s/t.mp4', destination: DEST });
+    expect(log).toEqual(['stop a', 'start https://s/t.mp4']);
+  });
+
+  it('ignores events of the old task after the library task is bound again', async () => {
+    const old = listed('DOWNLOADING');
+    let list = [old];
+    const { engine, h } = ios(() => list);
+    await engine.existing();
+    old.fire.error?.({ error: 'lost', errorCode: -1005, resumable: true });
+    const held = listed('PAUSED');
+    list = [held];
+    engine.start(req);
+    await flush();
+    old.fire.progress?.({ bytesDownloaded: 1, bytesTotal: 9_000 });
+    old.fire.error?.({ error: 'late', errorCode: -999 });
+    expect(h.onProgress).not.toHaveBeenCalledWith('a', 1, 9_000);
+    expect(h.onError).toHaveBeenCalledTimes(1);
+  });
+
+  describe('nudge of a stalled task', () => {
+    async function running(list: () => FakeTask[]) {
+      const env = ios(list);
+      env.engine.start({ id: 'a', url: 'https://s/x', destination: DEST });
+      const t = env.created.find((x) => x.started)!;
+      let paused = false;
+      t.pause = async () => void (paused = true);
+      return { ...env, t, wasPaused: () => paused };
+    }
+
+    it('pauses the task and continues it at once from its resume data', async () => {
+      const held = listed('PAUSED', 821_000);
+      const { engine, t, wasPaused, h } = await running(() => [held]);
+      expect(await engine.nudge!('a', () => true)).toBe(true);
+      expect(wasPaused()).toBe(true);
+      expect(held.resumed).toBe(true);
+      // Events of the paused task object no longer count; the continued one reports.
+      t.fire.progress?.({ bytesDownloaded: 1, bytesTotal: 9 });
+      held.fire.progress?.({ bytesDownloaded: 900_000, bytesTotal: 2_000_000 });
+      expect(h.onProgress).toHaveBeenCalledTimes(1);
+      expect(h.onProgress).toHaveBeenLastCalledWith('a', 900_000, 2_000_000);
+    });
+
+    it('says so when the system kept nothing, so the manager starts it again', async () => {
+      const { engine } = await running(() => []);
+      expect(await engine.nudge!('a', () => true)).toBe(false);
+      expect(await engine.resume('a')).toBe(false);
+    });
+
+    it('keeps a download paused that the user paused meanwhile', async () => {
+      const held = listed('PAUSED', 821_000);
+      const { engine } = await running(() => [held]);
+      expect(await engine.nudge!('a', () => false)).toBe(true);
+      expect(held.resumed).toBe(false);
+      // The user's resume continues it.
+      expect(await engine.resume('a')).toBe(true);
+    });
+
+    it('binds a task the library still runs', async () => {
+      const live = listed('DOWNLOADING', 821_000);
+      const { engine } = await running(() => [live]);
+      expect(await engine.nudge!('a', () => true)).toBe(true);
+      expect(live.resumed).toBe(false);
+    });
+
+    it('does nothing for an id with no task', async () => {
+      const { engine } = ios();
+      expect(await engine.nudge!('zzz', () => true)).toBe(true);
+    });
+
+    it('is only offered where the library keeps resume data (iOS)', () => {
+      const { engine } = setup({});
+      expect(engine.nudge).toBeUndefined();
+    });
   });
 });

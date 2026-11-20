@@ -64,6 +64,7 @@ const fs: EngineFs = {
 const lib: NativeDownloader = {
   supported: !Platform.isTV,
   parallelSettingCancelsTasks: Platform.OS === 'ios',
+  keepsResumeData: Platform.OS === 'ios',
   createDownloadTask: (o) => createDownloadTask(o) as unknown as NativeTask,
   getExistingDownloadTasks: async () => (await getExistingDownloadTasks()) as unknown as NativeTask[],
   setConfig: (c) => setConfig(c),
