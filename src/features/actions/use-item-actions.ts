@@ -9,7 +9,7 @@ import type { BaseItemDto } from '@/api/types';
 import { useApi } from '@/api/use-api';
 import { router, useGlobalSearchParams } from 'expo-router';
 
-import { downloads, downloadsSupported } from '@/downloads';
+import { asksDownloadQuality, downloads, downloadsSupported } from '@/downloads';
 import { loadItemFacts, needsItemFacts } from '@/extensions/runtime';
 import { useExtensions } from '@/extensions/store';
 import { downloadsState, statusOf, useDownloadsStore } from '@/downloads/store';
@@ -27,6 +27,7 @@ import { actionsFor, actionTitle, type AppActionApi, type ItemAction, itemAction
 import { openTabRoot } from '@/features/extensions/tab-nav';
 
 import { registerBuiltinItemActions } from './builtin';
+import { openDownloadQuality } from './download-quality-store';
 
 registerBuiltinItemActions();
 
@@ -101,7 +102,11 @@ export function useItemActions(item: BaseItemDto | undefined) {
       ...(downloadsSupported
         ? {
             downloadStatus: (it: BaseItemDto) => statusOf(it.Id ?? '', downloadsState()),
-            download: (it: BaseItemDto) => void downloads.download(it),
+            // A new download of one video asks for its quality; a container, audio or a download that is there already does not.
+            download: (it: BaseItemDto) => {
+              if (asksDownloadQuality(it) && statusOf(it.Id ?? '', downloadsState()).state === 'none') openDownloadQuality(it);
+              else void downloads.download(it);
+            },
             removeDownload: async (it: BaseItemDto) => {
               const s = downloadsState();
               const id = it.Id ?? '';
