@@ -34,6 +34,13 @@ export interface DownloadEngine {
   stop(id: string): Promise<void>;
   /** Tasks that the system kept while the app was not running. Binds them to the handlers. */
   existing(): Promise<ExistingTask[]>;
+  /**
+   * iOS only: continues a stalled task from its resume data now, instead of
+   * after the system's retry wait (see `stall.ts`). `wanted` says whether the
+   * download should still run (a pause meanwhile keeps it paused). False when
+   * the system had nothing to continue: the manager then starts it again.
+   */
+  nudge?(id: string, wanted: () => boolean): Promise<boolean>;
   /** Tells the system that a finished task was handled (lets iOS release the background session). */
   finish(id: string): void;
 }

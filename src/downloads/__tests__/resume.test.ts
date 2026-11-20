@@ -4,16 +4,19 @@ import { rec } from '../test-utils/fixtures';
 describe('canResume', () => {
   const plan = { method: 'original' as const, file: 'media.mkv' };
 
-  it('continues the same original file when bytes arrived before', () => {
+  it('continues the same original file', () => {
     expect(canResume(rec({ mediaFile: 'media.mkv', bytesDone: 500 }), plan)).toBe(true);
   });
 
-  it('starts over for a transcode, another file, or no bytes', () => {
+  it('lets the engine check a record that shows 0 bytes (iOS reported 0 while it waited for a retry)', () => {
+    expect(canResume(rec({ mediaFile: 'media.mkv', bytesDone: 0 }), plan)).toBe(true);
+  });
+
+  it('starts over for a transcode or another file', () => {
     expect(canResume(rec({ mediaFile: 'media.mkv', bytesDone: 500, method: 'transcode' }), plan)).toBe(false);
     expect(canResume(rec({ mediaFile: 'media.mkv', bytesDone: 500 }), { ...plan, method: 'transcode' })).toBe(false);
     expect(canResume(rec({ mediaFile: 'media.mp4', bytesDone: 500 }), plan)).toBe(false);
     expect(canResume(rec({ mediaFile: '', bytesDone: 500 }), plan)).toBe(false);
-    expect(canResume(rec({ mediaFile: 'media.mkv', bytesDone: 0 }), plan)).toBe(false);
   });
 
   it('gives the engine the known size and validator', () => {

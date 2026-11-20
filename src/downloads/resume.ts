@@ -24,11 +24,15 @@ export interface ResumeHint {
 }
 
 /**
- * True when a start of `prev` may keep its partial file: the earlier try and
- * this one download the same original file, and bytes arrived before.
+ * True when a start of `prev` may keep what an earlier try got: the earlier
+ * try and this one download the same original file. The byte count does not
+ * decide it: iOS reported 0 bytes for a task that waited for a retry, and that
+ * 0 made the next start begin from byte 0 although iOS still held the data.
+ * The engine checks what is really there (the partial file, or the library's
+ * resume data on iOS) and starts from 0 when there is nothing.
  */
-export function canResume(prev: Pick<DownloadRecord, 'method' | 'mediaFile' | 'bytesDone'>, plan: { method: 'original' | 'transcode'; file: string }): boolean {
-  return prev.method === 'original' && plan.method === 'original' && !!prev.mediaFile && prev.mediaFile === plan.file && prev.bytesDone > 0;
+export function canResume(prev: Pick<DownloadRecord, 'method' | 'mediaFile'>, plan: { method: 'original' | 'transcode'; file: string }): boolean {
+  return prev.method === 'original' && plan.method === 'original' && !!prev.mediaFile && prev.mediaFile === plan.file;
 }
 
 /** The hint that `canResume` records pass to the engine. */

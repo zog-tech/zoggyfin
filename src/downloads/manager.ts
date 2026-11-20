@@ -38,6 +38,8 @@ import { buildDeviceProfile } from '@/player/device-profile';
 import { mayHaveLyrics } from '@/player/audio/lyrics';
 import { pickSource, playbackInfoBody, type StreamServer } from '@/player/stream';
 import { MAX_BITRATE, usePlaybackSettings } from '@/settings/playback';
+import { isOffline } from '@/lib/online';
+import { AppState } from 'react-native';
 
 import { engine } from './engine';
 import { files } from './files';
@@ -60,6 +62,7 @@ import {
   withResolvedFile,
 } from './extension-media';
 import { canResume, isWholeFile, resumeHint } from './resume';
+import { stallAction } from './stall';
 import { type DownloadEvent, dueForPoll, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
 import { downloadsState, dropCollection, dropRecord, patchRecord, putCollection, putRecord, rekeyRecord, useDownloadsStore } from './store';
 import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadRecord, type LocalImages } from './types';
@@ -155,6 +158,8 @@ class DownloadManager {
   /** Ids whose file is in place and whose extras are being saved. */
   private finishing = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** When each stalled download was last nudged (see `stall.ts`). */
+  private nudgedAt = new Map<string, number>();
   /** Extension downloads whose expired file URL was asked again; once per failure. */
   private refreshed = new Set<string>();
   /** The file the extension named at the last start, for the extras at the end. */
@@ -267,7 +272,9 @@ class DownloadManager {
           else {
             patchRecord(t.id, (x) => ({ ...x, state: 'queued' }));
             apply(t.id, { type: 'start', now: Date.now() });
-            apply(t.id, { type: 'progress', bytesDone: t.bytesDone, bytesTotal: t.bytesTotal || null, now: Date.now() });
+            // iOS lists a task that waits for a retry with the bytes of its new try: 0.
+            // The data is still there, so the record keeps its count until bytes arrive.
+            if (t.bytesDone > 0) apply(t.id, { type: 'progress', bytesDone: t.bytesDone, bytesTotal: t.bytesTotal || null, now: Date.now() });
           }
           break;
         case 'paused':
@@ -395,6 +402,37 @@ class DownloadManager {
     // A record still in its last preparation or finishing waits too (see `preparing`).
     const ready = Object.values(downloadsState().records).filter((r) => r.state !== 'queued' || (mayStart(r) && !this.busy(r.itemId)));
     for (const r of pickToStart(ready, MAX_PARALLEL)) void this.begin(r.itemId);
+    this.checkStalls(now);
+  }
+
+  /** Running downloads that get no bytes: drop the old speed, and on iOS continue them now (see `stall.ts`). */
+  private checkStalls(now: number): void {
+    const canNudge = !!engine.nudge && AppState.currentState === 'active' && !isOffline();
+    for (const r of Object.values(downloadsState().records)) {
+      if (r.state !== 'downloading' || !this.native.has(r.itemId) || this.busy(r.itemId)) continue;
+      const action = stallAction(r, now, { canNudge, lastNudge: this.nudgedAt.get(r.itemId) });
+      if (action === 'quiet') patchRecord(r.itemId, (x) => ({ ...x, speed: 0 }), false);
+      else if (action === 'nudge') void this.nudge(r.itemId, now);
+    }
+  }
+
+  private async nudge(id: string, now: number): Promise<void> {
+    this.nudgedAt.set(id, now);
+    patchRecord(id, (x) => (x.speed === 0 ? x : { ...x, speed: 0 }), false);
+    const wanted = () => downloadsState().records[id]?.state === 'downloading';
+    let ok = true;
+    try {
+      ok = (await engine.nudge?.(id, wanted)) ?? true;
+    } catch (e) {
+      console.warn('[downloads] could not nudge a stalled download', describeError(e).title);
+    }
+    if (ok) return;
+    // The system had nothing to continue: the queue starts it again.
+    this.native.delete(id);
+    if (wanted()) {
+      patchRecord(id, (x) => ({ ...x, state: 'queued', speed: 0 }));
+      this.tick();
+    }
   }
 
   private busy(itemId: string): boolean {
