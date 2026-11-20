@@ -31,6 +31,8 @@ export interface NativeTask {
   bytesDownloaded: number;
   bytesTotal: number;
   metadata?: Record<string, unknown>;
+  /** The file path, when the library knows it (a task listed after an app start). */
+  destination?: string;
   begin(h: (p: { expectedBytes: number; headers?: Record<string, string | null> }) => void): NativeTask;
   progress(h: (p: { bytesDownloaded: number; bytesTotal: number }) => void): NativeTask;
   done(h: (p: { bytesDownloaded: number }) => void): NativeTask;
@@ -92,6 +94,21 @@ interface Job {
   join: (JoinMeta & { answer: RangeAnswer['kind'] | null }) | null;
   /** Paused by a stop (a continued download): a resume asks for the rest again. */
   parked: boolean;
+}
+
+/**
+ * The request for the task object of kept resume data. A task bound after an
+ * app start has no job (its request is not known in this launch), so it gets
+ * stand-in values: the library's JS only checks that they are not empty, and
+ * the native resume and stop find the task by its id alone. Without this, an
+ * error after an app start lost the resume data and the download began at 0.
+ */
+function keptRequest(job: Job | undefined, task: NativeTask): TaskRequest {
+  return {
+    url: job?.url || 'zoggyfin://kept-resume-data',
+    destination: job?.destination || task.destination || 'kept-resume-data',
+    headers: job?.headers ?? {},
+  };
 }
 
 /** Android DownloadManager: the server sent a range it did not ask for. */
@@ -195,7 +212,7 @@ export function createNativeEngine(lib: NativeDownloader, fs: EngineFs): Downloa
         tasks.delete(id);
         const join = jobs.get(id)?.join;
         const failed = jobs.get(id);
-        if (canContinue && !join && failed?.url) resumable.set(id, { url: failed.url, destination: failed.destination, headers: failed.headers });
+        if (canContinue && !join) resumable.set(id, keptRequest(failed, task));
         if (join) {
           fs.remove(restPath(join.destination));
           if (errorCode === 416 && join.total && fs.size(join.destination) === join.total) {

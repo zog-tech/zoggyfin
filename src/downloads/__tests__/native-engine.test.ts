@@ -245,6 +245,21 @@ describe('native engine: iOS resume data after an error', () => {
     expect(created[1].options).toMatchObject({ url: 'https://s/x', destination: DEST });
   });
 
+  it('continues a task from before an app restart after an error with resume data', async () => {
+    // A download that ran through an app start (OTA, update, the system ended the app):
+    // the engine binds the library's task, and no start() of this launch knows its request.
+    const old = fakeTask({ id: 'a', url: '', destination: '' } as FakeTask['options'], 'DOWNLOADING', 4_000);
+    const { engine, created, h } = setup({}, [old]);
+    await engine.existing();
+    old.fire.error?.({ error: 'The network connection was lost.', errorCode: -1005, resumable: true });
+    expect(h.onError).toHaveBeenCalledWith('a', 'The network connection was lost.', -1005);
+
+    engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
+    const again = created[0];
+    expect(again.resumed).toBe(true);
+    expect(again.started).toBe(false);
+  });
+
   it('keeps an error without resume data as it was', () => {
     const { engine, created, h } = setup({});
     engine.start({ id: 'a', url: 'https://s/x', destination: DEST, resume: hint });
