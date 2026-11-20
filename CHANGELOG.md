@@ -13,6 +13,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Choose the quality of each download.** Download on a film, an episode or a video now asks
+  for the quality: Original or a smaller copy (1080p, 720p or 480p, only below the file's own
+  height). Each choice shows the file size or an estimate, so you can pick a smaller copy when the
+  original is too big. The "Download quality" setting is the choice that is ticked. Seasons, shows,
+  collections and music keep using the setting. On iPhone, iPad, Android and the Mac app; the web
+  and TV have no downloads.
 - **Liked Songs and Downloaded in the music pager.** Liked Songs is the second tab, after Home: it
   lists your favourite songs, newest first, with Play and Shuffle for the whole list and the usual
   sort chips. A song you like in the player or the action sheet shows up there. Downloaded is the

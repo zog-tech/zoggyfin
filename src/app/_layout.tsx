@@ -20,6 +20,7 @@ import { ToastHost } from '@/components/toast-host';
 import { downloads, downloadsSupported } from '@/downloads';
 import { ExtensionsHost } from '@/extensions/ui/host';
 import { setNoAccountOpen, useNoAccountStore } from '@/features/offline/use-offline-entries';
+import { DownloadQualityHost } from '@/features/actions/download-quality-sheet';
 import { AddToPlaylistHost } from '@/features/playlists/add-to-playlist';
 import { PlayOnHost } from '@/features/remote/play-on-sheet';
 import { remoteSupported } from '@/features/remote/use-remote';
@@ -165,6 +166,7 @@ function Root({ session }: { session: boolean }) {
               </Stack.Protected>
             </Stack>
             {session ? <AddToPlaylistHost /> : null}
+            {session && downloadsSupported ? <DownloadQualityHost /> : null}
             {session ? <ExtensionsHost /> : null}
             {session && remoteSupported ? <PlayOnHost /> : null}
             <UpdateCardHost />
