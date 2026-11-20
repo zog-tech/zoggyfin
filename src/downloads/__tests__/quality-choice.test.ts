@@ -84,4 +84,11 @@ describe('asksDownloadQuality', () => {
     expect(asksDownloadQuality({ Type: 'Folder', MediaType: 'Video' })).toBe(false);
     expect(asksDownloadQuality({ Type: 'Audio' })).toBe(false);
   });
+
+  it('does not ask when Original is the only choice (a 480p film)', () => {
+    const sd = { MediaSources: [{ Size: 700_000_000, MediaStreams: [{ Type: 'Video' as const, Height: 480 }] }], RunTimeTicks: 58_800_000_000 };
+    expect(asksDownloadQuality({ Type: 'Movie', ...sd })).toBe(false);
+    const hd = { MediaSources: [{ Size: 140_000_000, MediaStreams: [{ Type: 'Video' as const, Height: 1080 }] }], RunTimeTicks: 900_000_000 };
+    expect(asksDownloadQuality({ Type: 'Movie', ...hd })).toBe(true);
+  });
 });

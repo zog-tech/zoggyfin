@@ -38,9 +38,13 @@ export interface QualityChoices {
 
 type ItemFacts = Pick<BaseItemDto, 'MediaSources' | 'RunTimeTicks'>;
 
-/** True when Download asks for the quality: a single video item, not a container or audio. */
-export function asksDownloadQuality(item: Pick<BaseItemDto, 'Type' | 'MediaType'>): boolean {
-  return !isContainer(item) && mediaKindOf(item) === 'video';
+/**
+ * True when Download asks for the quality: a single video item, not a
+ * container or audio, with a smaller copy to offer. A film that is already
+ * 480p has only Original, so it downloads at once.
+ */
+export function asksDownloadQuality(item: Pick<BaseItemDto, 'Type' | 'MediaType' | 'MediaSources' | 'RunTimeTicks'>): boolean {
+  return !isContainer(item) && mediaKindOf(item) === 'video' && downloadQualityChoices(item, 0).choices.length > 1;
 }
 
 export function downloadQualityChoices(item: ItemFacts, defaultQuality: DownloadQuality): QualityChoices {
