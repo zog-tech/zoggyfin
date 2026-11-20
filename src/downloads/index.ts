@@ -35,7 +35,7 @@ import type { ExternalPlayRequest } from '@/player/types';
 
 import { files } from './files';
 import { fileUri, localImageUri, localMediaUri } from './local';
-import { downloadManager, offerDownloadAgain } from './manager';
+import { downloadManager, type DownloadOpts, offerDownloadAgain } from './manager';
 import { isDownloadable } from './plan';
 import { collectionCounts, type CollectionCounts, downloadsState, statusOf, useDownloadsStore } from './store';
 import { buildDownloadedSongs, buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, forServer, jellyfinOnly, onServer, type ServerSection, visibleTo } from './lists';
@@ -50,6 +50,9 @@ export { DOWNLOAD_SCHEMA_VERSION } from './types';
 export { buildDownloadedSongs, buildExtensionSections, buildLists, buildServerSections, type DownloadGroupView, type ExtensionSection, onServer, type ServerSection, searchDownloads, visibleTo } from './lists';
 
 export { DOWNLOAD_QUALITY_OPTIONS, isDownloadable } from './plan';
+export { asksDownloadQuality, downloadQualityChoices, type QualityChoice, type QualityChoices } from './quality-choice';
+export type { DownloadOpts } from './manager';
+export type { DownloadQuality } from './types';
 export { etaSeconds, fraction, isFileMissing } from './state-machine';
 export { chooseMedia, fileUri, localImageUri, localMediaUri } from './local';
 export { isNetworkError, serverOrLocal } from './fallback';
@@ -64,7 +67,8 @@ export const downloadsSupported: boolean = features.downloads && downloadManager
 
 export const downloads = {
   init: () => downloadManager.init(),
-  download: (item: BaseItemDto) => downloadManager.download(item),
+  /** `quality` (a single video item only) overrides the "Download quality" setting for this download. */
+  download: (item: BaseItemDto, opts?: DownloadOpts) => downloadManager.download(item, opts),
   pause: (id: string) => downloadManager.pause(id),
   resume: (id: string) => downloadManager.resume(id),
   retry: (id: string) => downloadManager.retry(id),

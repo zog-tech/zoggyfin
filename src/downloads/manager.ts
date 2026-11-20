@@ -65,10 +65,15 @@ import { canResume, isWholeFile, resumeHint } from './resume';
 import { stallAction } from './stall';
 import { type DownloadEvent, dueForPoll, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
 import { downloadsState, dropCollection, dropRecord, patchRecord, putCollection, putRecord, rekeyRecord, useDownloadsStore } from './store';
-import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadRecord, type LocalImages } from './types';
+import { DOWNLOAD_SCHEMA_VERSION, type DownloadCollection, type DownloadQuality, type DownloadRecord, type LocalImages } from './types';
 
 export const MAX_PARALLEL = 2;
 const ROOT = 'downloads';
+
+/** Options of one download. `quality` overrides the global setting for a single video item. */
+export interface DownloadOpts {
+  quality?: DownloadQuality;
+}
 
 interface Ctx {
   api: Api;
@@ -777,7 +782,7 @@ class DownloadManager {
   }
 
   /** Downloads an item, or every item of a container (album, playlist, season, show). */
-  async download(item: BaseItemDto): Promise<void> {
+  async download(item: BaseItemDto, opts: DownloadOpts = {}): Promise<void> {
     if (!engine.supported || !item.Id) return;
     // Android 13+: the first download asks for notifications (the download does not wait for the answer).
     void askForDownloadNotifications();
@@ -815,7 +820,7 @@ class DownloadManager {
         const what = children.every((c) => mediaKindOf(c) === 'audio') ? (children.length === 1 ? 'song' : 'songs') : children.length === 1 ? 'item' : 'items';
         toast(`Downloading ${children.length} ${what}`, { icon: 'arrow.down.circle' });
       } else {
-        this.enqueue(item, ctx);
+        this.enqueue(item, ctx, undefined, opts.quality);
         toast(`Downloading ${item.Name ?? 'item'}`, { icon: 'arrow.down.circle' });
       }
       this.tick();
@@ -824,7 +829,7 @@ class DownloadManager {
     }
   }
 
-  private enqueue(item: BaseItemDto, ctx: Ctx, group?: DownloadRecord['group']): void {
+  private enqueue(item: BaseItemDto, ctx: Ctx, group?: DownloadRecord['group'], quality?: DownloadQuality): void {
     const id = item.Id ?? '';
     const kind = mediaKindOf(item);
     if (!id || !kind) return;
@@ -857,7 +862,7 @@ class DownloadManager {
       mediaFile: '',
       mediaSourceId: id,
       method: 'original',
-      quality: kind === 'video' ? usePlaybackSettings.getState().downloadQuality : 0,
+      quality: kind === 'video' ? (quality ?? usePlaybackSettings.getState().downloadQuality) : 0,
       images: {},
       subtitles: [],
       hasLyrics: false,
