@@ -13,6 +13,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Lite mode for small devices.** Settings, Playback has Lite mode: Auto (on for Android devices
+  with less than 2 GB of memory, such as a Fire TV Stick), On or Off. In Lite mode Home plays no
+  previews and a TV tab that you leave is closed, so the app uses about a third less memory.
 - **Sign in on a TV with your phone's camera.** Quick Connect on the sign-in page now shows a QR
   code next to the code. Scan it with the phone's camera: Zoggyfin opens Quick Connect with the
   code filled in, and you tap Approve. The page says so when the phone's account is on another
@@ -304,6 +307,10 @@ first commit to today. All of it was built in the first weeks of the project.
 - **Smoother rotation.** Pages, the video player and the music player take the new window size in
   the same render as the new safe-area insets, so a rotation lays them out once instead of jumping
   twice. The Now Playing art no longer loads again at the new size and flashes blurred.
+- **Android: the app no longer runs out of memory during playback on a 1 GB TV stick.** The video
+  player kept up to about 141 MB of video ahead, more than the 128 MB that such a device gives an
+  app, and a Fire TV Stick closed the app during playback and Home previews. On Android devices
+  with less than 2 GB of memory the player now keeps at most 40 MB, and a Home preview at most 8 MB.
 - **TV: Down at the end of a Live TV list stays there.** Down past the last channel (or the last
   entry of the column) moved the focus into the other list, so a held Down ran through the groups.
 - **TV: a slimmer side menu.** The closed rail is narrower and nearer the screen's edge, with a line

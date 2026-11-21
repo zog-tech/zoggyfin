@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 
 import type { DownloadQuality } from '@/downloads/types';
+import { LITE_CHOICES, type LiteChoice } from '@/platform/lite';
 import { readJson, writeJson } from '@/storage/json';
 
 import { migrateSkipSettings, type SkipChoice, type SkipMode, type SkipSettings, withSkipMode } from './skip-modes';
@@ -54,6 +55,8 @@ export interface PlaybackSettings {
   loadWholeVideoChosen: boolean;
   /** TV Home: a short clip of the focused title plays on the billboard after the focus rests (`features/tv/preview.ts`). */
   previews: boolean;
+  /** Lite mode (`platform/lite.ts`): Auto, On or Off. */
+  liteMode: LiteChoice;
 }
 
 const KEY = 'settings.playback.v1';
@@ -68,6 +71,7 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   loadWholeVideo: true,
   loadWholeVideoChosen: false,
   previews: true,
+  liteMode: 'auto',
 };
 
 interface Store extends PlaybackSettings {
@@ -89,6 +93,7 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
       loadWholeVideo: s.loadWholeVideo,
       loadWholeVideoChosen: s.loadWholeVideoChosen,
       previews: s.previews,
+      liteMode: s.liteMode,
     };
     writeJson(KEY, saved);
   },
@@ -107,6 +112,7 @@ export function readPlaybackSettings(saved: unknown): PlaybackSettings {
     if (typeof value === typeof out[key]) (out as unknown as Record<string, unknown>)[key] = value;
   }
   if (!out.loadWholeVideoChosen) out.loadWholeVideo = DEFAULT_PLAYBACK_SETTINGS.loadWholeVideo;
+  if (!LITE_CHOICES.includes(out.liteMode)) out.liteMode = DEFAULT_PLAYBACK_SETTINGS.liteMode;
   return out;
 }
 

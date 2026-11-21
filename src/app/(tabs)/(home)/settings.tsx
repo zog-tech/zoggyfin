@@ -10,6 +10,8 @@ import { useAccounts } from '@/auth/session-store';
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
 import { type Option, OptionSheet } from '@/components/option-sheet';
+import { LITE_CHOICES, type LiteChoice, liteLabel } from '@/platform/lite';
+import { useLite } from '@/platform/use-lite';
 import { DOWNLOAD_QUALITY_OPTIONS, downloadsSupported, useDownloadLists } from '@/downloads';
 import { AdminFixturesGroup, AdminSettingsGroup, AdminShieldButton } from '@/features/admin/entry';
 import { openAddServer, signOutUser } from '@/features/servers/actions';
@@ -280,8 +282,15 @@ function PlaybackSection() {
             ? { title: 'Skip forward', options: skips, selected: st.skipForwardSeconds, set: (v: number) => st.update({ skipForwardSeconds: v }) }
             : null;
   const cellular = Platform.OS !== 'web' && !isTV;
+  const lite = useLite();
+  const [liteOpen, setLiteOpen] = useState(false);
+  const liteOptions: Option<LiteChoice>[] = LITE_CHOICES.map((v) => ({ value: v, label: v === 'auto' ? 'Auto: on for devices with little memory' : v === 'on' ? 'On' : 'Off' }));
+  // Lite mode matters for small Android devices (TV sticks); it is not offered elsewhere.
+  const liteRow = isTV || Platform.OS === 'android';
   return (
-    <Group title="Playback" footer="Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.">
+    <Group
+      title="Playback"
+      footer={`Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
       <SettingsRow icon="gauge" label="Quality on Wi-Fi" value={qualityLabel(st.wifiBitrate)} onPress={() => setPicker('wifi')} />
       {cellular ? (
         <SettingsRow icon="antenna.radiowaves.left.and.right" label="Quality on cellular" value={qualityLabel(st.cellularBitrate)} onPress={() => setPicker('cellular')} />
@@ -305,6 +314,7 @@ function PlaybackSection() {
           />
         }
       />
+      {liteRow ? <SettingsRow icon="gauge" label="Lite mode" value={liteLabel(st.liteMode, lite)} onPress={() => setLiteOpen(true)} /> : null}
       {isTV ? (
         <SettingsRow
           icon="play.rectangle"
@@ -350,6 +360,7 @@ function PlaybackSection() {
         onSelect={(v) => sheet?.set(v)}
         onClose={() => setPicker(null)}
       />
+      <OptionSheet visible={liteOpen} title="Lite mode" options={liteOptions} selected={[st.liteMode]} onSelect={(v) => st.update({ liteMode: v })} onClose={() => setLiteOpen(false)} />
     </Group>
   );
 }

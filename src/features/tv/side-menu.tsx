@@ -17,6 +17,7 @@ import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, type TabsDescriptor, TabSlot, type TabsSlotRenderOptions, TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { Screen } from 'react-native-screens';
 import { TvVisibility } from '@/native/tv-visibility';
+import { useLite } from '@/platform/use-lite';
 
 import { useTvChrome } from './chrome-store';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -151,6 +152,7 @@ function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> |
   // content goes there, never to a page under it that is still in the window.
   const [page, setPage] = useState<FocusTarget | null>(null);
   const shownTab = useTvChrome((st) => st.shownTab);
+  const lite = useLite();
   useEffect(() => {
     setContentGuide(content.current);
     const sync = () => setPage(tvPages.active()?.guide.current ?? null);
@@ -169,7 +171,7 @@ function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> |
       edge (the next row peeks in, as in the streaming apps); scroll views pad their own end.
     */
     <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: fullBleed ? 0 : l.safe.y, paddingBottom: 0 }]}>
-      <TabSlot detachInactiveScreens={!TvVisibility} renderFn={(d, o) => renderTvTab(d, o, shownTab)} />
+      <TabSlot detachInactiveScreens={!TvVisibility} renderFn={(d, o) => renderTvTab(d, o, shownTab, lite)} />
     </TvFocusGuide>
   );
 }
@@ -540,10 +542,11 @@ const TabScreen = memo(
   (a, b) => a.descriptor.route === b.descriptor.route,
 );
 
-function renderTvTab(descriptor: TabsDescriptor, { isFocused: routed, loaded, detachInactiveScreens }: TabsSlotRenderOptions, shown: string | null) {
+function renderTvTab(descriptor: TabsDescriptor, { isFocused: routed, loaded, detachInactiveScreens }: TabsSlotRenderOptions, shown: string | null, lite: boolean) {
   // A tab picked in the menu shows at once, before the router switches (`shownTab`).
   const isFocused = shown ? descriptor.route.name === shown : routed;
-  if (!loaded && !isFocused) return null;
+  // Lite mode: a tab that is not shown is unloaded, with its images (platform/lite.ts). It builds again on return.
+  if ((!loaded || lite) && !isFocused) return null;
   if (TvVisibility) {
     return (
       <TvVisibility key={descriptor.route.key} hidden={!isFocused} style={[StyleSheet.absoluteFill, isFocused ? styles.tabFocused : styles.tabHidden]}>

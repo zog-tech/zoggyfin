@@ -10,7 +10,7 @@ describe('readPlaybackSettings', () => {
 
   it('keeps older saved settings and turns the whole-video load on', () => {
     const old = { wifiBitrate: 20_000_000, cellularBitrate: 4_000_000, skipBackSeconds: 5, skipForwardSeconds: 30, autoplayNext: false, downloadQuality: 720 };
-    expect(readPlaybackSettings(old)).toEqual({ ...old, loadWholeVideo: true, loadWholeVideoChosen: false, previews: true });
+    expect(readPlaybackSettings(old)).toEqual({ ...old, loadWholeVideo: true, loadWholeVideoChosen: false, previews: true, liteMode: 'auto' });
   });
 
   it('ignores an "off" saved before the user chose it', () => {
@@ -21,5 +21,10 @@ describe('readPlaybackSettings', () => {
     expect(readPlaybackSettings({ loadWholeVideo: false, loadWholeVideoChosen: true }).loadWholeVideo).toBe(false);
     expect(readPlaybackSettings({ loadWholeVideo: true, loadWholeVideoChosen: true }).loadWholeVideo).toBe(true);
     expect(readPlaybackSettings({ loadWholeVideo: 'yes', skipBackSeconds: '5' })).toEqual(DEFAULT_PLAYBACK_SETTINGS);
+  });
+
+  it('keeps a Lite mode choice and drops an unknown one', () => {
+    expect(readPlaybackSettings({ liteMode: 'off' }).liteMode).toBe('off');
+    expect(readPlaybackSettings({ liteMode: 'turbo' }).liteMode).toBe('auto');
   });
 });

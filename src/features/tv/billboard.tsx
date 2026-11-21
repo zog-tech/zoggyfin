@@ -13,7 +13,7 @@ import { useFocusEffect } from 'expo-router';
 import { useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { type ComponentRef, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, PixelRatio, StyleSheet, Text, View } from 'react-native';
+import { AppState, PixelRatio, Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { create } from 'zustand';
 
@@ -27,6 +27,8 @@ import { resolveImage } from '@/images/resolve-image';
 import { episodeLabel, formatDuration, playedFraction } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { usePlayer } from '@/player';
+import { previewBufferOptions } from '@/player/buffer-ahead';
+import { useLite } from '@/platform/use-lite';
 import { usePlayerStore } from '@/player/store';
 import { usePlaybackSettings } from '@/settings/playback';
 import {
@@ -294,7 +296,9 @@ export function HomeHero() {
  * app in front, nothing else playing and the setting on. A focus move ends it at once.
  */
 function BillboardPreview({ item }: { item: BaseItemDto }) {
-  const enabled = usePlaybackSettings((st) => st.previews);
+  // Lite mode plays no previews: one preview player took about 90 MB on a 1 GB TV stick (platform/lite.ts).
+  const lite = useLite();
+  const enabled = usePlaybackSettings((st) => st.previews) && !lite;
   // Not while music or a video plays (a paused queue restored at start does not count).
   const busy = usePlayerStore((st) => !!st.now && st.playing);
   // The side menu is open: the user is on the way somewhere else.
@@ -341,6 +345,8 @@ function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
   const player = useVideoPlayer(uri ? { uri } : null, (p) => {
     // A preview is no "now playing" for the system (lock screen, media buttons stay with the app's player).
     p.showNowPlayingNotification = false;
+    // A short clip: a short buffer. ExoPlayer's default took about 45 MB of a TV stick's Java heap.
+    p.bufferOptions = previewBufferOptions(Platform.OS);
     p.volume = 0.8;
     p.currentTime = start;
     p.play();

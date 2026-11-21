@@ -33,6 +33,7 @@ import { audioSession } from '@/player/audio/session';
 import '@/invite/wiring';
 import { useInviteLinks } from '@/invite/use-invite-links';
 import { startIptvSync } from '@/iptv';
+import { startMemProbe } from '@/platform/mem-probe';
 import { installAppContextMenu } from '@/components/context-menu';
 import { isDesktop } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
@@ -110,6 +111,8 @@ function Root({ session }: { session: boolean }) {
   useEffect(() => startUpdateChecks(), []);
   // Over-the-air updates (phones, tablets, TV): check after start and on return to the foreground; the card offers a restart.
   useEffect(() => startOtaChecks(), []);
+  // EXPO_PUBLIC_MEM_PROBE=1 builds only: the JS heap in the device log every 5 s.
+  useEffect(() => startMemProbe(), []);
   // A nearby session from before a restart: the session sheet offers to rejoin it.
   useEffect(() => nearby().loadSaved(), []);
   // Mac app: no browser menu (save image, reload) on a right click that no control took.
