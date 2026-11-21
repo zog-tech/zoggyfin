@@ -17,11 +17,16 @@
  * the lock screen next and previous commands come here as events, so the
  * JavaScript queue moves, not only the native window. An older binary has
  * neither the event nor `setRemoteTrackCommands`: it keeps the old behaviour.
+ *
+ * On iOS and Android the engine also watches each start the app asks for
+ * (`start-watch.ts`): a track that comes ready but stays silent (a catalog
+ * song after a long first answer) gets its play again.
  */
 import { type AudioPlaylist, createAudioPlaylist, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { Platform } from 'react-native';
 
 import { type SessionPhase, resumedByItself, transition } from './session-phase';
+import { START_KICK_DELAY_MS, type StartStatus, type StartWatch, startVerdict } from './start-watch';
 
 export interface EngineTrack {
   /** The queue entry key. */
@@ -66,6 +71,8 @@ interface RemoteTrackPlaylist {
 
 /** iOS only: the session handling of the other platforms works as it is. */
 const guardSession = Platform.OS === 'ios';
+/** Native players only: a browser refuses a play that no tap started, so a second try changes nothing there. */
+const watchStarts = Platform.OS !== 'web';
 
 export class AudioEngine {
   private playlist: AudioPlaylist | null = null;
@@ -92,6 +99,12 @@ export class AudioEngine {
   private phase: SessionPhase = 'idle';
   /** Goes up on every play and pause: a play that waits for the session must not run after a pause. */
   private intent = 0;
+  /** A start that has given no sound yet (`start-watch.ts`), its last status and the timer of the next try. */
+  private start: StartWatch | null = null;
+  private startStatus: StartStatus | null = null;
+  private startTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The load whose track gave sound: its later plays are not watched, so a pause the app did not ask for is never undone. */
+  private soundToken = -1;
 
   /** The last web status: its track and time (see `webFix`). */
   private webLast: { index: number; time: number } | null = null;
@@ -150,7 +163,9 @@ export class AudioEngine {
       const duration = s.duration > 0 && Number.isFinite(s.duration) ? s.duration + offset : 0;
       if (duration > 0) this.lastDuration = duration;
       if (!this.loading && this.pendingStart === null) {
-        this.onPhase({ type: 'status', playing: s.playing, buffering: s.isBuffering, loaded: s.isLoaded, finished: !!s.didJustFinish && index >= this.keys.length - 1 });
+        const st = { playing: s.playing, buffering: s.isBuffering, loaded: s.isLoaded, finished: !!s.didJustFinish && index >= this.keys.length - 1 };
+        this.onPhase({ type: 'status', ...st });
+        this.watchStart(st);
       }
       this.emit({
         type: 'status',
@@ -201,6 +216,58 @@ export class AudioEngine {
       if (token !== this.loadToken || intent !== this.intent || this.phase !== 'playing') return;
       if (this.playlist) this.playNow(this.playlist);
     });
+  }
+
+  /** A status while a start is watched: stop watching once sound came, or play again when the track sits ready and silent. */
+  private watchStart(st: StartStatus) {
+    if (st.playing && !st.buffering) this.soundToken = this.loadToken;
+    const w = this.start;
+    if (!w) return;
+    this.startStatus = st;
+    const verdict = startVerdict(w, st, Date.now());
+    if (verdict === 'started' || verdict === 'give-up') {
+      this.clearStart();
+      return;
+    }
+    if (verdict === 'wait') {
+      this.cancelStartTimer();
+      return;
+    }
+    if (this.startTimer) return;
+    this.startTimer = setTimeout(() => {
+      this.startTimer = null;
+      this.kickStart(w);
+    }, START_KICK_DELAY_MS);
+  }
+
+  /** Plays the watched start again, when it still sits ready and silent and nothing replaced it. */
+  private kickStart(w: StartWatch) {
+    const p = this.playlist;
+    const st = this.startStatus;
+    if (!p || !st || this.start !== w || w.token !== this.loadToken) return;
+    if (startVerdict(w, st, Date.now()) !== 'kick') return;
+    w.kicks += 1;
+    if (__DEV__) console.log(`[audio] start stayed silent, play again (${w.kicks})`);
+    if (guardSession && this.phase === 'lost') {
+      // The player stopped by itself: the session may be inactive, so activate it before the play.
+      const intent = this.intent;
+      void this.restoreSession().then(() => {
+        if (this.start === w && w.token === this.loadToken && intent === this.intent) this.playNow(p);
+      });
+      return;
+    }
+    this.playNow(p);
+  }
+
+  private cancelStartTimer() {
+    if (this.startTimer) clearTimeout(this.startTimer);
+    this.startTimer = null;
+  }
+
+  private clearStart() {
+    this.cancelStartTimer();
+    this.start = null;
+    this.startStatus = null;
   }
 
   /** Sets the audio mode and activates the session again after it was lost. Never throws. */
@@ -274,6 +341,7 @@ export class AudioEngine {
     else await this.audioMode();
     const p = this.ensure();
     this.loadToken += 1;
+    this.clearStart();
     this.loading = true;
     p.pause();
     this.phase = transition(this.phase, { type: 'pause' });
@@ -351,12 +419,17 @@ export class AudioEngine {
   /** Plays, then sets the rate again: on iOS, play() puts the rate back to 1. */
   private playNow(p: AudioPlaylist): void {
     this.phase = transition(this.phase, { type: 'play' });
+    // Watch the start until it gives sound (start-watch.ts). A second play of the same start keeps its count.
+    if (watchStarts && this.soundToken !== this.loadToken && (!this.start || this.start.token !== this.loadToken)) {
+      this.start = { token: this.loadToken, kicks: 0, since: Date.now() };
+    }
     p.play();
     if (this.rate !== 1) p.playbackRate = this.rate;
   }
 
   pause(): void {
     this.intent += 1;
+    this.clearStart();
     this.phase = transition(this.phase, { type: 'pause' });
     this.lastPosition = this.livePosition();
     this.statusPlaying = false;
@@ -414,6 +487,7 @@ export class AudioEngine {
   unload(): void {
     const p = this.playlist;
     this.loadToken += 1;
+    this.clearStart();
     this.phase = transition(this.phase, { type: 'pause' });
     this.loading = false;
     this.pendingStart = null;

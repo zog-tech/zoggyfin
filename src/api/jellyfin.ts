@@ -785,8 +785,15 @@ export async function search(api: Api, userId: string, term: string, signal?: Ab
 // ---- Playback --------------------------------------------------------------------
 
 /** POST /Items/{id}/PlaybackInfo with the device profile. The answer picks direct play or a transcode. */
-export async function getPlaybackInfo(api: Api, itemId: string, body: PlaybackInfoDto): Promise<PlaybackInfoResponse> {
-  const res = await getMediaInfoApi(api).getPostedPlaybackInfo({ itemId, userId: body.UserId ?? undefined, playbackInfoDto: body });
+/**
+ * `timeoutMs`: a longer wait than the client's default, for a catalog song
+ * (the server fetches the file before it answers).
+ */
+export async function getPlaybackInfo(api: Api, itemId: string, body: PlaybackInfoDto, opts: { timeoutMs?: number } = {}): Promise<PlaybackInfoResponse> {
+  const res = await getMediaInfoApi(api).getPostedPlaybackInfo(
+    { itemId, userId: body.UserId ?? undefined, playbackInfoDto: body },
+    opts.timeoutMs ? { timeout: opts.timeoutMs } : undefined,
+  );
   const data = res.data;
   if (data.ErrorCode) throw new Error(playbackErrorText(data.ErrorCode));
   return data;

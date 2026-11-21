@@ -29,6 +29,7 @@ import { storage } from '@/storage/kv';
 import { audioCapabilities } from '../capabilities';
 import { controlGate, queueGate, togglePauses, type UserControl } from '../control-gate';
 import { buildDeviceProfile } from '../device-profile';
+import { playbackInfoBody } from '../stream';
 import { isForeignDownload, outboxOnly, withOutbox } from '../outbox-transport';
 import { ProgressReporter, secondsToTicks, ticksToSecondsExact, toServerReport } from '../progress-reporter';
 import { initialPlayerState, type NowPlaying, playerState, setPlayerState } from '../store';
@@ -56,6 +57,7 @@ import {
   type QueueSource,
   type QueueState,
   removeEntry,
+  replaceItem,
   restoreQueue,
   setShuffle,
   upcomingEntries,
@@ -79,6 +81,8 @@ const POSITION_KEY = 'audio.position.v1';
 const RATE_KEY = 'audio.longFormRate';
 /** Previous restarts the track when it has played longer than this. */
 const RESTART_SECONDS = 3;
+/** A catalog song: the server fetches the file before PlaybackInfo answers, which can take a while. */
+const CATALOG_FETCH_TIMEOUT_MS = 3 * 60_000;
 
 interface Ctx {
   api: Api;
@@ -169,6 +173,8 @@ class AudioSession {
   /** Nearby (true): no progress reports. SyncPlay (false): the guest's own server gets them. */
   private sharedNoReports = true;
   private trackListeners = new Set<(key: string) => void>();
+  /** The queue entry whose catalog song the server is fetching now (`fetchCatalogSong`). */
+  private catalogFetch: string | null = null;
 
   constructor() {
     this.engine.subscribe(this.onEngine);
@@ -468,12 +474,17 @@ class AudioSession {
   /** Loads the current entry into the engine. */
   private async startCurrent(opts: { autoplay: boolean; startSeconds?: number }): Promise<void> {
     const id = ++this.loadId;
-    const q = audioState().queue;
-    const entry = currentEntry(q);
+    let entry = currentEntry(audioState().queue);
     if (!entry) return;
     await this.finishReporter(this.engine.loaded ? this.engine.position : playerState().position);
     this.bitrate = bitrateFor(usePlaybackSettings.getState(), await onCellular());
     if (id !== this.loadId) return;
+    if (this.needsCatalogFetch(entry)) {
+      const saved = await this.fetchCatalogSong(entry, id, opts.startSeconds ?? 0);
+      if (id !== this.loadId) return;
+      if (saved) entry = saved;
+    }
+    const q = audioState().queue;
     const duration = ticksToSecondsExact(entry.item.RunTimeTicks);
     let start = opts.startSeconds ?? 0;
     let resumed = false;
@@ -506,6 +517,57 @@ class AudioSession {
     this.afterTrackStart(entry);
     this.watchAppState();
     this.persistQueue();
+  }
+
+  /** A catalog song that would stream from the active server (not a download, not a listen-together guest). */
+  private needsCatalogFetch(entry: QueueEntry<AudioItem>): boolean {
+    if (!isCatalogSong(entry.item) || this.shared || isOffline()) return false;
+    if (findDownload(entry.item.Id)?.state === 'completed') return false;
+    const active = useSessionStore.getState().session?.serverId;
+    return !!active && (!entry.item.ServerId || entry.item.ServerId === active);
+  }
+
+  /**
+   * A catalog song is not on the server's disk yet. Before, its stream request
+   * itself waited while the server fetched the file, and on iOS the player
+   * could stay paused once the answer came: the song started only when the
+   * user pressed play. Now PlaybackInfo comes first: the server fetches the
+   * file to its library before it answers, and the song then has its real
+   * id, a clean name and its album (as in `downloads/manager.ts`). The queue
+   * entry takes that item, and the stream that follows answers at once.
+   * Returns the entry with the saved item, or null to go on with the catalog
+   * entry as before (any failure: the stream request fetches it then).
+   */
+  private async fetchCatalogSong(entry: QueueEntry<AudioItem>, id: number, start: number): Promise<QueueEntry<AudioItem> | null> {
+    let ctx: Ctx;
+    try {
+      ctx = context();
+    } catch {
+      return null;
+    }
+    // The fetch can take a while: the old track stops and the player shows this song as loading.
+    this.engine.unload();
+    this.publish(entry, start, 'loading');
+    this.catalogFetch = entry.key;
+    try {
+      const profile = buildDeviceProfile(audioCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
+      const body = playbackInfoBody({ userId: ctx.userId, profile, maxBitrate: profile.MaxStreamingBitrate ?? this.bitrate });
+      await jf.getPlaybackInfo(ctx.api, entry.item.Id, body, { timeoutMs: CATALOG_FETCH_TIMEOUT_MS });
+      if (id !== this.loadId) return null;
+      const full = await jf.getItem(ctx.api, ctx.userId, entry.item.Id);
+      if (id !== this.loadId || !full.Id) return null;
+      const q = audioState().queue;
+      const nq = replaceItem(q, entry.key, slimItem(full));
+      const saved = currentEntry(nq);
+      if (nq === q || saved?.key !== entry.key) return null;
+      setAudioState({ queue: nq });
+      return saved;
+    } catch (e) {
+      if (id === this.loadId) console.warn('[audio] catalog fetch failed', describeError(e).title);
+      return null;
+    } finally {
+      if (this.catalogFetch === entry.key) this.catalogFetch = null;
+    }
   }
 
   private startReporter(entry: QueueEntry<AudioItem>) {
@@ -855,6 +917,8 @@ class AudioSession {
   }
 
   private doResume(): void {
+    // The server is fetching the current catalog song: it starts when the fetch ends.
+    if (this.catalogFetch && this.catalogFetch === currentEntry(audioState().queue)?.key) return;
     if (!this.engine.loaded) {
       const st = playerState();
       void this.startCurrent({ autoplay: true, startSeconds: st.status === 'ended' ? 0 : st.position });

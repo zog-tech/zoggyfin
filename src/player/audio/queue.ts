@@ -163,6 +163,20 @@ export function clearUpcoming<T>(q: QueueState<T>): QueueState<T> {
   return { ...q, entries: keep, original: q.original.filter((k) => keys.has(k)) };
 }
 
+/**
+ * Puts another item in the entry with this key, which keeps its key and its
+ * place (a catalog song that the server saved under its real id). The same
+ * queue when there is no such entry.
+ */
+export function replaceItem<T>(q: QueueState<T>, key: string, item: T): QueueState<T> {
+  const at = q.entries.findIndex((e) => e.key === key);
+  const old = q.entries[at];
+  if (!old) return q;
+  const entries = [...q.entries];
+  entries[at] = { ...old, item };
+  return { ...q, entries };
+}
+
 /** Makes the entry with this key current. */
 export function jumpTo<T>(q: QueueState<T>, key: string): QueueState<T> {
   const at = q.entries.findIndex((e) => e.key === key);

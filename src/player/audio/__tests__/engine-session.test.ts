@@ -142,6 +142,84 @@ describe('audio engine session (iOS)', () => {
     expect(events).toEqual(['next', 'previous']);
   });
 
+  describe('a start that stays silent', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    /** A load whose track came ready (a catalog song after a long first answer) but did not start. */
+    async function silentStart(): Promise<AudioEngine> {
+      const engine = new AudioEngine();
+      await engine.load({ key: 'a', uri: 'a.mp3' }, null, 0, true);
+      fake.order = [];
+      status(false);
+      return engine;
+    }
+
+    it('plays again, with the session activated first', async () => {
+      await silentStart();
+      expect(fake.order).toEqual([]);
+      jest.advanceTimersByTime(800);
+      await flush();
+      expect(fake.order).toEqual(['activate', 'play']);
+    });
+
+    it('stops after a few tries', async () => {
+      await silentStart();
+      for (let i = 0; i < 5; i++) {
+        jest.advanceTimersByTime(800);
+        await flush();
+        status(false);
+      }
+      expect(fake.order.filter((x) => x === 'play')).toHaveLength(3);
+    });
+
+    it('does not play again after the app paused', async () => {
+      const engine = await silentStart();
+      engine.pause();
+      jest.advanceTimersByTime(800);
+      await flush();
+      expect(fake.order).toEqual([]);
+    });
+
+    it('does not play again once the track gave sound (a later pause is not undone)', async () => {
+      await silentStart();
+      status(true);
+      await flush();
+      // A pause the app did not ask for (a call, the lock screen).
+      status(false);
+      fake.order = [];
+      jest.advanceTimersByTime(800);
+      await flush();
+      expect(fake.order).not.toContain('play');
+    });
+
+    it('waits while the track buffers', async () => {
+      await silentStart();
+      fake.playlist?.listeners.get('playlistStatusUpdate')?.({
+        currentIndex: 0,
+        currentTime: 0,
+        isLoaded: true,
+        isBuffering: true,
+        playing: false,
+        duration: 200,
+        didJustFinish: false,
+      });
+      jest.advanceTimersByTime(800);
+      await flush();
+      expect(fake.order).toEqual([]);
+    });
+
+    it('a load that was not asked to play is not watched', async () => {
+      const engine = new AudioEngine();
+      await engine.load({ key: 'a', uri: 'a.mp3' }, null, 0, false);
+      status(false);
+      fake.order = [];
+      jest.advanceTimersByTime(800);
+      await flush();
+      expect(fake.order).toEqual([]);
+    });
+  });
+
   it('an older binary without the patch keeps the native lock screen commands', async () => {
     fake.patched = false;
     const engine = new AudioEngine();
