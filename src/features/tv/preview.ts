@@ -5,6 +5,7 @@
  * billboard (billboard.tsx) plays it.
  */
 import type { BaseItemDto } from '@/api/types';
+import type { MediaCapabilities, VideoCodec } from '@/player/device-profile';
 
 const TICKS_PER_SECOND = 10_000_000;
 
@@ -36,4 +37,24 @@ export function previewStart(item: Pick<BaseItemDto, 'Type' | 'RunTimeTicks'>): 
 export function previewUrl(opts: { baseUrl: string; itemId: string; token: string }): string {
   const q = new URLSearchParams({ static: 'true', MediaSourceId: opts.itemId, ApiKey: opts.token });
   return `${opts.baseUrl.replace(/\/+$/, '')}/Videos/${encodeURIComponent(opts.itemId)}/stream?${q.toString()}`;
+}
+
+const CODECS: Record<string, VideoCodec> = { h264: 'h264', avc: 'h264', hevc: 'hevc', h265: 'hevc', av1: 'av1', vp9: 'vp9' };
+
+/**
+ * True when the device decodes the item's video as it is: a preview plays the original file, with
+ * no transcode. A 4K or 10-bit HEVC file on a 1080p TV stick played its sound over the still art
+ * (the audio decoder worked, the video decoder did not). False until the full item with its media
+ * streams has loaded.
+ */
+export function previewPlayable(item: Pick<BaseItemDto, 'MediaStreams'>, caps: Pick<MediaCapabilities, 'videoCodecs' | 'maxSize' | 'hevcTenBit'>): boolean {
+  if (!item.MediaStreams) return false;
+  const video = item.MediaStreams.find((st) => st.Type === 'Video');
+  if (!video) return false;
+  const codec = CODECS[(video.Codec ?? '').toLowerCase()];
+  if (!codec || !caps.videoCodecs.includes(codec)) return false;
+  const max = caps.maxSize?.[codec];
+  if (max && ((video.Width ?? 0) > max.width || (video.Height ?? 0) > max.height)) return false;
+  if (codec === 'hevc' && caps.hevcTenBit === false && (video.BitDepth ?? 8) > 8) return false;
+  return true;
 }

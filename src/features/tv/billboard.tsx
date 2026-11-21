@@ -12,7 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { type ComponentRef, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ComponentRef, createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, PixelRatio, Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { create } from 'zustand';
@@ -28,6 +28,7 @@ import { episodeLabel, formatDuration, playedFraction } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { usePlayer } from '@/player';
 import { previewBufferOptions } from '@/player/buffer-ahead';
+import { mediaCapabilities } from '@/player/capabilities';
 import { useLite } from '@/platform/use-lite';
 import { usePlayerStore } from '@/player/store';
 import { usePlaybackSettings } from '@/settings/playback';
@@ -51,7 +52,7 @@ import {
 
 import { noteHomeMove, setPreviewPause, useTvChrome } from './chrome-store';
 import { tvFocusRest } from './focus-settle';
-import { PREVIEW_DELAY_MS, PREVIEW_LENGTH_MS, previewStart, previewUrl } from './preview';
+import { PREVIEW_DELAY_MS, PREVIEW_LENGTH_MS, previewPlayable, previewStart, previewUrl } from './preview';
 import { TvRowScroll, useRowFade } from './shelf';
 import { TvButton } from './tv-button';
 
@@ -118,8 +119,10 @@ export function Billboard() {
   const artW = Math.round(width * 0.72);
   const artH = Math.round((artW * 9) / 16);
   const server = useImageServer();
-  // One backdrop at the size it shows (capped), so a focus move loads a small image.
-  const scale = Math.min(PixelRatio.get(), 1.5);
+  // One backdrop at the size it shows (capped), so a focus move loads a small image. Lite mode: 1x (a
+  // backdrop under a dark fade loses nothing at TV distance; about half the bytes of 1.5x).
+  const lite = useLite();
+  const scale = lite ? 1 : Math.min(PixelRatio.get(), 1.5);
   const art = item ? resolveImage(item, 'backdrop', { width: Math.round(artW * scale), height: Math.round(artH * scale) }, server) : null;
   // A movie or show with no wide art falls back to its tall poster: show all of it at the edge, not a slice.
   const tall = art?.kind === 'remote' && item?.Type !== 'Episode' && (art.source === 'Primary' || art.source === 'SeriesPrimary');
@@ -317,7 +320,8 @@ function BillboardPreview({ item }: { item: BaseItemDto }) {
   }, []);
   const start = previewStart(item);
   const id = item.Id ?? null;
-  const allowed = enabled && !busy && !menuOpen && visible && front && start !== null && !!id;
+  const playable = useMemo(() => previewPlayable(item, mediaCapabilities()), [item]);
+  const allowed = enabled && playable && !busy && !menuOpen && visible && front && start !== null && !!id;
   // The preview of `id`, armed after a rest. A move pauses it at once (noteHomeMove) and starts
   // the rest again; the moves are followed outside React, so a move renders nothing here.
   const [armed, setArmed] = useState<{ id: string; at: number } | null>(null);

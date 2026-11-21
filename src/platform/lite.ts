@@ -5,7 +5,9 @@
  *
  * In Lite mode:
  * - Home plays no previews (one preview player took about 90 MB),
- * - a TV tab that you leave is unloaded, not kept in the background.
+ * - a TV tab that you leave is unloaded, not kept in the background,
+ * - a page change empties the image memory cache,
+ * - the Home backdrop loads at 1x density (not 1.5x).
  *
  * The choice is Auto (on for an Android device with less than 2 GB of
  * memory), On or Off. Pure, so it is unit-tested; `use-lite.ts` reads the device.

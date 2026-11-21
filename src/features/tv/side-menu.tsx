@@ -20,6 +20,7 @@ import { TvVisibility } from '@/native/tv-visibility';
 import { useLite } from '@/platform/use-lite';
 
 import { useTvChrome } from './chrome-store';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ComponentRef, memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -146,13 +147,18 @@ function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> |
   const l = useLayout();
   const rail = Math.round(tv.railWidth * tvScale(l.width));
   const pathname = usePathname();
+  const lite = useLite();
+  // Lite mode: a page change empties the image memory cache. The images on screen stay; the next page
+  // starts with the memory the last one used (platform/lite.ts).
+  useEffect(() => {
+    if (lite) void Image.clearMemoryCache();
+  }, [lite, pathname]);
   // Home and item pages draw their art from the screen's top edge; their text keeps clear of the inset.
   const fullBleed = pathname === '/' || /\/item\//.test(pathname);
   // The visible page of the tab stacks (Android TV). A focus that comes into the
   // content goes there, never to a page under it that is still in the window.
   const [page, setPage] = useState<FocusTarget | null>(null);
   const shownTab = useTvChrome((st) => st.shownTab);
-  const lite = useLite();
   useEffect(() => {
     setContentGuide(content.current);
     const sync = () => setPage(tvPages.active()?.guide.current ?? null);
