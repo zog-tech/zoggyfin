@@ -37,3 +37,21 @@ export function focusScrollOffset({ offset, top, bottom, viewport, content, marg
   else if (next > offset && max - next < viewport / 2 && top - max >= margin) next = max;
   return Math.min(max, Math.max(0, next));
 }
+
+/** The space kept above a row that the page brings to its top. */
+export const ROW_TOP_MARGIN = 0.04;
+
+/**
+ * Where the page scrolls when a row of tiles takes the focus: the row (with
+ * its title) goes to the top of the page, like the streaming apps, so no part
+ * of the row above stays at the top edge, cut off by it. Near the start the
+ * page goes all the way up, so what is above the first row shows (the page
+ * title, an item's art). The offset never leaves the content: the last rows
+ * stop where the page ends.
+ */
+export function rowScrollOffset({ top, viewport, content, margin }: Omit<FocusScrollInput, 'offset' | 'bottom'>): number {
+  const max = Math.max(0, content - viewport);
+  const next = top - margin;
+  if (next < viewport * 0.25) return 0;
+  return Math.min(max, Math.max(0, next));
+}

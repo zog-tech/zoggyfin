@@ -18,7 +18,7 @@ import { type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEve
 import { isNativeTV } from '@/platform/tv';
 
 import type { FocusTarget } from './focus';
-import { FOCUS_SCROLL_MARGIN, focusScrollOffset } from './focus-scroll';
+import { FOCUS_SCROLL_MARGIN, focusScrollOffset, ROW_TOP_MARGIN, rowScrollOffset } from './focus-scroll';
 import { tvDrivenScroll } from './scroll';
 import { type TvRowPage, TvRowScroll } from './shelf';
 
@@ -65,7 +65,10 @@ export function useTvPageScroll(
       (_x, y, _w, h) => {
         const { viewport, content: height } = size.current;
         if (!viewport) return;
-        const next = focusScrollOffset({ offset: goal.current, top: y, bottom: y + h, viewport, content: height, margin: Math.round(viewport * FOCUS_SCROLL_MARGIN) });
+        // A row of tiles goes to the top of the page; any other control keeps a margin from the edges.
+        const next = p?.row
+          ? rowScrollOffset({ top: y, viewport, content: height, margin: Math.round(viewport * ROW_TOP_MARGIN) })
+          : focusScrollOffset({ offset: goal.current, top: y, bottom: y + h, viewport, content: height, margin: Math.round(viewport * FOCUS_SCROLL_MARGIN) });
         if (Math.abs(next - goal.current) < 1) return;
         goal.current = next;
         glidingUntil.current = Date.now() + GLIDE_MS;

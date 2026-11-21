@@ -6,8 +6,10 @@ import { usePrefetchItem } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
 import { BillboardRows, showOnBillboard } from '@/features/tv/billboard';
+import { noteHomeMove } from '@/features/tv/chrome-store';
 import { tvFocusRest } from '@/features/tv/focus-settle';
-import { TvShelf } from '@/features/tv/shelf';
+import { TvShelf, useRowFade } from '@/features/tv/shelf';
+import Animated from 'react-native-reanimated';
 import { useOpenItem } from '@/lib/navigation';
 import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
 
@@ -66,19 +68,23 @@ export function ItemRow({
   const l = useLayout();
   const width = l.rowTile[shape === 'thumb' ? 'thumb' : shape];
   const press = onPress ?? open;
-  // Long press (right click on the web and the Mac app) opens the item actions. Not on TV: Select is the press there.
+  // Long press (right click on the web and the Mac app) opens the item actions. On TV only a row that
+  // asks for one has it (a row whose Select plays: its long press opens the item page).
   const menu = useItemMenu();
-  const longPress = l.tv ? undefined : (onLongPress ?? menu.open);
-  // TV Home: art-only tiles; the billboard above shows the focused one.
+  const longPress = l.tv ? onLongPress : (onLongPress ?? menu.open);
+  // TV Home: art-only tiles (Continue watching keeps its progress bar); the billboard above shows the focused one.
   const billboard = useContext(BillboardRows) && l.tv;
-  const artOnly = billboard && !titleOnArt;
+  const artOnly = billboard;
   const section = useRef<ComponentRef<typeof View> | null>(null);
+  // TV Home: the row fades as it slides up past the focused row's line (useRowFade).
+  const fade = useRowFade(Math.round(l.height * 0.14));
   // TV: Select on a tile that kept the focus a moment opens a page whose data is loaded.
   const prefetch = usePrefetchItem();
   // TV: one stable function for every tile (the tile is a memo). The billboard and the
   // prefetch wait until the focus rests; a tile that the focus only passes does nothing.
   const onTileFocus = useCallback(
     (it: BaseItemDto) => {
+      if (billboard) noteHomeMove();
       tvFocusRest.push(() => {
         if (billboard) showOnBillboard(it);
         prefetch(it);
@@ -120,7 +126,7 @@ export function ItemRow({
   // TV: room above and below for the focus scale and ring; a horizontal list clips at its edges.
   const padV = l.tv ? tvFocusBleed(tileHeight(shape, width, !titleOnArt && !artOnly)) : spacing.xs;
   return (
-    <View ref={section} style={[s.section, { marginTop: l.sectionGap }]}>
+    <Animated.View ref={section} style={[s.section, { marginTop: l.sectionGap }, billboard ? fade.style : null]}>
       <RowHeader title={title} onSeeAll={onSeeAll} />
       {isLoading && !items ? (
         <Delayed>
@@ -144,6 +150,7 @@ export function ItemRow({
           bleed={tvFocusBleed(width)}
           padV={padV}
           anchor={section}
+          top={billboard ? fade.top : undefined}
           onFocusItem={onTileFocus}
           renderTile={(item, index, onFocus) => (
             <Tile
@@ -154,7 +161,7 @@ export function ItemRow({
               onLongPress={longPress}
               title={tileTitle?.(item)}
               subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
-              titleOnArt={titleOnArt}
+              titleOnArt={titleOnArt && !artOnly}
               preferredFocus={preferredFocus && index === 0}
               artOnly={artOnly}
               index={index}
@@ -174,7 +181,7 @@ export function ItemRow({
         />
       )}
       {menu.sheet}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -185,7 +192,7 @@ export function RowHeader({ title, onSeeAll }: { title: string; onSeeAll?: () =>
   const l = useLayout();
   const text = (
     <>
-      <Text style={s.title} accessibilityRole="header" numberOfLines={1}>
+      <Text style={[s.title, l.tv && s.titleTV]} accessibilityRole="header" numberOfLines={1}>
         {title}
       </Text>
       {onSeeAll ? <Icon name="chevron.right" size={scaled(iconSize.sm)} color={c.text3} weight="semibold" /> : null}
@@ -215,5 +222,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   headerWrap: { flexDirection: 'row' as const, marginBottom: sizes.sectionHeaderGap },
   headerButton: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.xs, flexShrink: 1 },
   title: { ...font(type.title3), color: c.text, flexShrink: 1 },
+  // TV: a row title one step smaller and bold, as in the streaming apps; the tiles carry the page.
+  titleTV: { ...font(type.headline), fontWeight: '700' as const },
   skeletonRow: { flexDirection: 'row' as const, overflow: 'hidden' as const },
 }));

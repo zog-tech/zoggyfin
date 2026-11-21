@@ -52,6 +52,8 @@ export interface PlaybackSettings {
   loadWholeVideo: boolean;
   /** True once the user flipped "Load the whole video ahead". */
   loadWholeVideoChosen: boolean;
+  /** TV Home: a short clip of the focused title plays on the billboard after the focus rests (`features/tv/preview.ts`). */
+  previews: boolean;
 }
 
 const KEY = 'settings.playback.v1';
@@ -65,6 +67,7 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   downloadQuality: 0,
   loadWholeVideo: true,
   loadWholeVideoChosen: false,
+  previews: true,
 };
 
 interface Store extends PlaybackSettings {
@@ -85,6 +88,7 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
       downloadQuality: s.downloadQuality,
       loadWholeVideo: s.loadWholeVideo,
       loadWholeVideoChosen: s.loadWholeVideoChosen,
+      previews: s.previews,
     };
     writeJson(KEY, saved);
   },

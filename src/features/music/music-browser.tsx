@@ -1,6 +1,6 @@
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { DEFAULT_MUSIC_OPTIONS, type MusicOptions, type MusicTab } from '@/api/jellyfin';
@@ -84,9 +84,11 @@ const SORTS: Record<MusicTab, SortChoice[]> = {
  * Home / Liked Songs / Albums / Artists / Playlists / Songs / Genres /
  * Downloaded (or Audiobooks / Authors), as a pager that follows a horizontal
  * swipe. The saved tab opens first; with none saved, the first tab (Home for
- * music).
+ * music). A memo: the Music tab's screen renders on every navigation (its
+ * header options follow the route), and the whole browser rendering with it
+ * cost a TV stick 370 ms.
  */
-export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string; kind?: AudioLibraryKind }) {
+export const MusicBrowser = memo(function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string; kind?: AudioLibraryKind }) {
   const tabs = kind === 'books' ? BOOK_TABS : MUSIC_TABS;
   const lastKey = `music.tab.${libraryId}`;
   const initial = Math.max(0, tabs.findIndex((t) => t.key === storage.getString(lastKey)));
@@ -106,7 +108,7 @@ export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string;
       }
     />
   );
-}
+});
 
 /**
  * Liked Songs opens with the newest songs first, like the liked list of other

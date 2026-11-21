@@ -5,12 +5,14 @@ import { Text, View } from 'react-native';
 import { useChildren, useEpisodes, useNextUp, useSeasons, useSimilar } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
+import { Chip, chipRowTV } from '@/components/chip';
 import { ItemRow, RowHeader } from '@/components/item-row';
 import { ErrorState, LoadingState } from '@/components/states';
 import { shapeForList } from '@/components/tile';
 import { episodeLabel, formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { rowSwipeScreenOptions } from '@/lib/stack-options';
+import { isTV } from '@/platform/tv';
 import { usePlayer } from '@/player';
 import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles } from '@/theme';
 
@@ -114,6 +116,12 @@ export function SeriesDetail({ item, onRefresh }: ViewProps) {
         onRefresh={onRefresh}
         extraActions={trailer.action ? [trailer.action] : undefined}
         footer={
+          isTV ? (
+            <>
+              <TvSeasonEpisodes series={item} seasons={seasons.data} seasonsError={seasons.error} onRetry={seasons.refetch} next={next} />
+              <CastAndSimilar item={item} />
+            </>
+          ) : (
           <>
             {next ? <ItemRow title="Next up" shape="thumb" items={[next]} tileSubtitle={(e) => episodeLabel(e)} tileTitle={(e) => e.Name} /> : null}
             {seasons.error && !seasons.data ? (
@@ -134,10 +142,76 @@ export function SeriesDetail({ item, onRefresh }: ViewProps) {
             )}
             <CastAndSimilar item={item} />
           </>
+          )
         }
       />
       {trailer.sheet}
     </>
+  );
+}
+
+/**
+ * TV: a show's episodes on its own page, like the streaming apps: the seasons
+ * as chips, then the episodes of the chosen season in one row. Select on an
+ * episode plays it (from where it was left); a long press opens its page.
+ * The season of the next episode to watch comes first.
+ */
+function TvSeasonEpisodes({
+  series,
+  seasons,
+  seasonsError,
+  onRetry,
+  next,
+}: {
+  series: BaseItemDto;
+  seasons: BaseItemDto[] | undefined;
+  seasonsError: unknown;
+  onRetry: () => unknown;
+  next: BaseItemDto | undefined;
+}) {
+  const styles = useStyles(makeStyles);
+  const l = useLayout();
+  const player = usePlayer();
+  const open = useOpenItem();
+  const [picked, setPicked] = useState<string | null>(null);
+  const seasonId = picked ?? next?.SeasonId ?? seasons?.[0]?.Id ?? undefined;
+  const season = seasons?.find((x) => x.Id === seasonId);
+  const episodes = useEpisodes(series.Id ?? undefined, seasonId);
+  if (seasonsError && !seasons) {
+    return (
+      <Block>
+        <RowHeader title="Episodes" />
+        <ErrorState error={seasonsError} onRetry={() => void onRetry()} compact />
+      </Block>
+    );
+  }
+  if (seasons && !seasons.length) return null;
+  const many = (seasons?.length ?? 0) > 1;
+  const chipRow = chipRowTV();
+  return (
+    <View style={{ marginTop: l.sectionGap }}>
+      {many ? (
+        <View style={[styles.seasonChips, { paddingHorizontal: l.gutter }, chipRow]}>
+          {(seasons ?? []).map((x) => (
+            <Chip key={x.Id} label={x.Name ?? 'Season'} selected={x.Id === seasonId} onPress={() => setPicked(x.Id ?? null)} />
+          ))}
+        </View>
+      ) : null}
+      <ItemRow
+        key={seasonId}
+        title={many ? 'Episodes' : (season?.Name ?? 'Episodes')}
+        shape="thumb"
+        items={episodes.data}
+        isLoading={episodes.isPending}
+        error={episodes.error}
+        onRetry={episodes.refetch}
+        hideWhenEmpty={false}
+        tileTitle={(e) => [e.IndexNumber != null ? `${e.IndexNumber}.` : null, e.Name].filter(Boolean).join(' ')}
+        tileSubtitle={(e) => formatDuration(e.RunTimeTicks)}
+        onPress={(e) => player.play({ item: e })}
+        onLongPress={open}
+      />
+    </View>
   );
 }
 
@@ -375,6 +449,7 @@ export function CollectionDetail({ item, onRefresh }: ViewProps) {
 }
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
+  seasonChips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const },
   message: { ...font(type.subheadline), color: c.text2, marginTop: spacing.md },
   disc: { ...font(type.footnote), letterSpacing: 0.4, color: c.text2, marginTop: spacing.lg, marginBottom: spacing.xs },
 }));

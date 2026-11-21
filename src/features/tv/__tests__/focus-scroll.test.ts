@@ -1,4 +1,4 @@
-import { focusScrollOffset } from '../focus-scroll';
+import { focusScrollOffset, rowScrollOffset } from '../focus-scroll';
 
 // A 540 dp page with 2000 dp of content and an 80 dp margin.
 const page = { viewport: 540, content: 2000, margin: 80 };
@@ -32,5 +32,18 @@ describe('focusScrollOffset', () => {
 
   it('shows the top of a view taller than the page', () => {
     expect(focusScrollOffset({ ...page, offset: 0, top: 600, bottom: 1200 })).toBe(520);
+  });
+});
+
+describe('rowScrollOffset', () => {
+  const base = { viewport: 500, content: 3000, margin: 20 };
+  it('brings a row to the top of the page', () => {
+    expect(rowScrollOffset({ ...base, top: 800 })).toBe(780);
+  });
+  it('goes all the way up near the start', () => {
+    expect(rowScrollOffset({ ...base, top: 120 })).toBe(0);
+  });
+  it('stops at the end of the content', () => {
+    expect(rowScrollOffset({ ...base, top: 2900 })).toBe(2500);
   });
 });

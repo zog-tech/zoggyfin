@@ -6,6 +6,7 @@ import { useImageServer } from '@/api/use-api';
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
 import { useLocalImage } from '@/downloads';
+import { isTV } from '@/platform/tv';
 import { generatedArt, initials } from '@/images/generated-art';
 import { imageSource } from '@/images/image-url';
 import { type ImageVariant, type ResolvedImage, resolveImage } from '@/images/resolve-image';
@@ -68,7 +69,8 @@ export const ItemImage = memo(function ItemImage({
         }
       : resolved;
 
-  const line = hairline ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, s.hairline, { borderRadius }]} /> : null;
+  // TV: no hairline. It is barely visible on the dark page, and every view of a tile costs render-thread time per frame.
+  const line = hairline && !isTV ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, s.hairline, { borderRadius }]} /> : null;
 
   if (shown.kind === 'generated') {
     return (

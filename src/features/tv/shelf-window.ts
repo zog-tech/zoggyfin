@@ -45,6 +45,21 @@ export function shelfWindow(prev: ShelfWindow | null, focus: number, count: numb
 }
 
 /**
+ * The tiles a row needs while the focus is in another row: only those on
+ * screen. Such a row does not scroll, and its remembered tile `focus` sits
+ * at the leading edge, so the screen holds that tile, the ones after it and
+ * a sliver of the one before it. On a TV stick every mounted view costs
+ * render-thread time on every frame (the whole tree is prepared and drawn),
+ * and the rows away from the focus held about three screens of tiles each.
+ * When the focus comes into the row, it gets its full window again.
+ */
+export function restingWindow(focus: number, count: number, perScreen: number): ShelfWindow {
+  const n = Math.max(0, count);
+  const f = Math.min(Math.max(0, focus), Math.max(0, n - 1));
+  return { start: Math.max(0, f - 1), end: Math.min(n, f + Math.ceil(perScreen) + 1) };
+}
+
+/**
  * How many Home rows (sections) to mount. More rows mount, two at a time,
  * while the content below the focused row is shorter than two list heights.
  * Returns `mounted` when nothing more is needed. Before the list has a size,
