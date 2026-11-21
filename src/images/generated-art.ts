@@ -53,6 +53,53 @@ const COLLECTION_ICONS: Record<string, IconName> = {
   musicvideos: 'play.rectangle',
 };
 
+/**
+ * A film or TV genre's glyph, from words in its name (English, as Jellyfin's metadata names them).
+ * The first rule that matches wins, so "Action & Adventure" is Action. Others keep the masks.
+ */
+const GENRE_RULES: [RegExp, IconName][] = [
+  [/action|martial/, 'flame'],
+  [/comed|sitcom|stand.?up/, 'face.smiling'],
+  [/horror/, 'moon.fill'],
+  [/thrill|suspense/, 'eye'],
+  [/crime|myster|detective|film.?noir/, 'magnifyingglass'],
+  [/sci.?fi|science|space/, 'sparkles'],
+  [/fantas|magic|fairy/, 'wand.and.stars'],
+  [/anim|anime|cartoon/, 'paintpalette'],
+  [/romanc|love/, 'heart'],
+  [/famil|kids|child/, 'person.2'],
+  [/adventure/, 'map'],
+  [/\bwar\b|military/, 'shield'],
+  [/western/, 'sun.max.fill'],
+  [/sport/, 'trophy'],
+  [/music|musical/, 'guitars'],
+  [/documentar|reality|biograph|news/, 'camera'],
+  [/histor/, 'book'],
+  [/nature|travel|food/, 'leaf'],
+  [/talk/, 'mic.fill'],
+  [/foreign|world|international/, 'globe'],
+];
+
+/** A music genre's glyph: guitars for the guitar genres, the microphone for vocal ones, else a note. */
+const MUSIC_GENRE_RULES: [RegExp, IconName][] = [
+  [/rock|metal|punk|grunge|blues|country|folk|indie/, 'guitars'],
+  [/hip.?hop|\brap\b|vocal|\br\s?&?\s?b\b|soul|gospel|nasheed/, 'music.mic'],
+  [/classical|orchestr|soundtrack|score/, 'music.note.list'],
+  [/podcast|spoken|talk|audiobook|quran/, 'waveform'],
+];
+
+function pick(rules: [RegExp, IconName][], name: string): IconName | null {
+  const n = name.toLowerCase();
+  for (const [re, icon] of rules) if (re.test(n)) return icon;
+  return null;
+}
+
+/** The glyph for a genre tile: from its name, else the type glyph. Pure, so it is unit-tested. */
+export function genreIcon(name: string | null | undefined, type: 'Genre' | 'MusicGenre'): IconName {
+  const hit = pick(type === 'MusicGenre' ? MUSIC_GENRE_RULES : GENRE_RULES, name ?? '');
+  return hit ?? ICONS[type];
+}
+
 export function iconForType(type?: string | null, collectionType?: string | null): IconName {
   if (collectionType && COLLECTION_ICONS[collectionType]) return COLLECTION_ICONS[collectionType];
   if (type && ICONS[type]) return ICONS[type];
@@ -68,7 +115,7 @@ export function generatedArt(
   const text = (title ?? '').trim();
   return {
     art: fallbackArt(text, itemId),
-    icon: iconForType(type, collectionType),
+    icon: type === 'Genre' || type === 'MusicGenre' ? genreIcon(text, type) : iconForType(type, collectionType),
     title: text || 'Untitled',
   };
 }
