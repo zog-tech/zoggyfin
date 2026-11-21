@@ -32,10 +32,11 @@ import { appVersion } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
 import { APPEARANCE_OPTIONS, useAppearance } from '@/settings/appearance';
 import { useHomeSettings } from '@/settings/home';
+import { useTabBarSettings } from '@/settings/tab-bar';
 import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from '@/settings/playback';
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
-import { useTabBottomPadding } from '@/lib/tab-bar-inset';
+import { HAS_ACCESSORY, useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { openTabRoot } from '@/features/extensions/tab-nav';
 
 export default function SettingsScreen() {
@@ -101,6 +102,9 @@ export default function SettingsScreen() {
           {isTV ? null : <AppearanceSection />}
 
           <HomeSection />
+
+          {/* Only the iOS 26 tab bar can shrink on scroll. */}
+          {HAS_ACCESSORY ? <TabBarSection /> : null}
 
           <PlaybackSection />
 
@@ -224,6 +228,34 @@ function HomeSection() {
             thumbColor={mediaColors.white}
             {...webSwitchColors}
             accessibilityLabel="Show music on Home"
+          />
+        }
+      />
+    </Group>
+  );
+}
+
+function TabBarSection() {
+  const collapse = useTabBarSettings((st) => st.collapseOnScroll);
+  const update = useTabBarSettings((st) => st.update);
+  const { c } = useTheme();
+  return (
+    <Group title="Tab bar" footer="When on, the tab bar and the mini player shrink while you scroll down a page. Scroll up to bring them back.">
+      <SettingsRow
+        icon="arrow.up.arrow.down"
+        label="Collapse on scroll"
+        onPress={() => update({ collapseOnScroll: !collapse })}
+        role="switch"
+        checked={collapse}
+        last
+        trailing={
+          <Switch
+            value={collapse}
+            onValueChange={(v) => update({ collapseOnScroll: v })}
+            trackColor={{ true: c.accent, false: c.surface3 }}
+            thumbColor={mediaColors.white}
+            {...webSwitchColors}
+            accessibilityLabel="Collapse the tab bar on scroll"
           />
         }
       />

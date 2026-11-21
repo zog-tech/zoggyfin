@@ -15,6 +15,7 @@ import { TvTabsLayout } from '@/features/tv/side-menu';
 import { HAS_ACCESSORY, TAB_BAR_HEIGHT } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
 import { usePlayerStore } from '@/player/store';
+import { tabBarMinimizeBehavior, useTabBarSettings } from '@/settings/tab-bar';
 import { fontFamily, spacing, useLayout, useTheme } from '@/theme';
 
 
@@ -77,6 +78,8 @@ function PhoneTabsLayout() {
   const mini = useMiniPlayerVisible();
   const { c, scheme } = useTheme();
   const badge = useDownloadsBadge();
+  // iOS 26: the bar (and the mini player under it) shrinks on scroll only when the user turned it on (Settings, Tab bar).
+  const minimizeBehavior = useTabBarSettings((st) => tabBarMinimizeBehavior(st));
   // The extension tab slot (features/extensions/placement.ts): on phones only in place of the tab the user chose
   // ("On this phone"), so the bar keeps five; hidden when no page fills it. A change of `hidden` remounts the tab
   // navigator, so it changes only on install, removal, the on/off switch, the phone choice or an account switch.
@@ -88,7 +91,7 @@ function PhoneTabsLayout() {
     <NativeTabs
       tintColor={c.accent}
       sidebarAdaptable
-      minimizeBehavior="onScrollDown"
+      minimizeBehavior={minimizeBehavior}
       {...(Platform.OS === 'web'
         ? {
             indicatorColor: c.accentSoft,
