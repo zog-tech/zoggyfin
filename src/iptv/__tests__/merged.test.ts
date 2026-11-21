@@ -176,7 +176,7 @@ describe('browse column with several providers', () => {
     { providerId: B, label: 'Two' },
   ];
 
-  it('lists the providers after the lists and sections, before the groups', () => {
+  it('lists the providers first, then the lists, sections and groups', () => {
     const groups = [
       { key: FAVOURITES_GROUP, label: 'Favourites', count: 0 },
       { key: RECENTS_GROUP, label: 'Recently watched', count: 0 },
@@ -184,20 +184,20 @@ describe('browse column with several providers', () => {
       { key: 'g:News', label: 'News', count: 2 },
     ];
     const keys = browseEntries(groups, [{ key: 'films', label: 'Films' }], providers).map((e) => e.key);
-    expect(keys).toEqual(['search', 'all', FAVOURITES_GROUP, 'section:films', 'heading:providers', providerEntryKey(ALL_PROVIDERS), providerEntryKey(A), providerEntryKey(B), 'heading:groups', 'g:News', 'providers']);
+    expect(keys).toEqual(['heading:providers', providerEntryKey(ALL_PROVIDERS), providerEntryKey(A), providerEntryKey(B), 'search', 'all', FAVOURITES_GROUP, 'section:films', 'heading:groups', 'g:News', 'providers']);
     // One provider: no provider switch.
     expect(browseEntries(groups, [], providers.slice(0, 1)).some((e) => e.kind === 'provider')).toBe(false);
   });
 
   it('shows only Search, the merged lists and the providers in "All providers"', () => {
     expect(mergedBrowseEntries(2, 0, providers).map((e) => e.key)).toEqual([
-      'search',
-      FAVOURITES_GROUP,
-      RECENTS_GROUP,
       'heading:providers',
       providerEntryKey(ALL_PROVIDERS),
       providerEntryKey(A),
       providerEntryKey(B),
+      'search',
+      FAVOURITES_GROUP,
+      RECENTS_GROUP,
       'providers',
     ]);
   });

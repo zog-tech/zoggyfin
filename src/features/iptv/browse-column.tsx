@@ -1,8 +1,8 @@
 /**
- * The Live TV browse column (wide windows and TV): Search, the lists
- * (Favourites, Recently watched, All channels), other sections, with two
- * providers or more "All providers" and each provider, the provider's
- * groups and Manage providers last. The order is `iptv/browse.ts`.
+ * The Live TV browse column (wide windows and TV): with two providers or
+ * more "All providers" and each provider first, then Search, the lists
+ * (Favourites, Recently watched, All channels), other sections, the
+ * provider's groups and Manage providers last. The order is `iptv/browse.ts`.
  * The selected entry has the `accentSoft` fill; on TV the focus adds the
  * shared row fill (§7.19). On TV the selected entry takes the first focus.
  */
@@ -58,8 +58,12 @@ export function BrowseColumn({
   const list = useRef<ComponentRef<typeof FlatList<BrowseEntry>>>(null);
   const tvScroll = useTvPageScroll(useCallback(() => list.current?.getNativeScrollRef(), []));
   return (
-    // TV: Down at the last entry stays there (see the channel list). A row, so the list keeps its height.
-    <TvFocusGuide trapDown style={[s.trap, { width }]}>
+    /*
+      TV: Up and Down stay in the column. Down at the last entry stayed nowhere (see the channel list), and
+      fast Up from a scrolled column went to the header's Search button, not the entry above. The header
+      is one Up from the channel list. A row, so the list keeps its height.
+    */
+    <TvFocusGuide trapDown trapUp style={[s.trap, { width }]}>
     <FlatList
       ref={list}
       {...tvScroll.props}
@@ -68,6 +72,9 @@ export function BrowseColumn({
       style={[s.column, { width }]}
       contentContainerStyle={{ paddingBottom: bottomPad, paddingTop: spacing.xs }}
       showsVerticalScrollIndicator={false}
+      // TV: every entry stays mounted. A list keeps only a window of rows, and fast Up outran it: the
+      // focus then jumped to the first rows, which a list never unmounts (Search). Entries are small rows.
+      initialNumToRender={isTV ? entries.length : undefined}
       renderItem={({ item }) => {
         if (item.kind === 'heading') {
           return (

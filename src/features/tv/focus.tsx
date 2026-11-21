@@ -266,6 +266,8 @@ export interface TvFocusGuideProps extends Omit<ViewProps, GuideOwnProps> {
   trapRight?: boolean;
   /** Keep the focus inside this view for Down (the end of a list: Down must not jump to a column beside it). */
   trapDown?: boolean;
+  /** Keep the focus inside this view for Up. */
+  trapUp?: boolean;
   onFocusEnter?: () => void;
   onFocusLeave?: () => void;
 }
@@ -285,6 +287,7 @@ export function TvFocusGuide({
   trapLeft,
   trapRight,
   trapDown,
+  trapUp,
   onFocusEnter,
   onFocusLeave,
   ...rest
@@ -296,7 +299,7 @@ export function TvFocusGuide({
       {...rest}
       autoFocus={autoFocus}
       destinations={dests && dests.length ? dests : undefined}
-      trapFocusUp={trapFocus || trapVertical}
+      trapFocusUp={trapFocus || trapVertical || trapUp}
       trapFocusDown={trapFocus || trapVertical || trapDown}
       trapFocusLeft={trapFocus || trapHorizontal || trapLeft}
       trapFocusRight={trapFocus || trapHorizontal || trapRight}
