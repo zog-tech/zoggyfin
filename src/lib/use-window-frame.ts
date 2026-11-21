@@ -10,8 +10,9 @@
  * The web has no frame (expo-router gives a zero frame there, and a browser
  * window has no insets to wait for), so it uses the window size.
  */
+import { useContext } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { useSafeAreaFrame } from 'react-native-safe-area-context';
+import { SafeAreaFrameContext, useSafeAreaFrame } from 'react-native-safe-area-context';
 
 export interface Size {
   width: number;
@@ -27,4 +28,29 @@ export function useWindowFrame(): Size {
   const frame = useSafeAreaFrame();
   const window = useWindowDimensions();
   return pickFrame(frame, window);
+}
+
+/**
+ * The size for the app-wide layout (`useLayout`): the window, except in the
+ * moment of a rotation. Then the window has turned and the frame (with the
+ * insets) has not, or the other way round: the frame is the window with its
+ * sides swapped. The frame wins in that moment, so the gutters, columns and
+ * tile sizes change in the same render as the insets, once.
+ *
+ * Any other frame (a sheet, a split view, a provider inside a modal) keeps
+ * the window: the layout follows the window, as before. Pure, so it is
+ * unit-tested.
+ */
+export function layoutSize(frame: Size | null, window: Size): Size {
+  if (!frame || frame.width <= 0 || frame.height <= 0) return { width: window.width, height: window.height };
+  const swapped = Math.abs(frame.width - window.height) <= 1 && Math.abs(frame.height - window.width) <= 1;
+  const turned = frame.width > frame.height !== window.width > window.height;
+  return swapped && turned ? { width: frame.width, height: frame.height } : { width: window.width, height: window.height };
+}
+
+/** See `layoutSize`. Works outside a safe-area provider too (it then uses the window). */
+export function useLayoutSize(): Size & { fontScale: number } {
+  const frame = useContext(SafeAreaFrameContext);
+  const window = useWindowDimensions();
+  return { ...layoutSize(frame, window), fontScale: window.fontScale };
 }

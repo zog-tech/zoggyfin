@@ -13,6 +13,7 @@ import {
   queueSections,
   type QueueState,
   removeEntry,
+  replaceItem,
   restoreQueue,
   setShuffle,
   shuffled,
@@ -116,6 +117,18 @@ describe('move, remove, clear, jump', () => {
     expect(ids(a)).toEqual(['b', 'c', 'd']);
     expect(cur(a)).toBe('b');
     expect(removeEntry(q, q.entries[1]?.key ?? '')).toBe(q);
+  });
+
+  it('puts another item in an entry, which keeps its key and place', () => {
+    const q = base();
+    const cur0 = currentEntry(q);
+    const r = replaceItem(q, cur0?.key ?? '', { Id: 'real-b' });
+    expect(ids(r)).toEqual(['a', 'real-b', 'c', 'd']);
+    expect(currentEntry(r)?.key).toBe(cur0?.key);
+    expect(r.index).toBe(q.index);
+    expect(r.original).toBe(q.original);
+    expect(ids(q)).toEqual(['a', 'b', 'c', 'd']);
+    expect(replaceItem(q, 'missing', { Id: 'x' })).toBe(q);
   });
 
   it('clear keeps the played part and the current entry', () => {

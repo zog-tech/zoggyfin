@@ -250,6 +250,8 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- **The tab bar stays in place by default (iOS 26).** Scrolling a page no longer shrinks the tab
+  bar and the mini player under it. Turn it back on in Settings, Tab bar, "Collapse on scroll".
 - **One name for the heart in music.** Liked Songs, the player heart, the action sheet and the
   filter chip all say Like now; "favourites" stays for films and shows. The Favourites chip on
   the Songs tab is gone (Liked Songs is that list), and the music Home rows are Liked albums and
@@ -285,6 +287,13 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **A catalog song starts by itself once the server has it.** The first play of a song marked
+  " ☁" makes the server fetch the file. The player now asks the server to fetch it first and then
+  streams the saved song (with its real name and album), and it plays again when iOS leaves a
+  ready track paused. Before, the song sometimes waited for a press on Play.
+- **Smoother rotation.** Pages, the video player and the music player take the new window size in
+  the same render as the new safe-area insets, so a rotation lays them out once instead of jumping
+  twice. The Now Playing art no longer loads again at the new size and flashes blurred.
 - **Android and TV: the app no longer crashes while music plays.** A track change could crash the
   media session ("Invalid PlayerInfo update"). media3 is 1.11.1 now, and `expo-audio` and
   `expo-video` build from source on Android so the patched version is used. Needs a native build.

@@ -4,8 +4,9 @@
  * Screens never put a raw colour or size in a style: they use these values.
  */
 import { createContext, useContext, useMemo } from 'react';
-import { Dimensions, type ImageStyle, Platform, StyleSheet, type TextStyle, useWindowDimensions, type ViewStyle } from 'react-native';
+import { Dimensions, type ImageStyle, Platform, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 
+import { useLayoutSize } from '@/lib/use-window-frame';
 import { isTV } from '@/platform/tv';
 
 import { layoutFor, type LayoutInfo, tv, tvScale } from './layout';
@@ -125,9 +126,13 @@ export function scriptStyle(text: string | null | undefined, base: TextStyle, st
 // Layout
 // ---------------------------------------------------------------------------
 
-/** Window layout: breakpoint, gutter, tile sizes. TV gets the 10-foot sizes. */
+/**
+ * Window layout: breakpoint, gutter, tile sizes. TV gets the 10-foot sizes.
+ * The size changes in the same render as the safe-area insets on a rotation
+ * (`useLayoutSize`), so a page turns once instead of jumping twice.
+ */
 export function useLayout(): LayoutInfo & { width: number; height: number; fontScale: number } {
-  const { width, height, fontScale } = useWindowDimensions();
+  const { width, height, fontScale } = useLayoutSize();
   const sidebar = useSidebarInset();
   return useMemo(
     () => ({ ...layoutFor(width, isTV ? { tv: true } : { sidebar }), width, height, fontScale }),

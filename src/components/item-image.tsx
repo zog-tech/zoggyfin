@@ -17,6 +17,13 @@ export interface ItemImageProps {
   variant: ImageVariant;
   /** Width in points. */
   width: number;
+  /**
+   * The width (points) to ask the server for, when it should not follow
+   * `width`. A view whose size changes with the window (the Now Playing art
+   * on a rotation) keeps one image URL, so the image stays in the cache and
+   * does not load again at the new size.
+   */
+  requestWidth?: number;
   /** Width / height. */
   aspectRatio: number;
   rounded?: number;
@@ -38,6 +45,7 @@ export const ItemImage = memo(function ItemImage({
   item,
   variant,
   width,
+  requestWidth,
   aspectRatio,
   rounded = radius.md,
   hideArtTitle,
@@ -51,11 +59,13 @@ export const ItemImage = memo(function ItemImage({
   const scale = PixelRatio.get();
   // A downloaded item has its pictures on the device: no network, and they work offline.
   const local = useLocalImage(item.Id, variant);
+  const askWidth = requestWidth ?? width;
+  const askHeight = askWidth / aspectRatio;
   const resolved = useMemo<ResolvedImage>(() => {
-    const remote = resolveImage(item, variant, { width: width * scale, height: height * scale }, server);
+    const remote = resolveImage(item, variant, { width: askWidth * scale, height: askHeight * scale }, server);
     if (!local) return remote;
     return { kind: 'remote', uri: local, source: 'Download', blurhash: remote.kind === 'remote' ? remote.blurhash : undefined };
-  }, [item, variant, width, height, scale, server, local]);
+  }, [item, variant, askWidth, askHeight, scale, server, local]);
   const [failedUri, setFailedUri] = useState<string | null>(null);
 
   const borderRadius = circle ? width / 2 : rounded;
