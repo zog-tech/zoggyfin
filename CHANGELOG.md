@@ -28,7 +28,6 @@ first commit to today. All of it was built in the first weeks of the project.
 - **Genre tiles show what the genre is.** A genre with no image now gets an icon from its name, for
   example a flame for Action, a smile for Comedy and a trophy for Sport, in place of the theatre
   masks on every tile. Music genres get guitars, a microphone or a note.
-
 - **Choose the quality of each download.** Download on a film, an episode or a video now asks
   for the quality: Original or a smaller copy (1080p, 720p or 480p, only below the file's own
   height). Each choice shows the file size or an estimate, so you can pick a smaller copy when the
