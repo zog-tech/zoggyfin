@@ -30,11 +30,12 @@ import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } 
 import { ActivityIndicator, FlatList, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/button';
+import { OptionSheet } from '@/components/option-sheet';
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon, type IconName } from '@/components/icon';
 import { LoadingState } from '@/components/states';
 import { Touchable } from '@/components/touchable';
-import { focusView } from '@/features/tv/focus';
+import { focusView, TvFocusGuide } from '@/features/tv/focus';
 import { TvScrollView, useTvPageScroll } from '@/features/tv/page-scroll';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
@@ -87,7 +88,7 @@ import { ProgrammeRow } from './programme-row';
 import { takeChannelSearch } from './search-request';
 import { liveTvSections, type LiveTvSection } from './sections';
 
-const COLUMN_WIDTH = scaled(isTV ? 200 : 220);
+const COLUMN_WIDTH = scaled(isTV ? 236 : 220);
 const DETAILS_WIDTH = scaled(isTV ? 290 : 320);
 const COLUMN_GAP = spacing.lg;
 
@@ -121,6 +122,7 @@ export function LiveTvScreen() {
   const [text, setText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [fieldFocused, setFieldFocused] = useState(false);
+  const [providerSheetOpen, setProviderSheet] = useState(false);
   const query = useDebounced(text.trim(), 120);
   const searching = searchOpen || !!text.trim();
 
@@ -144,8 +146,9 @@ export function LiveTvScreen() {
     [providers],
   );
   const entries = useMemo(
-    () => (all ? mergedBrowseEntries(merged.favourites.length, merged.recents.length, providerEntries) : browseEntries(base.groups, sections, providerEntries)),
-    [all, merged.favourites.length, merged.recents.length, providerEntries, base.groups, sections],
+    // The provider switch is the header's provider button (wide windows and TV) or the chips (phones), not column entries.
+    () => (all ? mergedBrowseEntries(merged.favourites.length, merged.recents.length, []) : browseEntries(base.groups, sections)),
+    [all, merged.favourites.length, merged.recents.length, base.groups, sections],
   );
   // The rows: one provider's channels, or the merged list (each row knows its provider).
   const rows: readonly (Channel | ProviderChannel)[] = useMemo(() => {
@@ -408,7 +411,31 @@ export function LiveTvScreen() {
       </ScrollView>
     ) : null;
 
-  // TV header: the title and the provider, then Search, reload and Providers.
+  // Wide windows and TV: the provider switch is a button that opens a list ("All providers" first).
+  const providerButton =
+    providerEntries.length && wide ? (
+      <Button
+        title={all ? 'All providers' : (provider?.name ?? 'Provider')}
+        icon="chevron.down"
+        variant="smallTonal"
+        onPress={() => setProviderSheet(true)}
+        accessibilityLabel={`Provider: ${all ? 'All providers' : (provider?.name ?? '')}. Opens the list of providers`}
+      />
+    ) : null;
+  const providerSheet = providerEntries.length && wide ? (
+    <OptionSheet
+      visible={providerSheetOpen}
+      title="Provider"
+      options={providerEntries.map((p) => ({ value: p.providerId, label: p.label }))}
+      selected={[liveView]}
+      onSelect={(id) => {
+        if (id !== liveView) switchProvider(id);
+      }}
+      onClose={() => setProviderSheet(false)}
+    />
+  ) : null;
+
+  // TV header: the title and the provider, then the provider switch, Search, reload and Providers.
   const tvHeader = (
     <View style={[s.tvHeader, { paddingHorizontal: l.gutter }]}>
       <View style={s.tvTitleBlock}>
@@ -417,6 +444,7 @@ export function LiveTvScreen() {
           {all ? `All providers · ${providers.length} providers` : [provider?.name, data.channels.length ? `${data.channels.length} channels` : null].filter(Boolean).join(' · ')}
         </Text>
       </View>
+      {providerButton}
       <Button title="Search" icon="magnifyingglass" variant="smallTonal" onPress={openSearch} />
       {refreshButton}
       {providersButton}
@@ -425,6 +453,7 @@ export function LiveTvScreen() {
   const toolbar = (
     <View style={[s.toolbar, { paddingHorizontal: l.gutter }]}>
       {searchField('toolbar')}
+      {providerButton}
       {refreshButton}
       {providersButton}
     </View>
@@ -532,6 +561,12 @@ export function LiveTvScreen() {
       </View>
     </View>
   ) : (
+    /*
+      TV: Down at the last row stays there. Without the trap it went to the nearest view, the browse
+      column, and the next presses ran down the groups. The list's own guide traps Down only while
+      rows are left to mount. The guide is a row, like the columns row, so the list keeps its height.
+    */
+    <TvFocusGuide trapDown style={[s.listTrap, listWidth !== undefined ? { width: listWidth } : null]}>
     <FlatList
       ref={list}
       {...tvScroll.props}
@@ -577,6 +612,7 @@ export function LiveTvScreen() {
       }
       renderItem={renderItem}
     />
+    </TvFocusGuide>
   );
 
   return (
@@ -612,6 +648,7 @@ export function LiveTvScreen() {
           channelsList
         )}
       </View>
+      {providerSheet}
     </>
   );
 }
@@ -676,7 +713,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   emptyTitle: { ...font(type.title3), color: c.text, textAlign: 'center' as const },
   emptyText: { ...font(type.body), color: c.text2, textAlign: 'center' as const, maxWidth: scaled(sizes.readableWidth) },
   emptyActions: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: spacing.md, justifyContent: 'center' as const, marginTop: spacing.md },
-  tvHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md },
+  tvHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md, paddingTop: 0, paddingBottom: spacing.sm },
   tvTitleBlock: { flex: 1, minWidth: 0 },
   tvTitle: { ...font(type.largeTitle), color: c.text },
   tvSubtitle: { ...font(type.subheadline), color: c.text2 },
@@ -715,5 +752,6 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   listEmptyTop: { justifyContent: 'flex-start' as const, paddingTop: spacing.xl },
   listEmptyTitle: { ...font(type.headline), color: c.text, textAlign: 'center' as const },
   listEmptyText: { ...font(type.subheadline), color: c.text2, textAlign: 'center' as const, maxWidth: scaled(360) },
+  listTrap: { flex: 1, flexDirection: 'row' as const },
   columns: { flex: 1, flexDirection: 'row' as const, gap: COLUMN_GAP, paddingBottom: isTV ? spacing.sm : 0 },
 }));

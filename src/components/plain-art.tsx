@@ -12,6 +12,7 @@ import { StyleSheet, View } from 'react-native';
 import { GeneratedArtView } from '@/components/item-image';
 import { generatedArt } from '@/images/generated-art';
 import { createStyles, type AppTheme, mediaColors, motion, radius, useStyles } from '@/theme';
+import { useLite } from '@/platform/use-lite';
 
 /** What a plain tile shows. It picks the glyph of the generated art. */
 export type PlainKind = 'film' | 'series' | 'episode' | 'video' | 'audio';
@@ -40,6 +41,8 @@ export const PlainArt = memo(function PlainArt({
 }) {
   const s = useStyles(makeStyles);
   const [failed, setFailed] = useState<string | null>(null);
+  // Lite mode: RGB 565, half the memory of each image (platform/lite.ts).
+  const decodeFormat = useLite() ? 'rgb' : 'argb';
   const height = width / aspectRatio;
   const box = { width, height, borderRadius: rounded, borderCurve: 'continuous' as const };
   const show = !!uri && /^https?:\/\//i.test(uri) && failed !== uri;
@@ -51,6 +54,7 @@ export const PlainArt = memo(function PlainArt({
           contentFit="cover"
           transition={motion.duration.fast}
           recyclingKey={uri}
+          decodeFormat={decodeFormat}
           cachePolicy="memory-disk"
           onError={() => setFailed(uri)}
           style={StyleSheet.absoluteFill}

@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 
@@ -28,7 +28,10 @@ export default function QuickConnectScreen() {
   const bottomPad = useTabBottomPadding();
   const sidebar = useSidebarInset();
   const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [code, setCode] = useState('');
+  // A QR code from the sign-in page of another device fills in the code (`quickConnectLink`).
+  const link = useLocalSearchParams<{ code?: string; server?: string }>();
+  const [code, setCode] = useState(() => cleanCode(link.code ?? ''));
+  const otherServer = !!link.server && link.server !== session.serverId;
   const [phase, setPhase] = useState<Phase>({ name: 'idle' });
   // The guard against a second approve. A ref, because a fast second tap or
   // Return can run before the render that shows the busy phase.
@@ -104,6 +107,11 @@ export default function QuickConnectScreen() {
               Code {phase.code} is approved. The other device now signs in as {session.userName}.
             </Text>
           </View>
+        ) : null}
+        {otherServer && phase.name !== 'done' ? (
+          <Text style={styles.error} accessibilityRole="alert">
+            This code is from a device that signs in to another server, not {session.serverName}. Switch to an account on that server first.
+          </Text>
         ) : null}
         <Button title="Approve" icon="checkmark" onPress={approve} loading={phase.name === 'busy'} disabled={!isCompleteCode(code)} />
         <Text style={styles.footnote}>Approve only codes from your own devices. The device gets full access to {session.userName}.</Text>

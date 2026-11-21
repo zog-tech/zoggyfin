@@ -19,7 +19,10 @@ import { TextField, type TextFieldRef } from '@/components/text-field';
 import { LanAccessHelp } from '@/features/servers/nearby-servers';
 import { finishReinstall } from '@/features/servers/reinstall';
 import { lanHelpAfterFailure, openLanSettings } from '@/features/servers/use-server-discovery';
+import { quickConnectLink } from '@/features/quick-connect/code';
 import { TvScrollView } from '@/features/tv/page-scroll';
+import { QrCode } from '@/features/together/qr-code';
+import { isTV } from '@/platform/tv';
 import { type LanHelp, withLanRetry } from '@/servers/discovery/lan-access';
 import { createStyles, type AppTheme, font, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
 
@@ -174,10 +177,13 @@ export default function LoginScreen() {
 
           {qcCode ? (
             <View style={styles.qc}>
-              <Text style={styles.qcLabel}>Enter this code in Jellyfin under Settings, Quick Connect:</Text>
-              <Text style={styles.qcCode} selectable accessibilityLabel={`Code ${qcCode.split('').join(' ')}`}>
-                {qcCode}
-              </Text>
+              <Text style={styles.qcLabel}>Scan the code with your phone&apos;s camera to approve in Zoggyfin. Or enter this code in Jellyfin under Settings, Quick Connect:</Text>
+              <View style={styles.qcRow}>
+                <QrCode value={quickConnectLink(qcCode, server.serverId)} size={scaled(isTV ? 240 : 180)} label="QR code: opens Quick Connect in Zoggyfin on your phone" />
+                <Text style={styles.qcCode} selectable accessibilityLabel={`Code ${qcCode.split('').join(' ')}`}>
+                  {qcCode}
+                </Text>
+              </View>
               <Text style={styles.qcHint}>{qc.name === 'finishing' ? 'Approved. Signing in…' : 'Waiting for approval. This page signs in by itself.'}</Text>
               <Button title="Cancel" variant="tonal" onPress={cancelQuickConnect} />
             </View>
@@ -233,6 +239,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   subtitle: { ...font(type.subheadline), color: c.text2, marginTop: -spacing.sm, marginBottom: spacing.sm },
   error: { ...font(type.footnote), color: c.danger },
   qc: { gap: spacing.lg, backgroundColor: c.surface, padding: spacing.xxl, borderRadius: radius.lg, borderCurve: 'continuous' as const },
+  qcRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: spacing.xxl },
   qcLabel: { ...font(type.subheadline), color: c.text2, textAlign: 'center' as const },
   qcCode: { ...font(type.largeTitle, { tabular: true }), fontSize: scaled(44), lineHeight: scaled(52), letterSpacing: 8, color: c.text, textAlign: 'center' as const },
   qcHint: { ...font(type.footnote), color: c.text3, textAlign: 'center' as const },

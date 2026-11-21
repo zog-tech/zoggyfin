@@ -8,6 +8,7 @@ import { useImageServer } from '@/api/use-api';
 import type { BaseItemDto } from '@/api/types';
 import { imageSource } from '@/images/image-url';
 import { resolveImage } from '@/images/resolve-image';
+import { useLite } from '@/platform/use-lite';
 
 /**
  * The full-player background (design system §3): the artwork blurred
@@ -18,6 +19,8 @@ import { resolveImage } from '@/images/resolve-image';
 export const ArtBackground = memo(function ArtBackground({ item }: { item: BaseItemDto }) {
   const server = useImageServer();
   const reduced = useReducedMotion();
+  // Lite mode: RGB 565, half the memory of the blurred art (platform/lite.ts).
+  const lite = useLite();
   const img = useMemo(() => resolveImage(item, 'square', { width: 200, height: 200 }, server), [item, server]);
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -28,6 +31,7 @@ export const ArtBackground = memo(function ArtBackground({ item }: { item: BaseI
           style={styles.blur}
           contentFit="cover"
           blurRadius={60}
+          decodeFormat={lite ? 'rgb' : 'argb'}
           transition={reduced ? 0 : 400}
           cachePolicy="memory-disk"
         />

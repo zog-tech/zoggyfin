@@ -11,6 +11,7 @@ import { generatedArt, initials } from '@/images/generated-art';
 import { imageSource } from '@/images/image-url';
 import { type ImageVariant, type ResolvedImage, resolveImage } from '@/images/resolve-image';
 import { createStyles, type AppTheme, font, mediaColors, motion, radius, scaled, scriptStyle, type, useStyles } from '@/theme';
+import { useLite } from '@/platform/use-lite';
 
 export interface ItemImageProps {
   item: BaseItemDto;
@@ -57,6 +58,8 @@ export const ItemImage = memo(function ItemImage({
   const server = useImageServer();
   const height = width / aspectRatio;
   const scale = PixelRatio.get();
+  // Lite mode: 2 bytes a pixel (RGB 565), half the bitmap and GPU memory of each tile (platform/lite.ts).
+  const decodeFormat = useLite() ? 'rgb' : 'argb';
   // A downloaded item has its pictures on the device: no network, and they work offline.
   const local = useLocalImage(item.Id, variant);
   const askWidth = requestWidth ?? width;
@@ -109,6 +112,7 @@ export const ItemImage = memo(function ItemImage({
         contentFit="cover"
         transition={motion.duration.fast}
         recyclingKey={item.Id ?? shown.uri}
+        decodeFormat={decodeFormat}
         cachePolicy="memory-disk"
         onError={() => setFailedUri(shown.uri)}
         style={

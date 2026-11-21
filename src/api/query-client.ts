@@ -56,6 +56,23 @@ export function inScope(queryKey: readonly unknown[], ref: AccountRef | null): b
   return !!ref && queryKey[0] === 'jf' && queryKey[1] === ref.serverId && queryKey[2] === ref.userId;
 }
 
+/** Lite mode: how long the data of a closed page stays in memory (and in the saved cache). */
+export const LITE_GC_TIME = 5 * 60 * 1000;
+
+/**
+ * Lite mode (`platform/lite.ts`) keeps the data of a closed page for 5 minutes, not 7 days: on a 1 GB
+ * TV stick every library page and item visited stayed in the JS heap. Open pages (Home) keep theirs,
+ * so a cold start still shows Home at once. New queries take the new time; a query in the cache takes
+ * it when it next closes.
+ */
+export function applyLiteQueryCache(lite: boolean): void {
+  const gcTime = lite ? LITE_GC_TIME : 7 * DAY;
+  const queries = queryClient.getDefaultOptions().queries;
+  if (queries?.gcTime === gcTime) return;
+  queryClient.setDefaultOptions({ ...queryClient.getDefaultOptions(), queries: { ...queries, gcTime } });
+  for (const q of queryClient.getQueryCache().getAll()) q.setOptions({ ...q.options, gcTime });
+}
+
 /** Bump to drop every persisted cache after a breaking change in cached shapes. */
 export const CACHE_BUSTER = 'v1';
 export const CACHE_MAX_AGE = 7 * DAY;

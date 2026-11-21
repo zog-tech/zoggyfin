@@ -1,4 +1,4 @@
-import { generatedArt, iconForType } from '../generated-art';
+import { generatedArt, genreIcon, iconForType } from '../generated-art';
 import { bucketSize, buildImageUrl, buildTrickplayUrl, buildUserImageUrl, imageCacheKey, imageSource } from '../image-url';
 
 const server = { baseUrl: 'https://jf.example.com/base', token: 'abc' };
@@ -64,6 +64,33 @@ describe('generatedArt', () => {
     expect(iconForType('Person')).toBe('person');
     expect(iconForType('Unknown')).toBe('play.rectangle');
     expect(iconForType('CollectionFolder', 'music')).toBe('music.note');
+  });
+});
+
+describe('genreIcon', () => {
+  it('picks a glyph from the genre name', () => {
+    expect(genreIcon('Action', 'Genre')).toBe('flame');
+    expect(genreIcon('Action & Adventure', 'Genre')).toBe('flame');
+    expect(genreIcon('Comedy', 'Genre')).toBe('face.smiling');
+    expect(genreIcon('Science Fiction', 'Genre')).toBe('sparkles');
+    expect(genreIcon('Sci-Fi & Fantasy', 'Genre')).toBe('sparkles');
+    expect(genreIcon('War & Politics', 'Genre')).toBe('shield');
+    expect(genreIcon('Documentary', 'Genre')).toBe('camera');
+    expect(genreIcon('Animation', 'Genre')).toBe('paintpalette');
+  });
+  it('keeps the masks for a genre it does not know', () => {
+    expect(genreIcon('Drama', 'Genre')).toBe('theatermasks');
+    expect(genreIcon('Software', 'Genre')).toBe('theatermasks');
+    expect(genreIcon(null, 'Genre')).toBe('theatermasks');
+  });
+  it('has its own rules for music genres', () => {
+    expect(genreIcon('Hard Rock', 'MusicGenre')).toBe('guitars');
+    expect(genreIcon('Hip-Hop', 'MusicGenre')).toBe('music.mic');
+    expect(genreIcon('R&B', 'MusicGenre')).toBe('music.mic');
+    expect(genreIcon('Electronic', 'MusicGenre')).toBe('music.note');
+  });
+  it('is the genre art glyph', () => {
+    expect(generatedArt('Horror', 'Genre').icon).toBe('moon.fill');
   });
 });
 

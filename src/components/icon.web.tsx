@@ -45,6 +45,13 @@ import Equal from 'lucide-react/dist/esm/icons/equal';
 import FastForward from 'lucide-react/dist/esm/icons/fast-forward';
 import FileText from 'lucide-react/dist/esm/icons/file-text';
 import Film from 'lucide-react/dist/esm/icons/film';
+import Flame from 'lucide-react/dist/esm/icons/flame';
+import Leaf from 'lucide-react/dist/esm/icons/leaf';
+import MapIcon from 'lucide-react/dist/esm/icons/map';
+import Shield from 'lucide-react/dist/esm/icons/shield';
+import Smile from 'lucide-react/dist/esm/icons/smile';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
+import Trophy from 'lucide-react/dist/esm/icons/trophy';
 import Folder from 'lucide-react/dist/esm/icons/folder';
 import GalleryVerticalEnd from 'lucide-react/dist/esm/icons/gallery-vertical-end';
 import Gauge from 'lucide-react/dist/esm/icons/gauge';
@@ -213,6 +220,13 @@ const LUCIDE: Record<IconName, Glyph> = {
   'square.stack.3d.up': { icon: Layers },
   guitars: { icon: Guitar },
   theatermasks: { icon: Drama },
+  flame: { icon: Flame },
+  'face.smiling': { icon: Smile },
+  sparkles: { icon: Sparkles },
+  trophy: { icon: Trophy },
+  map: { icon: MapIcon },
+  shield: { icon: Shield },
+  leaf: { icon: Leaf },
   book: { icon: Book },
   photo: { icon: Image },
   video: { icon: Video },
