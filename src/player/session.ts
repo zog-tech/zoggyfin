@@ -229,6 +229,8 @@ class VideoSession {
   private liveRestarts: LiveRestarts | null = null;
   /** Runs out when the live stream that played waits for data too long (`LIVE_STALL_MS`). */
   private liveStallTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The user paused this load: a live stall then waits for Play, it never restarts the channel. */
+  private userPaused = false;
   /** The external title (IPTV film or episode, extension media) that loads or plays, with its stream forms. */
   private extAttempt: ExternalAttempt | null = null;
   /** The external title has played: its position may be saved (a failed load must not wipe a saved one). */
@@ -260,6 +262,7 @@ class VideoSession {
     const r = downloaded(itemId);
     if (!r) return;
     const id = ++this.loadId;
+    this.userPaused = false;
     const position = this.engine.position || st.position;
     const request: PlayRequest = { item: now.item, queue: now.queue, startPositionTicks: secondsToTicks(position), autoplay: st.playing };
     // The server's stream (and its transcode) stops; the file then plays in a new player.
@@ -465,6 +468,7 @@ class VideoSession {
   /** Starts an item. Containers (show, season, collection) resolve to an episode or item first. */
   async play(request: PlayRequest): Promise<void> {
     const id = ++this.loadId;
+    this.userPaused = false;
     // A server item replaces a live channel: its TS bridge session (iOS) ends too.
     this.endLiveAttempt();
     this.extAttempt = null;
@@ -601,6 +605,7 @@ class VideoSession {
    */
   async playSource(src: { item: BaseItemDto; uri: string; startSeconds: number; autoplay: boolean; record: DownloadRecord | null; readAhead?: number }): Promise<void> {
     const id = ++this.loadId;
+    this.userPaused = false;
     await this.finishCurrent();
     if (id !== this.loadId) return;
     this.lastRequest = null;
@@ -659,6 +664,7 @@ class VideoSession {
    */
   async playLive(request: LivePlayRequest, opts: { keepPresentation?: boolean } = {}): Promise<void> {
     const id = ++this.loadId;
+    this.userPaused = false;
     const presentation = opts.keepPresentation ? playerState().presentation : 'full';
     await this.finishCurrent();
     if (id !== this.loadId) return;
@@ -687,11 +693,11 @@ class VideoSession {
 
   /** Starts the wait for a live stream that stopped getting data, unless it already runs. */
   private watchLiveStall(): void {
-    if (this.liveStallTimer) return;
+    if (this.liveStallTimer || this.userPaused) return;
     const a = this.liveAttempt;
     this.liveStallTimer = setTimeout(() => {
       this.liveStallTimer = null;
-      if (!a || this.liveAttempt !== a || a.id !== this.loadId || playerState().status !== 'buffering') return;
+      if (!a || this.liveAttempt !== a || a.id !== this.loadId || this.userPaused || playerState().status !== 'buffering') return;
       if (__DEV__) console.log('[player] the live stream waits for data too long');
       if (!this.restartLive()) this.liveFailed(undefined);
     }, LIVE_STALL_MS);
@@ -826,6 +832,7 @@ class VideoSession {
    */
   async playExternal(request: ExternalPlayRequest, opts: { keepPresentation?: boolean; qualityId?: string | null } = {}): Promise<void> {
     const id = ++this.loadId;
+    this.userPaused = false;
     const presentation = opts.keepPresentation ? playerState().presentation : 'full';
     await this.finishCurrent();
     if (id !== this.loadId) return;
@@ -1210,6 +1217,7 @@ class VideoSession {
       return;
     }
     const id = ++this.loadId;
+    this.userPaused = false;
     const position = this.engine.position || st.position;
     const now = st.now;
     await this.reporter?.stop({ positionTicks: secondsToTicks(position) });
@@ -1248,11 +1256,17 @@ class VideoSession {
 
   play_(): void {
     if (controlGate.intercept({ action: 'play' })) return;
+    this.userPaused = false;
     this.engine.play();
+    // A live stream that still waits for data gets its stall wait again.
+    if (playerState().now?.live && playerState().status === 'buffering') this.watchLiveStall();
   }
 
   pause(): void {
     if (controlGate.intercept({ action: 'pause' })) return;
+    // Not `playing`: a cut iOS stream is also not playing, and it must restart.
+    this.userPaused = true;
+    this.clearLiveStall();
     this.engine.pause();
   }
 

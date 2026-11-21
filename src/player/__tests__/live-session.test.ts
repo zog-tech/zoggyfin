@@ -112,6 +112,18 @@ describe('a live stream that stops', () => {
     expect(playerState().status).toBe('loading');
   });
 
+  it('a pause during a stall wins: the channel does not start again until Play', async () => {
+    await startPlaying();
+    panelCutsStream();
+    videoSession().pause();
+    await jest.advanceTimersByTimeAsync(LIVE_STALL_MS * 3);
+    expect(mockLoads).toHaveLength(1);
+    videoSession().play_();
+    await jest.advanceTimersByTimeAsync(LIVE_STALL_MS + 100);
+    await flush();
+    expect(mockLoads).toHaveLength(2);
+  });
+
   it('does not start again when the stream recovers in time', async () => {
     await startPlaying();
     panelCutsStream();
