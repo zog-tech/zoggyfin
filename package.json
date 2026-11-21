@@ -112,6 +112,12 @@
           "expo-audio",
           "expo-video"
         ]
+      },
+      "android": {
+        "buildFromSource": [
+          "expo-audio",
+          "expo-video"
+        ]
       }
     }
   },
