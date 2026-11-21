@@ -17,8 +17,14 @@ export const tv = {
    */
   safeX: 96,
   safeY: 54,
-  /** The collapsed side menu: a slim rail of icons, inside the safe area. */
-  railWidth: 184,
+  /**
+   * The collapsed side menu: a slim rail of icons at the screen's edge, with a line on its
+   * trailing side. TVs today show the whole picture, so the rail keeps only `railX` from the
+   * edge (not the full safe area): the page gets the room.
+   */
+  railWidth: 128,
+  /** The rail's icons and focus fills start this far from the screen's edge. */
+  railX: 32,
   /** The side menu when it is open (icons and labels). */
   menuWidth: 520,
   /** The page margin: the same 5 % as the safe area. */

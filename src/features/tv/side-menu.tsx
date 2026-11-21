@@ -27,7 +27,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon, type IconName } from '@/components/icon';
 import { ItemImage } from '@/components/item-image';
-import { openFullPlayer } from '@/player';
+import { activePlayback, openFullPlayer } from '@/player';
 import { usePlayerStore } from '@/player/store';
 import { pageHref, pagePathname } from '@/features/extensions/nav';
 import { usePagePlacement } from '@/features/extensions/use-placement';
@@ -36,6 +36,7 @@ import { isNativeTV, isTVPreview } from '@/platform/tv';
 import { type AppTheme, createStyles, font, motion, radius, spacing, tv, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
 
 import { focusActivePage, type FocusTarget, focusView, isMenuFocused, noteRemoteKey, restoreContentFocus, setContentGuide, setMenuFocused, TvFocusGuide, tvPages } from './focus';
+import { menuRightAction, type NowPart } from './menu-right';
 import { useTvBack } from './use-tv-back';
 import { useTvRemote } from './use-tv-remote';
 import { installWebSpatialNav } from './web-spatial-nav';
@@ -93,12 +94,24 @@ const STANDARD = Easing.bezier(...motion.easing.standard);
 /** The TV window never changes size, so the menu sizes are fixed. */
 const K = tvScale(Dimensions.get('window').width);
 const ICON = Math.round(tv.railIcon * K);
-/** The overscan-safe inset: the items and their focus fill start inside it. */
+/** The overscan-safe inset (the menu glyph keeps its top). */
 const SAFE = tvSafeInset(Dimensions.get('window').width);
+/** The items and their focus fill start this far from the screen's edge. */
+const RAIL_X = Math.round(tv.railX * K);
 /** The gap between an item's focus fill and the rail's trailing edge. */
 const ITEM_END = spacing.sm;
 /** The icon's inset in its item, so the icon sits centred in the closed item. */
-const iconInset = (railWidth: number) => Math.round((railWidth - SAFE.x - ITEM_END - ICON) / 2);
+const iconInset = (railWidth: number) => Math.round((railWidth - RAIL_X - ITEM_END - ICON) / 2);
+
+/** The "Now playing" row's focus, for Right (menu-right.ts). One side menu exists at a time. */
+const nowFocus: { part: NowPart; toggleAt: number; toggle: FocusTarget | null } = { part: null, toggleAt: 0, toggle: null };
+
+/** Right in the menu: true when it closes the menu, false when the "Now playing" row keeps it. */
+function rightCloses(): boolean {
+  const action = menuRightAction(nowFocus.part, nowFocus.toggleAt, Date.now());
+  if (action === 'focus-toggle') focusView(nowFocus.toggle);
+  return action === 'close';
+}
 
 /**
  * The (tabs) layout on TV: the tab content after the rail, and the side menu over it. It reads no
@@ -211,7 +224,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
   // from the open menu, which lies over the content's first column.
   // The menu can hold the focus closed too (Android put it there): Right leaves it the same way.
   useTvRemote(isNativeTV, (e) => {
-    if ((open || isMenuFocused()) && tvKeyFromEvent(e)?.key === 'right') close();
+    if ((open || isMenuFocused()) && tvKeyFromEvent(e)?.key === 'right' && rightCloses()) close();
   });
 
   // Web preview: the arrow keys move the focus; Right out of the menu goes back to the content.
@@ -223,7 +236,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
       if (e.key !== 'ArrowRight' || !el || !el.contains(document.activeElement)) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      close();
+      if (rightCloses()) close();
     };
     document.addEventListener('keydown', onKey, true);
     return () => {
@@ -254,6 +267,8 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
     transform: [{ translateX: (progress.get() - 1) * slide }],
   }));
   const dim = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  // The rail's line goes while the open panel covers it.
+  const line = useAnimatedStyle(() => ({ opacity: 1 - progress.get() }));
   // The clip's trailing edge is the panel's; the items inside stay still.
   const clip = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.get() - 1) * slide }] }));
   const unclip = useAnimatedStyle(() => ({ transform: [{ translateX: (1 - progress.get()) * slide }] }));
@@ -265,14 +280,9 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
       style={[s.rail, { width: railW }]}
       accessibilityRole="menu"
       accessibilityLabel="Menu">
-      {/* The closed rail: a dark edge, so the icons read over the content. */}
-      <LinearGradient
-        colors={[withAlpha(c.bg, 0.96), withAlpha(c.bg, 0)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      {/* The closed rail: the page colour and a line on its trailing side, so it reads apart from the page (art never runs under it). */}
+      <View style={[StyleSheet.absoluteFill, s.railBg]} pointerEvents="none" />
+      <Animated.View style={[s.railLine, line]} pointerEvents="none" />
       {/* Open, the page behind dims (as in the streaming apps), so the eye goes to the menu. It fades with the panel. */}
       <Animated.View pointerEvents="none" style={[s.panel, { width: l.width }, dim]}>
         <LinearGradient
@@ -291,7 +301,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
       */}
       <Animated.View style={[s.panel, { width: menuW }, clip]}>
         <Animated.View style={[s.panel, { width: wide ? menuW : railW }, unclip]}>
-          <View style={[s.menuGlyph, { paddingLeft: SAFE.x + iconInset(railW) }]} accessible={false}>
+          <View style={[s.menuGlyph, { paddingLeft: RAIL_X + iconInset(railW) }]} accessible={false}>
             <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
           </View>
           <View style={s.items}>
@@ -420,7 +430,9 @@ function MenuItem({
 /**
  * While music plays: the first entry of the menu, with the cover in place of an icon (so the
  * closed rail shows what plays). One Left and Select open the player from any page; on TV
- * there is no mini player over the content to reach with the D-pad.
+ * there is no mini player over the content to reach with the D-pad. In the open menu a
+ * play/pause button follows the title: Right from the cover reaches it (menu-right.ts),
+ * a second Right closes the menu.
  */
 function NowPlayingItem({
   open,
@@ -437,38 +449,71 @@ function NowPlayingItem({
 }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
-  const [focused, setFocused] = useState(false);
+  const [focused, setFocused] = useState<NowPart>(null);
   const item = usePlayerStore((st) => (st.now?.kind === 'audio' ? st.now.item : null));
+  const playing = usePlayerStore((st) => st.playing);
   const labelStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  const toggleRef = useCallback((view: FocusTarget | null) => {
+    nowFocus.toggle = view;
+  }, []);
+  // The row is gone (the music stopped): Right closes the menu again.
+  useEffect(() => {
+    if (!item) nowFocus.part = null;
+  }, [item]);
   if (!item) return null;
+  const take = (part: 'cover' | 'toggle') => () => {
+    nowFocus.part = part;
+    if (part === 'toggle') nowFocus.toggleAt = Date.now();
+    setFocused(part);
+    onFocus();
+  };
+  const leave = () => {
+    nowFocus.part = null;
+    setFocused(null);
+    onBlur();
+  };
+  const cover = focused === 'cover';
+  const toggle = focused === 'toggle';
   return (
-    <Pressable
-      onPress={openFullPlayer}
-      onFocus={() => {
-        setFocused(true);
-        onFocus();
-      }}
-      onBlur={() => {
-        setFocused(false);
-        onBlur();
-      }}
-      accessibilityRole="menuitem"
-      accessibilityLabel={`Now playing: ${item.Name ?? ''}. Opens the player`}
-      style={[s.item, s.nowItem, webPressable]}>
-      <View style={[s.itemInner, { paddingLeft: iconInset(railWidth) }, focused && s.itemFocused]}>
-        <ItemImage item={item} variant="square" width={ICON} aspectRatio={1} rounded={radius.xs} hideArtTitle />
-        {open ? (
-          <Animated.View style={[s.nowText, labelStyle]}>
-            <Text style={[s.nowLabel, { color: focused ? c.bg : c.text2 }]} numberOfLines={1}>
-              Now playing
-            </Text>
-            <Text style={[s.label, { color: focused ? c.bg : c.text }]} numberOfLines={1}>
-              {item.Name ?? ''}
-            </Text>
-          </Animated.View>
-        ) : null}
-      </View>
-    </Pressable>
+    <View style={[s.item, s.nowItem, s.nowRow]}>
+      <Pressable
+        onPress={openFullPlayer}
+        onFocus={take('cover')}
+        onBlur={leave}
+        accessibilityRole="menuitem"
+        accessibilityLabel={`Now playing: ${item.Name ?? ''}. Opens the player`}
+        style={[s.flex, webPressable]}>
+        <View style={[s.itemInner, { paddingLeft: iconInset(railWidth) }, cover && s.itemFocused]}>
+          <ItemImage item={item} variant="square" width={ICON} aspectRatio={1} rounded={radius.xs} hideArtTitle />
+          {open ? (
+            <Animated.View style={[s.nowText, labelStyle]}>
+              <Text style={[s.nowLabel, { color: cover ? c.bg : c.text2 }]} numberOfLines={1}>
+                Now playing
+              </Text>
+              <Text style={[s.label, { color: cover ? c.bg : c.text }]} numberOfLines={1}>
+                {item.Name ?? ''}
+              </Text>
+            </Animated.View>
+          ) : null}
+        </View>
+      </Pressable>
+      {open ? (
+        <Animated.View style={labelStyle}>
+          <Pressable
+            ref={toggleRef}
+            onPress={activePlayback.togglePlay}
+            onFocus={take('toggle')}
+            onBlur={leave}
+            accessibilityRole="button"
+            accessibilityLabel={playing ? 'Pause' : 'Play'}
+            style={webPressable}>
+            <View style={[s.nowToggle, toggle && s.itemFocused]}>
+              <Icon name={playing ? 'pause.fill' : 'play.fill'} size={ICON} color={toggle ? c.bg : c.text} />
+            </View>
+          </Pressable>
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
@@ -528,9 +573,11 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     rail: { position: 'absolute' as const, left: 0, top: 0, bottom: 0, overflow: 'visible' as const },
     panel: { position: 'absolute' as const, left: 0, top: 0, bottom: 0, overflow: 'hidden' as const },
     panelBg: { backgroundColor: withAlpha(c.bg, 0.97) },
+    railBg: { backgroundColor: c.bg },
+    railLine: { position: 'absolute' as const, top: 0, bottom: 0, right: 0, width: StyleSheet.hairlineWidth * 2, backgroundColor: withAlpha(c.text, 0.16) },
     menuGlyph: { paddingTop: SAFE.y + spacing.sm, paddingBottom: spacing.xl },
     items: { flex: 1, justifyContent: 'center' as const, gap: spacing.xs, paddingBottom: spacing.huge },
-    item: { paddingLeft: SAFE.x, paddingRight: ITEM_END },
+    item: { paddingLeft: RAIL_X, paddingRight: ITEM_END },
     itemInner: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
@@ -541,6 +588,15 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     },
     itemFocused: { backgroundColor: c.text },
     nowItem: { marginBottom: spacing.lg },
+    nowRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.xs },
+    nowToggle: {
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      width: Math.round(tv.railItemHeight * K),
+      height: Math.round(tv.railItemHeight * K),
+      borderRadius: radius.md,
+    },
+    flex: { flex: 1 },
     nowText: { flex: 1 },
     nowLabel: { ...font(type.caption1), textTransform: 'uppercase' as const, letterSpacing: 0.8 },
     selectedBar: { position: 'absolute' as const, left: 0, top: '25%' as const, bottom: '25%' as const, width: 3, borderRadius: 2, backgroundColor: c.accent },
