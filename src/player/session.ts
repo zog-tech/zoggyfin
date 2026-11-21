@@ -54,7 +54,7 @@ import {
   withStreamFacts,
 } from './external';
 import { parseVtt } from './vtt';
-import { type LiveRestarts, nextLiveRestart } from './live-restart';
+import { LIVE_STALL_MS, type LiveRestarts, nextLiveRestart } from './live-restart';
 import { tsBridge } from '@/native/ts-bridge';
 
 interface Ctx {
@@ -227,6 +227,8 @@ class VideoSession {
   private liveAttempt: LiveAttempt | null = null;
   /** The recent automatic restarts of the live channel that plays. */
   private liveRestarts: LiveRestarts | null = null;
+  /** Runs out when the live stream that played waits for data too long (`LIVE_STALL_MS`). */
+  private liveStallTimer: ReturnType<typeof setTimeout> | null = null;
   /** The external title (IPTV film or episode, extension media) that loads or plays, with its stream forms. */
   private extAttempt: ExternalAttempt | null = null;
   /** The external title has played: its position may be saved (a failed load must not wipe a saved one). */
@@ -296,8 +298,11 @@ class VideoSession {
           // A late event of the failed stream must not hide the error. Every new load
           // (Try again, a reload, the next item) sets 'loading' before the engine loads.
           break;
-        } else if (e.status === 'loading') setPlayerState({ status: st.status === 'loading' ? 'loading' : 'buffering' });
-        else if (e.status === 'ready') {
+        } else if (e.status === 'loading') {
+          setPlayerState({ status: st.status === 'loading' ? 'loading' : 'buffering' });
+          if (st.now.live && playerState().status === 'buffering') this.watchLiveStall();
+        } else if (e.status === 'ready') {
+          this.clearLiveStall();
           setPlayerState({ status: 'ready' });
           if (st.now.external) this.externalSwitched();
         }
@@ -306,7 +311,10 @@ class VideoSession {
         if (e.playing !== st.playing) {
           setPlayerState({ playing: e.playing });
           this.reporter?.tick(e.playing ? 'Unpause' : 'Pause');
-          if (e.playing && st.now.live && this.liveAttempt) this.liveAttempt.played = true;
+          if (e.playing && st.now.live && this.liveAttempt) {
+            this.liveAttempt.played = true;
+            this.clearLiveStall();
+          }
           if (st.now.external) {
             if (e.playing) this.extPlayed = true;
             else this.saveExternal(false);
@@ -335,8 +343,10 @@ class VideoSession {
         setPlayerState({ video: e.video });
         break;
       case 'ended':
-        if (st.now.live) setPlayerState({ status: 'error', error: 'The channel stopped sending.', playing: false });
-        else {
+        if (st.now.live) {
+          // The provider closed the stream: start the channel again, a few times at most.
+          if (!this.restartLive()) setPlayerState({ status: 'error', error: 'The channel stopped sending.', playing: false });
+        } else {
           if (st.now.external) {
             this.saveExternal(true);
             if (this.extAttempt) this.extAttempt.ended = true;
@@ -675,8 +685,26 @@ class VideoSession {
     if (!this.loadNextLive()) this.liveFailed(undefined);
   }
 
+  /** Starts the wait for a live stream that stopped getting data, unless it already runs. */
+  private watchLiveStall(): void {
+    if (this.liveStallTimer) return;
+    const a = this.liveAttempt;
+    this.liveStallTimer = setTimeout(() => {
+      this.liveStallTimer = null;
+      if (!a || this.liveAttempt !== a || a.id !== this.loadId || playerState().status !== 'buffering') return;
+      if (__DEV__) console.log('[player] the live stream waits for data too long');
+      if (!this.restartLive()) this.liveFailed(undefined);
+    }, LIVE_STALL_MS);
+  }
+
+  private clearLiveStall(): void {
+    if (this.liveStallTimer) clearTimeout(this.liveStallTimer);
+    this.liveStallTimer = null;
+  }
+
   /** Ends the live attempt and its TS bridge session, if any. */
   private endLiveAttempt(): void {
+    this.clearLiveStall();
     const bridgeId = this.liveAttempt?.bridgeId;
     this.liveAttempt = null;
     if (bridgeId) void tsBridge?.stop(bridgeId).catch(() => undefined);

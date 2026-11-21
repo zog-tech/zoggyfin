@@ -329,6 +329,11 @@ first commit to today. All of it was built in the first weeks of the project.
   header's Search button.
 - **TV: the Resume button's bar has its own line.** The bar sat under the text and the button looked
   squeezed.
+- **Live TV: a channel that stops starts again by itself.** When a provider cut the stream (for
+  example, an IPTV account that allows one stream and another device took it), iOS showed a
+  black, buffering player for good. Now a channel that waits for data for 15 s starts again. After
+  3 restarts in 5 minutes the player stops and says why, for example "This provider allows 1
+  stream at a time, and all are in use." A stream that reports its end also starts again.
 - **Android and TV: the app no longer crashes while music plays.** A track change could crash the
   media session ("Invalid PlayerInfo update"). media3 is 1.11.1 now, and `expo-audio` and
   `expo-video` build from source on Android so the patched version is used. Needs a native build.

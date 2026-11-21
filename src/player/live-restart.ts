@@ -8,9 +8,23 @@
  * Pure, so it is unit-tested.
  */
 
-/** Restarts allowed within `LIVE_RESTART_WINDOW_MS` before the error shows. */
+/**
+ * Restarts allowed within `LIVE_RESTART_WINDOW_MS` before the error shows.
+ * The window is long because a panel that cuts the stream for another device
+ * lets each new start play for a few seconds: the restarts come about 40 s
+ * apart, and the user should then see the provider's reason, not a loop.
+ */
 export const LIVE_RESTART_LIMIT = 3;
-export const LIVE_RESTART_WINDOW_MS = 120_000;
+export const LIVE_RESTART_WINDOW_MS = 300_000;
+
+/**
+ * A live stream that played and then waits for data this long counts as
+ * failed. On iOS a provider that cuts the stream (an Xtream panel that answers
+ * 509 when another device takes the account's only stream) leaves AVPlayer
+ * paused with an empty buffer and no error: without this wait, the player
+ * shows "buffering" for good.
+ */
+export const LIVE_STALL_MS = 15_000;
 
 export interface LiveRestarts {
   /** The channel the restarts belong to. */
