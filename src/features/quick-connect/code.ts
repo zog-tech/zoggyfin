@@ -36,3 +36,13 @@ export function approveErrorText(e: unknown): string {
       return `${d.title}. ${d.message}`;
   }
 }
+
+/**
+ * The link in the QR code that the sign-in page shows next to the code. A phone camera opens it in
+ * Zoggyfin: the Quick Connect page with the code filled in. The person still taps Approve, so a
+ * strange QR code never lets a device in by itself. `server` is the Jellyfin server Id, so the
+ * phone can say when its account is on another server.
+ */
+export function quickConnectLink(code: string, serverId: string): string {
+  return `zoggyfin://quick-connect?code=${encodeURIComponent(cleanCode(code))}&server=${encodeURIComponent(serverId)}`;
+}

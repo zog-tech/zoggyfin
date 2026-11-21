@@ -1,4 +1,4 @@
-import { approveErrorText, cleanCode, isCompleteCode } from '../code';
+import { approveErrorText, cleanCode, isCompleteCode, quickConnectLink } from '../code';
 
 describe('cleanCode', () => {
   it('keeps digits only', () => {
@@ -44,5 +44,11 @@ describe('approveErrorText', () => {
   it('falls back to the general error text', () => {
     expect(approveErrorText({ code: 'ERR_NETWORK', message: 'Network Error' })).toMatch(/^Cannot reach the server\./);
     expect(approveErrorText(http(500))).toMatch(/^Server error\./);
+  });
+});
+
+describe('quickConnectLink', () => {
+  it('opens the Quick Connect page with the code and server', () => {
+    expect(quickConnectLink('123 456', 'abc')).toBe('zoggyfin://quick-connect?code=123456&server=abc');
   });
 });
