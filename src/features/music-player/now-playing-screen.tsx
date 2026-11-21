@@ -49,7 +49,7 @@ import { useTvScrub } from '../player/use-tv-scrub';
 import { c, ease, iconSize, motion, radius, spacing } from '../player/tokens';
 import { useLike } from './use-like';
 import { ArtBackground } from './art-background';
-import { bottomPad, nowPlayingSizes } from './layout';
+import { ART_MAX, bottomPad, nowPlayingSizes } from './layout';
 import { LyricsPanel } from './lyrics-panel';
 import { QueuePanel } from './queue-panel';
 import { VolumeSlider } from './volume-slider';
@@ -460,7 +460,8 @@ export function NowPlayingScreen() {
 
   const artwork = (
     <Animated.View style={[styles.art, { width: artSize, height: artSize }, artStyle]}>
-      <ItemImage item={item} variant="square" width={artSize} aspectRatio={1} rounded={20} hideArtTitle={false} />
+      {/* One image size for every layout: a rotation shows the cached art, not a new download at the new size. */}
+      <ItemImage item={item} variant="square" width={artSize} requestWidth={ART_MAX} aspectRatio={1} rounded={20} hideArtTitle={false} />
     </Animated.View>
   );
 

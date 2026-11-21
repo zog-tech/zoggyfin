@@ -24,6 +24,8 @@ import { spacing } from '@/theme/theme';
 export const WIDE = 900;
 /** A window lower than this and wider than high gets the landscape layout. */
 export const SHORT = 500;
+/** The largest artwork side (points) in any layout. The art image is always asked for at this size. */
+export const ART_MAX = 560;
 /** The landscape controls column: never narrower (the transport row fits) or wider than this. */
 export const LANDSCAPE_CONTROLS = { min: 280, max: 440 } as const;
 
@@ -80,7 +82,7 @@ export function nowPlayingSizes(o: NowPlayingInput): NowPlayingSizes {
   // Room for the title, scrubber, transport and bottom rows below the art.
   const below = o.longForm ? 330 : 360;
   // Wide windows also stack the header and the title above the controls in one column.
-  const artSize = Math.max(140, Math.min(contentWidth, o.height - o.insetTop - o.insetBottom - below - (wide ? 110 : 40), 560));
+  const artSize = Math.max(140, Math.min(contentWidth, o.height - o.insetTop - o.insetBottom - below - (wide ? 110 : 40), ART_MAX));
   return { mode: wide ? 'wide' : 'stack', wide, columnWidth, contentWidth, artSize, pad: NO_PAD, gap: 0 };
 }
 
@@ -93,7 +95,7 @@ function landscapeSizes(o: NowPlayingInput): NowPlayingSizes {
   };
   const gap = spacing.xxxl;
   const usable = o.width - pad.left - pad.right;
-  const artSize = Math.floor(Math.max(120, Math.min(o.height - pad.top - pad.bottom, usable - gap - LANDSCAPE_CONTROLS.min, 560)));
+  const artSize = Math.floor(Math.max(120, Math.min(o.height - pad.top - pad.bottom, usable - gap - LANDSCAPE_CONTROLS.min, ART_MAX)));
   const contentWidth = Math.floor(Math.max(LANDSCAPE_CONTROLS.min, Math.min(LANDSCAPE_CONTROLS.max, usable - gap - artSize)));
   return { mode: 'landscape', wide: false, columnWidth: artSize, contentWidth, artSize, pad, gap };
 }

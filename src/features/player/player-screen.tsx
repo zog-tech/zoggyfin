@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
@@ -23,6 +23,7 @@ import { ToastHost } from '@/components/toast-host';
 import { Touchable } from '@/components/touchable';
 import { useHideDevToolsButton } from '@/lib/dev-tools';
 import { episodeLabel } from '@/lib/format';
+import { useWindowFrame } from '@/lib/use-window-frame';
 import { KeyInput } from '@/native/key-input';
 import { hasTrackChoice } from '@/player/embedded-tracks';
 import { VideoSurface } from '@/player/engine';
@@ -163,7 +164,8 @@ export function PlayerScreen() {
   const togetherAvailable = features.watchTogether && (nearbySupported || (syncPlaySupported && signedIn));
   const server = useImageServer();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  // The size comes with the insets, so a rotation lays the controls out once (use-window-frame.ts).
+  const { width, height } = useWindowFrame();
   const reduced = useReducedMotion();
   const gutter = layout.gutter[breakpointFor(width)];
 
