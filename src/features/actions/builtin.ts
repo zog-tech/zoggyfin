@@ -7,6 +7,8 @@ import { canAddToPlaylist } from '@/features/playlists/logic';
 import { canPlayRemotely } from '@/features/remote/logic';
 import { itemActions } from '@/registry/item-actions';
 
+import { likeActionTitle } from './like-words';
+
 const PLAYABLE = new Set(['Movie', 'Episode', 'Video', 'MusicVideo', 'Audio', 'AudioBook', 'MusicAlbum', 'MusicArtist', 'MusicGenre', 'Playlist', 'Series', 'Season', 'BoxSet']);
 const WATCHABLE = new Set(['Movie', 'Episode', 'Video', 'MusicVideo', 'Series', 'Season', 'BoxSet', 'AudioBook']);
 /** Items whose audio can go into the queue. */
@@ -155,6 +157,7 @@ export function registerBuiltinItemActions(): void {
   itemActions.register({
     id: 'builtin.favorite',
     title: 'Add to favourites',
+    titleFor: ({ item }) => likeActionTitle(item, true),
     icon: 'heart',
     order: 20,
     group: 'library',
@@ -164,6 +167,7 @@ export function registerBuiltinItemActions(): void {
   itemActions.register({
     id: 'builtin.unfavorite',
     title: 'Remove from favourites',
+    titleFor: ({ item }) => likeActionTitle(item, false),
     icon: 'heart.fill',
     order: 20,
     group: 'library',

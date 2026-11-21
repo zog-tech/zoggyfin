@@ -148,7 +148,8 @@ function SortBar({ tab, options, onChange }: { tab: MusicTab; options: MusicOpti
             onPress={() => onChange({ sortOrder: options.sortOrder === 'Ascending' ? 'Descending' : 'Ascending' })}
           />
         ) : null}
-        {tab !== 'genres' && tab !== 'liked' ? <Chip label="Favourites" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
+        {/* Songs leave it out: the Liked Songs tab is that list. */}
+        {tab !== 'genres' && tab !== 'liked' && tab !== 'songs' ? <Chip label="Liked" icon="heart" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
       </ScrollView>
       <OptionSheet
         visible={open}
@@ -196,9 +197,9 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
 
   const empty =
     tab === 'liked' ? (
-      <EmptyState icon="heart" title={EMPTY.liked} message="Add a song to your favourites to see it here." />
+      <EmptyState icon="heart" title={EMPTY.liked} message="Tap the heart on a song to see it here." />
     ) : (
-      <EmptyState icon="music.note" title={EMPTY[tab]} message={options.favorites ? 'No favourites here yet.' : undefined} />
+      <EmptyState icon="music.note" title={EMPTY[tab]} message={options.favorites ? 'Nothing liked here yet.' : undefined} />
     );
   const total = q.data?.pages[0]?.total ?? items.length;
   const header =
