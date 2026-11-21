@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { setUnauthorizedHandler } from '@/api/client';
 import {
+  applyLiteQueryCache,
   CACHE_BUSTER,
   CACHE_MAX_AGE,
   dropOtherScopes,
@@ -37,6 +38,7 @@ import { startMemProbe } from '@/platform/mem-probe';
 import { installAppContextMenu } from '@/components/context-menu';
 import { isDesktop } from '@/platform/desktop';
 import { liteNow } from '@/platform/lite-now';
+import { useLite } from '@/platform/use-lite';
 import { isTV } from '@/platform/tv';
 import { TV_PAGE_BG } from '@/lib/stack-options';
 import { mediaColors, useTheme } from '@/theme';
@@ -116,6 +118,9 @@ function Root({ session }: { session: boolean }) {
   useEffect(() => startMemProbe(), []);
   // Lite mode drops the Live TV channel lists when no page uses them (iptv/holds.ts).
   useEffect(() => setChannelLiteCheck(liteNow), []);
+  // Lite mode keeps the data of a closed page for 5 minutes, not 7 days.
+  const lite = useLite();
+  useEffect(() => applyLiteQueryCache(lite), [lite]);
   // A nearby session from before a restart: the session sheet offers to rejoin it.
   useEffect(() => nearby().loadSaved(), []);
   // Mac app: no browser menu (save image, reload) on a right click that no control took.

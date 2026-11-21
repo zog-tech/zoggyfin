@@ -18,6 +18,7 @@ first commit to today. All of it was built in the first weeks of the project.
   previews and a TV tab that you leave is closed, so the app uses about a third less memory.
   Lite mode also lets go of the Live TV channel lists 10 seconds after you leave Live TV, loads
   the Home backdrop at a lower density and clears the image memory on a page change.
+  Images decode at 2 bytes a pixel, and the data of a closed page stays 5 minutes, not 7 days.
 - **Sign in on a TV with your phone's camera.** Quick Connect on the sign-in page now shows a QR
   code next to the code. Scan it with the phone's camera: Zoggyfin opens Quick Connect with the
   code filled in, and you tap Approve. The page says so when the phone's account is on another

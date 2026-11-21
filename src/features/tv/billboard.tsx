@@ -150,6 +150,7 @@ export function Billboard() {
             contentFit={tall ? 'contain' : 'cover'}
             contentPosition={tall ? 'right top' : 'top'}
             transition={motion.duration.base}
+            decodeFormat={lite ? 'rgb' : 'argb'}
             cachePolicy="memory-disk"
             priority="high"
           />
