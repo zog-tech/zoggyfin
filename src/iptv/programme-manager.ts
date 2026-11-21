@@ -29,6 +29,7 @@ import { isNativeTV } from '@/platform/tv';
 import { networkSource } from '@/servers/network-source';
 import type { NetworkSnapshot } from '@/servers/wifi-rule';
 
+import { channelHolds } from './channel-holds';
 import { IptvError, iptvErrorText } from './errors';
 import { iptvFiles } from './files';
 import { bindSession, channelsWhenLoaded, claimGuide, guideKeepFor, guideWindowOptions, providerById, saveGuideResult, xtreamLogin } from './manager';
@@ -197,9 +198,11 @@ const runs = createSerialRunner(async () => {
     if (!needsIndexRefresh(readLedger(id), at)) continue;
     const url = guideUrlOf(id);
     if (!url) continue;
-    if (!(await networkAllows())) return;
+    if (!(await networkAllows())) break;
     await buildOne(id, url, at);
   }
+  // The build loaded channel lists: Lite mode drops them again when no page uses them.
+  channelHolds.idle();
 });
 
 /**

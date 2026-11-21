@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { usePlayer } from '@/player';
 
+import { channelHolds } from './channel-holds';
 import { buildGroups, channelsInGroup, EMPTY_LISTS, type GroupView } from './lists';
 import {
   bindSession,
@@ -55,6 +56,7 @@ export type { ProgrammeHit } from './programme-search';
 export { programmePlayList } from './programme-search';
 export { progressOf } from './guide';
 export { startIptvSync, syncSoon } from './sync';
+export { setChannelLiteCheck } from './channel-holds';
 export { sharedLabel, type ShareChoice } from './shared';
 // Films and series (phase 3).
 export * from './vod-hooks';
@@ -195,7 +197,9 @@ export function useMergedSearch(enabled: boolean, query: string): { results: Pro
   const data = useIptvStore((s) => s.data);
   const active = enabled && !!query.trim();
   useEffect(() => {
-    if (active) void ensureAllLoaded();
+    if (!active) return;
+    void ensureAllLoaded();
+    return channelHolds.hold();
   }, [active]);
   return useMemo(() => {
     if (!active) return { results: [], loading: false };
@@ -221,6 +225,8 @@ export function useChannels(providerId: string | null): ProviderData {
   useEffect(() => {
     if (providerId) void ensureLoaded(providerId);
   }, [providerId]);
+  // Lite mode drops the lists once no page holds them (holds.ts).
+  useEffect(() => channelHolds.hold(), []);
   return data;
 }
 
@@ -276,6 +282,7 @@ export function useProgrammeSearch(liveView: string | null, query: string): Prog
     if (liveView === ALL_PROVIDERS) void ensureAllLoaded();
     else if (liveView) void ensureLoaded(liveView).catch(() => undefined);
   }, [active, liveView, now]);
+  useEffect(() => (active ? channelHolds.hold() : undefined), [active]);
   return useMemo(() => {
     if (!active || !ids.length) return NO_HITS;
     const sources: ProgrammeSource[] = [];

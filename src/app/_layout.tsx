@@ -32,10 +32,11 @@ import { startOtaChecks } from '@/platform/updates/ota';
 import { audioSession } from '@/player/audio/session';
 import '@/invite/wiring';
 import { useInviteLinks } from '@/invite/use-invite-links';
-import { startIptvSync } from '@/iptv';
+import { setChannelLiteCheck, startIptvSync } from '@/iptv';
 import { startMemProbe } from '@/platform/mem-probe';
 import { installAppContextMenu } from '@/components/context-menu';
 import { isDesktop } from '@/platform/desktop';
+import { liteNow } from '@/platform/lite-now';
 import { isTV } from '@/platform/tv';
 import { TV_PAGE_BG } from '@/lib/stack-options';
 import { mediaColors, useTheme } from '@/theme';
@@ -113,6 +114,8 @@ function Root({ session }: { session: boolean }) {
   useEffect(() => startOtaChecks(), []);
   // EXPO_PUBLIC_MEM_PROBE=1 builds only: the JS heap in the device log every 5 s.
   useEffect(() => startMemProbe(), []);
+  // Lite mode drops the Live TV channel lists when no page uses them (iptv/holds.ts).
+  useEffect(() => setChannelLiteCheck(liteNow), []);
   // A nearby session from before a restart: the session sheet offers to rejoin it.
   useEffect(() => nearby().loadSaved(), []);
   // Mac app: no browser menu (save image, reload) on a right click that no control took.

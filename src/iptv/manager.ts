@@ -566,6 +566,20 @@ export function markWatched(providerId: string, channelId: string): void {
   setLists(providerId, (l) => addRecent(l, channelId, Date.now(), channel ? snapOf(channel) : l.snaps[channelId]));
 }
 
+/**
+ * Lite mode (`holds.ts`): drops the channel lists, their search indexes and the guide windows of every
+ * provider from memory. The next `ensureLoaded` reads the saved files again. It skips while a list or a
+ * guide loads, so no load writes into a store that was just emptied. Favourites, recents and their
+ * snaps stay (the Home row shows them). True when it dropped something.
+ */
+export function releaseChannels(): boolean {
+  const st = iptvState();
+  if (!Object.keys(st.data).length && !Object.keys(st.guides).length) return false;
+  if (inFlight.size || reading.size || Object.values(st.guideStatus).includes('loading')) return false;
+  setIptvState({ data: {}, guides: {}, guideNames: {}, guideStatus: {} });
+  return true;
+}
+
 /** Loads the channel list of every provider (a search in "All providers"). One at a time, saved lists first. */
 export async function ensureAllLoaded(): Promise<void> {
   for (const id of iptvState().providers.order) {
