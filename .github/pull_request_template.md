@@ -15,9 +15,12 @@ Every feature must work on every platform. Tick what you tested.
 - [ ] Android
 - [ ] Web
 - [ ] Mac app
+- [ ] TV (Android TV, Fire TV, or the web with `?tv=1`)
 - [ ] Not a platform change (docs, tests or tooling)
 
 If a platform is not done, say which one and why:
+
+If the change is in platform code, did the other platforms need it too? Say what you ported, or why it applies to one platform only (see "Port each change to the other platforms" in [AGENTS.md](../AGENTS.md)):
 
 ## How I tested it
 
