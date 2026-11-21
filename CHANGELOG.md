@@ -249,6 +249,11 @@ first commit to today. All of it was built in the first weeks of the project.
   film follow them on the web; on iPhone, iPad and Android they use the caption settings of the device.
 
 ### Changed
+
+- **One name for the heart in music.** Liked Songs, the player heart, the action sheet and the
+  filter chip all say Like now; "favourites" stays for films and shows. The Favourites chip on
+  the Songs tab is gone (Liked Songs is that list), and the music Home rows are Liked albums and
+  Liked artists.
 - **Extension updates apply by themselves.** A new page or a new Library tile or tab no longer waits
   for "Review the update": only a new permission asks. The app also checks for extension updates
   every 15 minutes and on each return to the app, not every 6 hours.
@@ -279,6 +284,16 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **Android and TV: the app no longer crashes while music plays.** A track change could crash the
+  media session ("Invalid PlayerInfo update"). media3 is 1.11.1 now, and `expo-audio` and
+  `expo-video` build from source on Android so the patched version is used. Needs a native build.
+- **A liked song stays liked after the app restarts.** The saved queue kept each song's state from
+  when playback started, so the heart showed a song liked in an earlier session as not liked. The
+  players now read the server's current state, and the action sheet follows the heart.
+- **TV: faster tab switches and first Music visit.** Hidden tabs no longer render all their tiles
+  again on every switch (each tab stack names its own tab, `lib/own-tab.ts`), and the music Home
+  page mounts its sections a few at a time.
 
 - **iPhone downloads no longer start again from zero.** Each time the app started, it cancelled
   the downloads that ran, and they started again from the first byte, so a large film never
