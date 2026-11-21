@@ -27,8 +27,11 @@ export const tv = {
   railX: 32,
   /** The side menu when it is open (icons and labels). */
   menuWidth: 520,
-  /** The page margin: the same 5 % as the safe area. */
-  gutter: 96,
+  /**
+   * The page margin: about 3 % of the width. TVs today show the whole picture, so the pages use
+   * more of the screen than the 5 % safe area (the rail already sits nearer the edge, `railX`).
+   */
+  gutter: 56,
   /**
    * Row and grid tiles are sized like the streaming apps on TV: about seven
    * posters or four and a half wide tiles across, close together, so a row

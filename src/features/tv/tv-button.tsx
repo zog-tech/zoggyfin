@@ -53,15 +53,25 @@ export function TvButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={active === undefined ? undefined : { selected: active }}>
-      <Fill>
-        {icon ? <TvButtonIcon name={icon} /> : null}
-        <TvButtonLabel style={s.label}>{label}</TvButtonLabel>
-        {progress != null ? (
-          <View style={s.track}>
-            <View style={[s.trackFill, { width: `${Math.max(3, Math.round(progress * 100))}%` }]} />
+      {progress != null ? (
+        // A resume bar under the label: a taller pill, so the bar has its own line and never touches the text.
+        <Fill tall>
+          <View style={s.stack}>
+            <View style={s.line}>
+              {icon ? <TvButtonIcon name={icon} /> : null}
+              <TvButtonLabel style={s.label}>{label}</TvButtonLabel>
+            </View>
+            <View style={s.track}>
+              <View style={[s.trackFill, { width: `${Math.max(3, Math.round(progress * 100))}%` }]} />
+            </View>
           </View>
-        ) : null}
-      </Fill>
+        </Fill>
+      ) : (
+        <Fill>
+          {icon ? <TvButtonIcon name={icon} /> : null}
+          <TvButtonLabel style={s.label}>{label}</TvButtonLabel>
+        </Fill>
+      )}
     </Touchable>
   );
 }
@@ -114,7 +124,7 @@ export function TvIconButton({
 const dotStyle = { width: 5, height: 5, borderRadius: 3, backgroundColor: mediaColors.white } as const;
 
 /** The pill (or a circle of diameter `round`): its fill and scale follow the focus mark. */
-function Fill({ children, round, plain }: { children: ReactNode; round?: number; plain?: boolean }) {
+function Fill({ children, round, plain, tall }: { children: ReactNode; round?: number; plain?: boolean; tall?: boolean }) {
   const s = useStyles(makeStyles);
   const mark = useContext(TouchFocusMark);
   const rest = plain ? mediaColors.tvButtonClear : REST_FILL;
@@ -123,7 +133,7 @@ function Fill({ children, round, plain }: { children: ReactNode; round?: number;
     return { backgroundColor: interpolateColor(m, [0, 1], [rest, FOCUS_FILL]), transform: [{ scale: 1 + 0.06 * m }] };
   });
   return (
-    <Animated.View style={[round ? { width: round, height: round, borderRadius: round / 2, alignItems: 'center', justifyContent: 'center' } : s.pill, style]}>
+    <Animated.View style={[round ? { width: round, height: round, borderRadius: round / 2, alignItems: 'center', justifyContent: 'center' } : [s.pill, tall && s.pillTall], style]}>
       {children}
     </Animated.View>
   );
@@ -172,13 +182,12 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     height: scaled(40),
     borderRadius: radius.sm,
   },
+  pillTall: { height: scaled(52) },
+  stack: { gap: scaled(6) },
+  line: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm },
   label: { ...font(type.headline), color: REST_TEXT },
   track: {
-    position: 'absolute' as const,
-    left: scaled(18),
-    right: scaled(18),
-    bottom: scaled(5),
-    height: 3,
+    height: 4,
     borderRadius: 2,
     backgroundColor: mediaColors.tvTrack,
     overflow: 'hidden' as const,

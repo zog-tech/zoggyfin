@@ -308,6 +308,15 @@ first commit to today. All of it was built in the first weeks of the project.
   entry of the column) moved the focus into the other list, so a held Down ran through the groups.
 - **TV: a slimmer side menu.** The closed rail is narrower and nearer the screen's edge, with a line
   on its right side, so pages have more room. The Live TV column is wider, so its labels fit.
+- **TV: a slimmer side menu and more room for pages.** The closed rail is narrower and nearer the
+  screen's edge, with a line on its right side, and the page margin is smaller, so pages have more
+  room. The Live TV column is wider, so its labels fit.
+- **Live TV: the provider switch is in the header.** On TV and wide windows a provider button (with
+  the provider's name) sits next to Search and opens the list of providers. The column starts with
+  the lists, so the groups show on the first screen. Fast Up in the column no longer jumps to the
+  header's Search button.
+- **TV: the Resume button's bar has its own line.** The bar sat under the text and the button looked
+  squeezed.
 - **Android and TV: the app no longer crashes while music plays.** A track change could crash the
   media session ("Invalid PlayerInfo update"). media3 is 1.11.1 now, and `expo-audio` and
   `expo-video` build from source on Android so the patched version is used. Needs a native build.

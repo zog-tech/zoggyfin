@@ -43,7 +43,7 @@ describe('TV safe area (overscan)', () => {
   });
   it('keeps the side menu items inside it, with room for the icon', () => {
     expect(tv.railWidth).toBeGreaterThanOrEqual(tv.railX + tv.railIcon + 32);
-    expect(tv.gutter).toBeGreaterThanOrEqual(tv.safeX);
+    expect(tv.gutter).toBeGreaterThanOrEqual(tv.railX);
   });
 });
 
