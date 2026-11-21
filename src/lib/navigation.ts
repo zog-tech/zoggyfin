@@ -3,16 +3,17 @@ import { useCallback } from 'react';
 
 import { seedItem } from '@/api/item-seed';
 import type { BaseItemDto } from '@/api/types';
+import { pickGroup, useOwnTab } from '@/lib/own-tab';
 
 /** Tab stacks that hold the shared detail routes. */
 export type TabGroup = '(home)' | '(library)' | '(music)' | '(search)' | '(saved)';
 const GROUPS: readonly TabGroup[] = ['(home)', '(library)', '(music)', '(search)', '(saved)'];
 
-/** The tab the user is in, so a pushed detail page stays in that tab's stack. */
+/** The tab this screen is in (own-tab.ts), so a pushed detail page stays in that tab's stack. */
 export function useTabGroup(): TabGroup {
+  const own = useOwnTab();
   const segments = useSegments() as string[];
-  const found = segments.find((s): s is TabGroup => (GROUPS as readonly string[]).includes(s));
-  return found ?? '(home)';
+  return pickGroup(own, segments, GROUPS) ?? '(home)';
 }
 
 /** The route for an item. User views go to the library grid; music libraries go to the music pager. */

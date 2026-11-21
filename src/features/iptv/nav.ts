@@ -13,6 +13,7 @@
 import { type Href, useSegments } from 'expo-router';
 import { Platform } from 'react-native';
 
+import { pickGroup, useOwnTab } from '@/lib/own-tab';
 import { isTV } from '@/platform/tv';
 
 export type LiveGroup = '(home)' | '(library)' | '(live)';
@@ -24,8 +25,9 @@ const GROUPS: readonly LiveGroup[] = ['(live)', '(library)', '(home)'];
 
 /** The stack the user is in, for pushes that stay in it. */
 export function useLiveGroup(): LiveGroup {
+  const own = useOwnTab();
   const segments = useSegments() as string[];
-  return segments.find((s): s is LiveGroup => (GROUPS as readonly string[]).includes(s)) ?? (liveTvTab ? '(live)' : '(library)');
+  return pickGroup(own, segments, GROUPS) ?? (liveTvTab ? '(live)' : '(library)');
 }
 
 export function liveTvHref(group: LiveGroup): Href {
