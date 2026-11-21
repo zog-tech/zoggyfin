@@ -27,6 +27,7 @@ import { Touchable } from '@/components/touchable';
 import { useItemActions } from '@/features/actions/use-item-actions';
 import { TogetherSheetHost, usePlayForEveryone, useTogetherEntry } from '@/features/together/together-sheet';
 import { buildImageUrl, imageSource } from '@/images/image-url';
+import { TvButton } from '@/features/tv/tv-button';
 import { useTvPageScroll } from '@/features/tv/page-scroll';
 import { TvRowScroll } from '@/features/tv/shelf';
 import { formatClock, playedFraction } from '@/lib/format';
@@ -342,7 +343,97 @@ export function DetailScaffold<Row>({
     ) : null;
 
   let header: ReactElement;
-  if (twoColumn) {
+  if (isTV && media) {
+    // TV: the streaming-app item page. The art fills the screen, the text and the buttons sit on its left.
+    header = (
+      <View>
+        <TvHero
+          item={item}
+          eyebrow={eyebrow}
+          facts={facts}
+          title={<Title item={item} centered={false} big />}
+          primary={
+            playable
+              ? {
+                  label: room?.label ?? (onShuffle ? 'Play' : primaryLabel),
+                  icon: room?.locked ? 'lock.fill' : 'play.fill',
+                  progress: onShuffle ? null : progress,
+                  onPress: room?.locked ? () => undefined : (onPlay ?? (() => player.play({ item }))),
+                }
+              : null
+          }
+          actions={[
+            ...(onShuffle ? [{ icon: 'shuffle' as IconName, label: 'Shuffle', onPress: onShuffle }] : []),
+            ...secondary.filter((a) => a.key !== 'download' && a.label !== 'Together' && a.label !== 'Playlist'),
+          ]}
+        />
+        {beforeRows ? <View style={[s.page, { width: pageWidth }]}>{beforeRows}</View> : null}
+      </View>
+    );
+  } else if (isTV) {
+    // TV, albums, playlists, artists and people: the art on the left, the text and one row of buttons beside it.
+    const artSide = Math.round(l.height * 0.42);
+    const tvActions: TvHeroAction[] = [
+      ...(onShuffle ? [{ icon: 'shuffle' as IconName, label: 'Shuffle', onPress: onShuffle }] : []),
+      ...(eyebrow && onEyebrowPress ? [{ icon: 'person' as IconName, label: eyebrow, onPress: onEyebrowPress }] : []),
+      // Add to playlist stays in More: one row of buttons.
+      ...secondary.filter((a) => a.key !== 'download' && a.label !== 'Together' && a.label !== 'Playlist'),
+    ];
+    header = (
+      <View>
+        <View style={[s.tvArtRow, { paddingHorizontal: l.gutter, paddingTop: l.safe.y + spacing.xl, gap: l.gutter }]}>
+          <ItemImage
+            item={item}
+            variant="square"
+            width={artSide}
+            aspectRatio={1}
+            rounded={layout === 'circle' ? artSide / 2 : radius.lg}
+            circle={layout === 'circle'}
+          />
+          <View style={s.tvArtText}>
+            {eyebrow && !onEyebrowPress ? (
+              <Text style={[s.tvEyebrow, scriptStyle(eyebrow, s.tvEyebrow, true)]} numberOfLines={1}>
+                {eyebrow}
+              </Text>
+            ) : null}
+            <Text style={[s.display, scriptStyle(item.Name ?? '', s.display, true)]} numberOfLines={2} accessibilityRole="header">
+              {item.Name}
+            </Text>
+            {eyebrow && onEyebrowPress ? (
+              <Text style={[s.tvArtSub, scriptStyle(eyebrow, s.tvArtSub, true)]} numberOfLines={1}>
+                {eyebrow}
+              </Text>
+            ) : null}
+            {facts.length ? (
+              <Text style={s.tvFactsText} numberOfLines={1}>
+                {isolateJoin(facts)}
+              </Text>
+            ) : null}
+            {item.Overview ? (
+              <Text style={[s.tvOverview, scriptStyle(item.Overview, s.tvOverview, true)]} numberOfLines={2}>
+                {item.Overview}
+              </Text>
+            ) : null}
+            <View style={s.tvButtons}>
+              {playable ? (
+                <TvButton
+                  label={room?.label ?? (onShuffle ? 'Play' : primaryLabel)}
+                  icon={room?.locked ? 'lock.fill' : 'play.fill'}
+                  progress={onShuffle ? null : progress}
+                  onPress={room?.locked ? () => undefined : (onPlay ?? (() => player.play({ item })))}
+                  firstFocus
+                />
+              ) : null}
+              {tvActions.map((a, i) => (
+                <TvButton key={a.label} label={a.label} icon={a.icon} active={a.active} accessibilityLabel={a.a11y} onPress={a.onPress} firstFocus={!playable && i === 0} />
+              ))}
+            </View>
+          </View>
+        </View>
+        {beforeRows ? <View style={[s.page, { width: pageWidth }]}>{beforeRows}</View> : null}
+      </View>
+    );
+  } else if (twoColumn) {
     header = (
       <View>
         {media ? <Hero item={item} height={heroH} style={heroStyle} /> : null}
@@ -383,7 +474,7 @@ export function DetailScaffold<Row>({
   } else {
     header = (
       <View>
-        <View style={[s.body, s.artBody, { paddingHorizontal: l.gutter, paddingTop: l.tv ? spacing.huge : Math.max(100, insets.top + sizes.iconButton + spacing.lg) }]}>
+        <View style={[s.body, s.artBody, { paddingHorizontal: l.gutter, paddingTop: l.tv ? spacing.huge + l.safe.y : Math.max(100, insets.top + sizes.iconButton + spacing.lg) }]}>
           {art}
           {textBlock}
         </View>
@@ -418,6 +509,7 @@ export function DetailScaffold<Row>({
         ListFooterComponent={<View style={[s.page, s.footer, { width: pageWidth, paddingBottom: bottomPad }]}>{footer}</View>}
         contentInsetAdjustmentBehavior="never"
         // On a TV, react-native-tvos wraps a FlatList in a focus guide with no size, so a flex list collapses to 1 dp.
+        // TV: the item page starts at the screen's top edge (side-menu.tsx), so a hero's art reaches it.
         style={isTV ? [s.tvList, { height: l.height }] : s.list}
         scrollEventThrottle={16}
         refreshControl={
@@ -431,6 +523,119 @@ export function DetailScaffold<Row>({
       <TogetherSheetHost where="item" />
     </>
   );
+}
+
+interface TvHeroAction {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+  a11y?: string;
+}
+
+/**
+ * TV: the top of an item page, like the streaming apps on TV. The backdrop
+ * fills the screen from the right and fades into the page on the left and at
+ * the bottom; the logo (or title), the facts, the overview and one row of
+ * buttons sit on the left. Play takes the first focus, so Select plays at
+ * once. The box is a little shorter than the screen, so the next row's title
+ * shows that the page goes on.
+ */
+function TvHero({
+  item,
+  eyebrow,
+  facts,
+  title,
+  primary,
+  actions,
+}: {
+  item: BaseItemDto;
+  eyebrow?: string | null;
+  facts: string[];
+  title: ReactNode;
+  primary: (TvHeroAction & { progress: number | null }) | null;
+  actions: TvHeroAction[];
+}) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const l = useLayout();
+  const w = l.contentWidth;
+  // The page starts at the screen's top edge (side-menu.tsx), so the art does too; the text keeps clear of the inset.
+  const lift = l.safe.y;
+  const height = Math.round(l.height * 0.86) + lift;
+  const artH = height;
+  // The rating goes in its own outlined badge; the other facts are one line, each in its own
+  // direction (an Arabic genre must not reorder "1 h 7 min").
+  const rated = item.OfficialRating ?? null;
+  const line = isolateJoin(facts.filter((f) => f !== rated));
+  return (
+    <View style={{ height }}>
+      <View style={[styles.tvArt, { width: w, height: artH }]}>
+        <ItemImage item={item} variant="backdrop" width={w} aspectRatio={w / artH} rounded={0} hideArtTitle hairline={false} />
+      </View>
+      {/* Each fade covers only the strip it fades (a TV GPU fills few pixels a second). */}
+      <LinearGradient
+        colors={[c.bg, withAlpha(c.bg, 0.88), withAlpha(c.bg, 0.35), withAlpha(c.bg, 0)]}
+        locations={[0, 0.4, 0.73, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.tvFade, { width: Math.round(w * 0.75), height: artH }]}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[withAlpha(c.bg, 0), withAlpha(c.bg, 0.7), c.bg]}
+        locations={[0, 0.56, 1]}
+        style={[styles.tvFade, { top: Math.round(height * 0.5), width: w, height: height - Math.round(height * 0.5) }]}
+        pointerEvents="none"
+      />
+      <View style={[s.tvText, { left: l.gutter, width: w - l.gutter * 2, bottom: Math.round(l.height * 0.1) }]}>
+        {eyebrow ? (
+          <Text style={[s.tvEyebrow, scriptStyle(eyebrow, s.tvEyebrow, true)]} numberOfLines={1}>
+            {eyebrow}
+          </Text>
+        ) : null}
+        {title}
+        {line || rated ? (
+          <View style={s.tvFacts}>
+            {rated ? (
+              <View style={s.tvRated}>
+                <Text style={s.tvRatedText}>{rated}</Text>
+              </View>
+            ) : null}
+            {line ? (
+              <Text style={s.tvFactsText} numberOfLines={1}>
+                {line}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+        {item.Overview ? (
+          <Text style={[s.tvOverview, { maxWidth: Math.round(w * 0.5) }, scriptStyle(item.Overview, s.tvOverview, true)]} numberOfLines={3}>
+            {item.Overview}
+          </Text>
+        ) : null}
+        <View style={s.tvButtons}>
+          {primary ? <TvButton label={primary.label} icon={primary.icon} progress={primary.progress} onPress={primary.onPress} firstFocus /> : null}
+          {actions.map((a, i) => (
+            <TvButton
+              key={a.label}
+              label={a.label}
+              icon={a.icon}
+              active={a.active}
+              accessibilityLabel={a.a11y}
+              onPress={a.onPress}
+              firstFocus={!primary && i === 0}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/** Facts joined by a dot, each one isolated in its own text direction (Unicode FSI … PDI). */
+export function isolateJoin(parts: readonly string[]): string {
+  return parts.map((p) => `\u2068${p}\u2069`).join('  ·  ');
 }
 
 /** The backdrop or wide image, full bleed, fading into the page, with a top scrim for the status bar. */
@@ -625,13 +830,16 @@ export function Overview({ text, centered }: { text: string; centered: boolean }
 
 const styles = StyleSheet.create({
   heroClip: { overflow: 'hidden' },
+  tvArt: { position: 'absolute', top: 0, right: 0 },
+  tvFade: { position: 'absolute', top: 0, left: 0 },
   topScrim: { position: 'absolute', top: 0, left: 0, right: 0 },
 });
 
 const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   flex: { flex: 1 },
   list: { flex: 1, backgroundColor: c.bg },
-  tvList: { backgroundColor: c.bg },
+  // No background on TV: the window paints it once (TV_PAGE_BG in lib/stack-options).
+  tvList: {},
   page: { alignSelf: 'center' as const },
   body: { gap: spacing.lg },
   artBody: { alignItems: 'center' as const },
@@ -679,4 +887,16 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   more: { ...font(type.subheadline), fontWeight: '600' as const, color: c.accent, marginTop: 2 },
   footer: { paddingBottom: spacing.huge * 2 },
   headerButton: { width: 40, height: 40, alignItems: 'center' as const, justifyContent: 'center' as const },
+  // TV hero (TvHero).
+  tvText: { position: 'absolute' as const, gap: spacing.md },
+  tvEyebrow: { ...font(type.headline), color: c.text2 },
+  tvFacts: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md },
+  tvFactsText: { ...font(type.subheadline, { tabular: true }), color: c.text, flexShrink: 1 },
+  tvRated: { borderWidth: 1, borderColor: c.text2, borderRadius: radius.xs, paddingHorizontal: spacing.xs },
+  tvRatedText: { ...font(type.caption1), color: c.text },
+  tvOverview: { ...font(type.subheadline), color: c.text },
+  tvButtons: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: spacing.md, marginTop: spacing.sm },
+  tvArtRow: { flexDirection: 'row' as const, alignItems: 'flex-end' as const },
+  tvArtText: { flex: 1, gap: spacing.sm },
+  tvArtSub: { ...font(type.title3), fontWeight: '400' as const, color: c.text2 },
 }));

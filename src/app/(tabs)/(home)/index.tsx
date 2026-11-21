@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
+import Animated, { type SharedValue, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { queryKeys } from '@/api/query-keys';
 import { useApi } from '@/api/use-api';
@@ -9,7 +10,7 @@ import { Avatar } from '@/components/avatar';
 import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
 import { Touchable } from '@/components/touchable';
 import { registerBuiltinHomeSections } from '@/features/home/builtin-sections';
-import { Billboard, BillboardRows } from '@/features/tv/billboard';
+import { Billboard, BillboardRows, HomeHero } from '@/features/tv/billboard';
 import type { FocusTarget } from '@/features/tv/focus';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
@@ -29,6 +30,9 @@ registerBuiltinHomeSections();
 
 /** TV: the Home sections mounted before any are measured. */
 const FIRST_ROWS = 2;
+/** TV: one more section mounts ahead this often, unless the focus moved within WARM_IDLE_MS. */
+const WARM_STEP_MS = 1500;
+const WARM_IDLE_MS = 2000;
 
 export default function HomeScreen() {
   const s = useStyles(makeStyles);
@@ -48,7 +52,14 @@ export default function HomeScreen() {
   const tvScroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const tvContent = useRef<ComponentRef<typeof View> | null>(null);
   const lastRowY = useRef(-1);
-  const rows = useRef(new Set<RefObject<FocusTarget | null>>());
+  // The rows and, for those that fade (useRowFade), where their top in the content goes.
+  const rows = useRef(new Map<RefObject<FocusTarget | null>, SharedValue<number> | undefined>());
+  // The last measured top of each row view: a focus scrolls at once, with no measure first.
+  const rowTops = useRef(new Map<FocusTarget, number>());
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.set(e.contentOffset.y);
+  });
   const [listH, setListH] = useState(0);
   const [end, setEnd] = useState<{ rowsH: number; lastTop: number } | null>(null);
   // The sections mount as the focus comes near them (rowsToMount); once mounted they stay (kept by id).
@@ -64,6 +75,20 @@ export default function HomeScreen() {
       return next === cut ? prev : new Set([...prev, ...ids.slice(0, next)]);
     });
   }, [ids]);
+  // The sections below mount ahead, one at a time while the page rests, so a glide down never waits
+  // for a section to mount (a mount in the middle of a glide was a visible hitch on a TV stick).
+  const lastMove = useRef(0);
+  useEffect(() => {
+    if (!isTV) return;
+    const t = setInterval(() => {
+      if (Date.now() - lastMove.current < WARM_IDLE_MS) return;
+      setMountedIds((prev) => {
+        const cut = mountedCut(ids, prev, FIRST_ROWS);
+        return cut >= ids.length ? prev : new Set([...prev, ...ids.slice(0, cut + 1)]);
+      });
+    }, WARM_STEP_MS);
+    return () => clearInterval(t);
+  }, [ids]);
   // New sections may add no height (empty rows hide): look again after they had time to lay out.
   useEffect(() => {
     if (!isTV) return;
@@ -76,7 +101,7 @@ export default function HomeScreen() {
     grow();
     const content = tvContent.current;
     if (!content) return;
-    const found = [...rows.current].map((r) => r.current).filter((v): v is FocusTarget => !!v);
+    const found = [...rows.current].filter((e): e is [RefObject<FocusTarget>, SharedValue<number> | undefined] => !!e[0].current);
     if (!found.length) return setEnd({ rowsH, lastTop: 0 });
     let lastTop = 0;
     let left = found.length;
@@ -84,11 +109,14 @@ export default function HomeScreen() {
       left -= 1;
       if (!left) setEnd({ rowsH, lastTop });
     };
-    for (const row of found) {
+    for (const [ref, top] of found) {
+      const row = ref.current;
       row.measureLayout(
         content,
         (_x, y) => {
           lastTop = Math.max(lastTop, y);
+          rowTops.current.set(row, y);
+          top?.set(y);
           done();
         },
         done,
@@ -103,6 +131,7 @@ export default function HomeScreen() {
     () => ({
       scrollTo: (row) => {
         if (!row) return;
+        lastMove.current = Date.now();
         const first = !pendingRow.current;
         pendingRow.current = row;
         if (!first) return;
@@ -111,26 +140,34 @@ export default function HomeScreen() {
           pendingRow.current = null;
           const content = tvContent.current;
           if (!last || !content) return;
+          const glide = (y: number) => {
+            if (Math.abs(y - lastRowY.current) < 1) return;
+            lastRowY.current = y;
+            tvScroll.current?.scrollTo({ y, animated: true });
+            grow();
+          };
+          // A known row glides at once; the measure then corrects a top that moved since.
+          const known = rowTops.current.get(last);
+          if (known !== undefined) glide(known);
           last.measureLayout(
             content,
             (_x, y) => {
-              if (Math.abs(y - lastRowY.current) < 1) return;
-              lastRowY.current = y;
-              tvScroll.current?.scrollTo({ y, animated: true });
-              grow();
+              rowTops.current.set(last, y);
+              glide(y);
             },
             () => undefined,
           );
         }, 0);
       },
-      track: (row) => {
-        rows.current.add(row);
+      track: (row, top) => {
+        rows.current.set(row, top);
         return () => {
           rows.current.delete(row);
         };
       },
+      scrollY,
     }),
-    [grow],
+    [grow, scrollY],
   );
 
   if (isTV) {
@@ -138,13 +175,16 @@ export default function HomeScreen() {
     const endPad = end && listH ? tvPageEndPadding(listH, end.rowsH, end.lastTop) : l.height * 0.5;
     // TV: the billboard for the focused item stays at the top; the rows scroll under it.
     return (
-      <View style={s.flex}>
+      // No background: the window paints it once (TV_PAGE_BG).
+      <View style={s.tvFlex}>
         <Billboard />
         <BillboardRows.Provider value>
           <TvRowScroll.Provider value={tvPage}>
-            <ScrollView
+            <Animated.ScrollView
               ref={tvScroll}
               {...tvDrivenScroll}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
               style={s.tvRows}
               contentContainerStyle={{ paddingBottom: Math.max(bottomPad, endPad) }}
               onLayout={(e) => {
@@ -154,6 +194,7 @@ export default function HomeScreen() {
                 grow();
               }}>
               <View ref={tvContent} onLayout={(e) => measureEnd(e.nativeEvent.layout.height)}>
+                <HomeHero />
                 <OfflineBanner entries />
                 {sections.slice(0, mounted).map((sec) => (
                   <View key={sec.id}>
@@ -161,7 +202,7 @@ export default function HomeScreen() {
                   </View>
                 ))}
               </View>
-            </ScrollView>
+            </Animated.ScrollView>
           </TvRowScroll.Provider>
         </BillboardRows.Provider>
       </View>
@@ -214,6 +255,7 @@ export default function HomeScreen() {
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
   flex: { flex: 1, backgroundColor: c.bg },
+  tvFlex: { flex: 1 },
   // No background: the billboard art fades out behind the first row.
   tvRows: { flex: 1 },
   content: { paddingBottom: spacing.huge * 2 },

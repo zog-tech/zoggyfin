@@ -23,21 +23,26 @@ export const tv = {
   menuWidth: 520,
   /** The page margin: the same 5 % as the safe area. */
   gutter: 96,
-  tileGap: 40,
-  sectionGap: 44,
-  rowTileWidth: { poster: 272, thumb: 512, square: 300, circle: 200 } satisfies Record<TileKind, number>,
-  gridMinTile: { poster: 236, thumb: 480, square: 280, circle: 190 } satisfies Record<TileKind, number>,
+  /**
+   * Row and grid tiles are sized like the streaming apps on TV: about seven
+   * posters or four and a half wide tiles across, close together, so a row
+   * reads as a strip and the next row shows below.
+   */
+  tileGap: 24,
+  sectionGap: 36,
+  rowTileWidth: { poster: 200, thumb: 340, square: 230, circle: 170 } satisfies Record<TileKind, number>,
+  gridMinTile: { poster: 196, thumb: 340, square: 220, circle: 160 } satisfies Record<TileKind, number>,
   /** Type sizes are the phone sizes times this (before the screen scale). */
   typeScale: 1.8,
-  /** The focused tile grows by this much. */
-  focusScale: 1.1,
+  /** The focused tile grows by this much (its ring then stays clear of the next tile at `tileGap`). */
+  focusScale: 1.06,
   /** Focus ring width and gap in points (not scaled with the screen). */
   focusRingWidth: 3,
   focusRingGap: 3,
   railItemHeight: 72,
   railIcon: 40,
   /** The Home billboard takes this share of the screen height. */
-  billboardFactor: 0.4,
+  billboardFactor: 0.44,
 } as const;
 
 export function tvScale(width: number): number {

@@ -10,7 +10,7 @@ describe('readPlaybackSettings', () => {
 
   it('keeps older saved settings and turns the whole-video load on', () => {
     const old = { wifiBitrate: 20_000_000, cellularBitrate: 4_000_000, skipBackSeconds: 5, skipForwardSeconds: 30, autoplayNext: false, downloadQuality: 720 };
-    expect(readPlaybackSettings(old)).toEqual({ ...old, loadWholeVideo: true, loadWholeVideoChosen: false });
+    expect(readPlaybackSettings(old)).toEqual({ ...old, loadWholeVideo: true, loadWholeVideoChosen: false, previews: true });
   });
 
   it('ignores an "off" saved before the user chose it', () => {

@@ -8,6 +8,8 @@
  */
 import { type Href, useSegments } from 'expo-router';
 
+import { pickGroup, useOwnTab } from '@/lib/own-tab';
+
 export type ExtGroup = '(home)' | '(library)' | '(search)' | '(ext)';
 
 const GROUPS: readonly ExtGroup[] = ['(ext)', '(home)', '(library)', '(search)'];
@@ -19,7 +21,9 @@ export function extGroupOf(segments: readonly string[]): ExtGroup {
 
 /** The stack the user is in, for pushes that stay in it. */
 export function useExtGroup(): ExtGroup {
-  return extGroupOf(useSegments() as string[]);
+  const own = useOwnTab();
+  const segments = useSegments() as string[];
+  return pickGroup(own, segments, GROUPS) ?? '(home)';
 }
 
 /** An extension page; with `section`, that section on its own ("See all"). */

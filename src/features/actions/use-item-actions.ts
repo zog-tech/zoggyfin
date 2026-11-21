@@ -13,7 +13,7 @@ import { asksDownloadQuality, downloads, downloadsSupported } from '@/downloads'
 import { loadItemFacts, needsItemFacts } from '@/extensions/runtime';
 import { useExtensions } from '@/extensions/store';
 import { downloadsState, statusOf, useDownloadsStore } from '@/downloads/store';
-import { setFavouriteOverride } from '@/features/actions/favourite-overrides';
+import { setFavouriteOverride, useIsFavourite } from '@/features/actions/favourite-overrides';
 import { openAddToPlaylist, openRenamePlaylist } from '@/features/playlists/add-to-playlist';
 import * as playlistOps from '@/features/playlists/ops';
 import { openPlayOn } from '@/features/remote/play-on-sheet';
@@ -28,12 +28,20 @@ import { openTabRoot } from '@/features/extensions/tab-nav';
 
 import { registerBuiltinItemActions } from './builtin';
 import { openDownloadQuality } from './download-quality-store';
+import { likeDoneText } from './like-words';
 
 registerBuiltinItemActions();
 
 /** The actions for an item, plus a runner that supplies the app API. */
-export function useItemActions(item: BaseItemDto | undefined) {
+export function useItemActions(given: BaseItemDto | undefined) {
   const { api, userId, scope } = useApi();
+  // A tile or the queue may hold a copy from before a like changed in this session:
+  // the sheet offers Like or Unlike from the state the player heart shows.
+  const fav = useIsFavourite(userId, given);
+  const item = useMemo(
+    () => (given?.UserData && !!given.UserData.IsFavorite !== fav ? { ...given, UserData: { ...given.UserData, IsFavorite: fav } } : given),
+    [given, fav],
+  );
   const qc = useQueryClient();
   const openItem = useOpenItem();
   const player = usePlayer();
@@ -69,7 +77,7 @@ export function useItemActions(item: BaseItemDto | undefined) {
           await jf.setFavorite(api, userId, it.Id ?? '', fav);
           // The music player heart reads this, so it matches a change made here.
           if (it.Id) setFavouriteOverride(userId, it.Id, fav);
-        }, fav ? 'Added to favourites' : 'Removed from favourites'),
+        }, likeDoneText(it, fav)),
       setPlayed: (it, played) =>
         guard(() => jf.setPlayed(api, userId, it.Id ?? '', played), played ? 'Marked as played' : 'Marked as unplayed'),
       addToPlaylist: (it) => openAddToPlaylist(it),

@@ -1,3 +1,19 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 774d630a060c2e714c75d7eef4eb02df87ae8d9b..49d756fc4f6f9476a02f6560bbe8499b8f92178d 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -26,7 +26,10 @@ dependencies {
+   implementation 'androidx.appcompat:appcompat:1.7.1'
+   implementation 'androidx.core:core-ktx:1.15.0'
+ 
+-  def androidxMedia3Version = "1.9.1"
++  // Zoggyfin: media3 1.11 fixes the IllegalStateException in MediaUtils.mergePlayerInfo
++  // ("Invalid PlayerInfo update") that crashed the app on a track change. Gradle resolves
++  // media3 to this version for expo-video too.
++  def androidxMedia3Version = "1.11.1"
+   implementation "androidx.media3:media3-session:$androidxMedia3Version"
+   implementation "androidx.media3:media3-ui:$androidxMedia3Version"
+   implementation "androidx.media3:media3-exoplayer:$androidxMedia3Version"
 diff --git a/ios/AudioModule.swift b/ios/AudioModule.swift
 index 42ce9e8f213ebc243db25ef836456757b0daeb09..e79c94acf12eb34d29065d3f201ec8427b343609 100644
 --- a/ios/AudioModule.swift

@@ -25,6 +25,60 @@ first commit to today. All of it was built in the first weeks of the project.
   last tab: every song on the device from this server, newest download first, and it works with no
   connection. On iPhone, iPad, Android and the Mac app; the web and TV have no downloads, so the
   Downloaded tab says so.
+- **TV: streaming-app item pages.** On Android TV a movie, show or episode page now opens like the
+  big streaming apps: the backdrop fills the screen and fades into the page, with the logo, the
+  facts (the age rating in its own badge), the overview and one row of buttons on the left. Play or
+  Resume has the focus, so one press plays. The buttons light up white when focused.
+- **TV: episodes on the show page.** A show's page lists its seasons as chips and the episodes of
+  the chosen season in a row (the season of the next episode first). Select on an episode plays it;
+  a long press opens its page. Before, it took a season page and an episode page to start one.
+- **TV: Home opens on the featured title.** Play (or Resume) and More info sit under the
+  billboard and Play has the focus, so one press plays what you were watching. Down goes into the
+  rows; Up brings the featured title back.
+- **TV: previews.** When the focus rests on a movie or an episode for a few seconds, a clip of it
+  plays over the billboard art, from a point past its opening, and fades out after 40 seconds or
+  as soon as the focus moves. It streams the original file (no work for the server). Settings,
+  Playback, "Autoplay previews on Home" turns them off.
+- **TV: instant tab switches.** A tab you visited before shows about 30 ms after Select (it was
+  3.6 s): hidden tabs keep their views in a native container that only stops drawing them and
+  blocks their focus (`ZoggyfinTvVisibility`), and the menu shows the tab before the router has
+  switched. Pictures on a tab you come back to are all there (a detached tab came back with empty
+  tiles until they had the focus). Needs the new build; an older build detaches hidden tabs.
+- **Home: show music or not.** Settings, Home, "Show music on Home" leaves out Continue listening
+  and the Recently added rows of music libraries. Music keeps its own tab.
+- **TV: steadier vertical scrolling.** A preview pauses at once when the focus moves (its video
+  made every frame of the glide cost twice as much), Home builds its lower rows ahead while you
+  rest, and the side menu stops the preview while it is open.
+- **TV: steadier held D-pad.** A held key steps about 5.5 times a second, so each step glides
+  instead of the focus running ahead and the row catching up in jumps.
+- **Search: no separate voice button.** The mic beside the search field is gone; the keyboard's
+  own voice typing works in the field (on Android the field is no longer overwritten while the
+  keyboard composes).
+- **TV: a music player made for the remote.** The art on the left, the song on the right with a
+  progress line, one row of large buttons (shuffle, previous, play or pause, next, repeat; Play has
+  the focus) and three pills: Up next, Lyrics and Favourite, with the rest under More. The queue
+  and the lyrics open in place of the art and are focus stops only then; Back closes them.
+- **TV: music from any page.** While music plays, the side menu's first entry shows the cover and
+  opens the player (one Left and Select). The floating mini player over the rows is gone on TV.
+- **TV: album, artist and playlist pages** have the art on the left and one row of buttons beside
+  the title, in place of the phone layout with full-width Play and Shuffle bars.
+- **TV: rows no longer cut off at the top.** On Home a row fades as it slides up past the focused
+  row, and pages of rows (Music, item pages) bring the focused row to the top, so no half row stays
+  under the tab bar. Home starts the glide at once with the row positions it knows.
+- **TV: Continue watching and Next up play at once.** Select on one of their tiles resumes it; a
+  long press opens its page.
+- **TV: smoother scrolling and streaming-app sizes.** Rows and grids use smaller tiles that sit
+  closer together (about seven posters or four and a half wide tiles across), and the next row
+  peeks in at the bottom instead of stopping at a hard line. Home tiles show only their art (and
+  the progress bar); the billboard shows the title. On TV the page background is painted once
+  instead of four times, and the billboard fades cover only the art they fade: on a Google TV
+  Streamer the GPU time per frame fell from about 18 ms to 10 ms and janky frames from 24 % to 7 %.
+  Rows away from the focus mount only the tiles on screen (the focused row gets its full window
+  once the focus settles), tiles have no hairline on TV, and the billboard text fades with a plain
+  opacity instead of a layout animation, so the page glides at 60 frames a second.
+- **TV: smoother Home billboard.** The billboard text cross-fades when the focus rests on another
+  tile, and its overview keeps its two lines while it loads, so the title no longer jumps. The age
+  rating shows as a badge. The open side menu dims the page behind it.
 - **Sound plays on (listen together).** In a nearby listen-together session, the host picks where
   the sound comes out: every device (as before) or one device, for example the phone on the car
   stereo. The other devices keep playing in sync with no sound, so a change is instant, and their
@@ -195,6 +249,11 @@ first commit to today. All of it was built in the first weeks of the project.
   film follow them on the web; on iPhone, iPad and Android they use the caption settings of the device.
 
 ### Changed
+
+- **One name for the heart in music.** Liked Songs, the player heart, the action sheet and the
+  filter chip all say Like now; "favourites" stays for films and shows. The Favourites chip on
+  the Songs tab is gone (Liked Songs is that list), and the music Home rows are Liked albums and
+  Liked artists.
 - **Extension updates apply by themselves.** A new page or a new Library tile or tab no longer waits
   for "Review the update": only a new permission asks. The app also checks for extension updates
   every 15 minutes and on each return to the app, not every 6 hours.
@@ -225,6 +284,16 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **Android and TV: the app no longer crashes while music plays.** A track change could crash the
+  media session ("Invalid PlayerInfo update"). media3 is 1.11.1 now, and `expo-audio` and
+  `expo-video` build from source on Android so the patched version is used. Needs a native build.
+- **A liked song stays liked after the app restarts.** The saved queue kept each song's state from
+  when playback started, so the heart showed a song liked in an earlier session as not liked. The
+  players now read the server's current state, and the action sheet follows the heart.
+- **TV: faster tab switches and first Music visit.** Hidden tabs no longer render all their tiles
+  again on every switch (each tab stack names its own tab, `lib/own-tab.ts`), and the music Home
+  page mounts its sections a few at a time.
 
 - **iPhone downloads no longer start again from zero.** Each time the app started, it cancelled
   the downloads that ran, and they started again from the first byte, so a large film never

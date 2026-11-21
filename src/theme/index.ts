@@ -213,6 +213,13 @@ export const mediaColors = {
   hoverOverlay: 'rgba(255,255,255,0.08)',
   /** TV: the fill of a focused row (TV is always dark). */
   tvRowFocus: 'rgba(255,255,255,0.22)',
+  /** TV: an action button at rest (a translucent pill on the art). Focused it is `white` with `tvButtonFocusText`. */
+  tvButtonRest: 'rgba(255,255,255,0.16)',
+  /** TV: a plain icon button at rest (no fill; the focus fills it white). */
+  tvButtonClear: 'rgba(255,255,255,0)',
+  tvButtonFocusText: '#0B0B0E',
+  /** TV: the empty part of a resume bar on a button or tile. */
+  tvTrack: 'rgba(128,128,128,0.55)',
   tileHairlineDark: 'rgba(255,255,255,0.08)',
   tileHairlineLight: 'rgba(0,0,0,0.08)',
   heroTopScrim: 'rgba(0,0,0,0.35)',

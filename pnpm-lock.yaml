@@ -9,7 +9,7 @@ patchedDependencies:
     hash: 17e573e94e9ed6b60448d7f374a89fd8f64fcddbe9779eb4dba351665e814285
     path: patches/@kesha-antonov__react-native-background-downloader@4.6.3.patch
   expo-audio@58.0.10:
-    hash: 24d75641089958101bec400b9ba205f3b5f0d9fffb0fe855e39cc54c772ea9f8
+    hash: 0896905a57fc358c839f79ec9a83f7b13b947bb4c2b79a0c9f018a7afbfc167b
     path: patches/expo-audio@58.0.10.patch
   expo-video@58.0.13:
     hash: 0fd639c7cd66d322c68f095c0f02b558a0d35a57f141738042f216d5a14b323e
@@ -75,7 +75,7 @@ importers:
         version: 58.0.19(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)(typescript@6.0.3)
       expo-audio:
         specifier: ~58.0.10
-        version: 58.0.10(patch_hash=24d75641089958101bec400b9ba205f3b5f0d9fffb0fe855e39cc54c772ea9f8)(expo-asset@58.0.19(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)(typescript@6.0.3))(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)
+        version: 58.0.10(patch_hash=0896905a57fc358c839f79ec9a83f7b13b947bb4c2b79a0c9f018a7afbfc167b)(expo-asset@58.0.19(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)(typescript@6.0.3))(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)
       expo-build-properties:
         specifier: ~58.0.11
         version: 58.0.11(expo@58.0.21)
@@ -8606,7 +8606,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-audio@58.0.10(patch_hash=24d75641089958101bec400b9ba205f3b5f0d9fffb0fe855e39cc54c772ea9f8)(expo-asset@58.0.19(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)(typescript@6.0.3))(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0):
+  expo-audio@58.0.10(patch_hash=0896905a57fc358c839f79ec9a83f7b13b947bb4c2b79a0c9f018a7afbfc167b)(expo-asset@58.0.19(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)(typescript@6.0.3))(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0):
     dependencies:
       expo: 58.0.21(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.15)(expo-router@58.0.28)(react-dom@19.3.0(react@19.3.0))(react-native-tvos@0.88.0-0)(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(react-native-tvos@0.88.0-0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
       expo-asset: 58.0.19(expo@58.0.21)(react-native-tvos@0.88.0-0)(react@19.3.0)(typescript@6.0.3)

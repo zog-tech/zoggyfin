@@ -18,7 +18,9 @@ import expo.modules.core.interfaces.ReactActivityLifecycleListener
  * TV: a held D-pad key repeats fast (the Google TV remote sends about 20
  * key-downs a second), so the focus flies past rows and tiles. This drops
  * the repeated key-downs that come sooner than [MIN_GAP_MS] after the last
- * one let through: a held key moves the focus about 10 times a second. The
+ * one let through: a held key moves the focus about 5 to 6 times a second,
+ * the pace at which each step's glide shows (at 10 a second the focus ran
+ * ahead of the page on a TV stick, which then caught up in jumps). The
  * first press always goes through at once. Phones and tablets are not
  * touched. The JavaScript remote events come from the root view under this
  * window, so the player's scrubbing sees the same throttled repeats.
@@ -39,7 +41,7 @@ class DpadRepeatThrottle : ReactActivityLifecycleListener {
   }
 
   companion object {
-    const val MIN_GAP_MS = 100L
+    const val MIN_GAP_MS = 180L
   }
 }
 

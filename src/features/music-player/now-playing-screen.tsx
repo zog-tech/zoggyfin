@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { type Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -9,11 +8,7 @@ import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSprin
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { describeError } from '@/api/errors';
-import * as jf from '@/api/jellyfin';
-import { queryKeys } from '@/api/query-keys';
 import type { BaseItemDto } from '@/api/types';
-import { useApi } from '@/api/use-api';
 import { Icon, type IconName } from '@/components/icon';
 import { ItemImage } from '@/components/item-image';
 import { ToastHost } from '@/components/toast-host';
@@ -23,11 +18,9 @@ import { canDownload, downloads, findDownload } from '@/downloads';
 import { TogetherPill } from '@/features/together/together-pill';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
-import { setFavouriteOverride, useIsFavourite } from '@/features/actions/favourite-overrides';
 import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { useHideDevToolsButton } from '@/lib/dev-tools';
 import { itemHref } from '@/lib/navigation';
-import { toast } from '@/lib/toast';
 import { useWindowFrame } from '@/lib/use-window-frame';
 import { KeyInput } from '@/native/key-input';
 import type { KeyPress } from '@/native/key-input-types';
@@ -54,6 +47,7 @@ import { RoundButton } from '../player/round-button';
 import { Scrubber } from '../player/scrubber';
 import { useTvScrub } from '../player/use-tv-scrub';
 import { c, ease, iconSize, motion, radius, spacing } from '../player/tokens';
+import { useLike } from './use-like';
 import { ArtBackground } from './art-background';
 import { bottomPad, nowPlayingSizes } from './layout';
 import { LyricsPanel } from './lyrics-panel';
@@ -122,8 +116,6 @@ export function NowPlayingScreen() {
   // The size comes with the insets, so a rotation renders the new layout once (use-window-frame.ts).
   const { width, height } = useWindowFrame();
   const reduced = useReducedMotion();
-  const { api, userId, scope } = useApi();
-  const qc = useQueryClient();
   const signedIn = useSessionStore((st) => !!st.session);
   const s = audioSession();
 
@@ -220,22 +212,12 @@ export function NowPlayingScreen() {
   });
 
   const item = now?.item;
-  // Not the queue's copy alone: it is from when playback started (favourite-overrides.ts).
-  const isFav = useIsFavourite(userId, item);
-  // The React Compiler memoizes this; no useCallback.
+  // Not the queue's copy alone: it is from when playback started (use-like.ts).
+  const like = useLike(item);
+  const isFav = like.liked;
   const toggleFavourite = async () => {
-    if (!item?.Id) return;
-    const on = !isFav;
-    setFavouriteOverride(userId, item.Id, on);
     haptic();
-    try {
-      await jf.setFavorite(api, userId, item.Id, on);
-      // The heart here is the Like button: the Liked Songs tab follows it.
-      void qc.invalidateQueries(queryKeys.likedSongs(scope));
-    } catch (e) {
-      setFavouriteOverride(userId, item.Id, !on);
-      toast(describeError(e).title, { icon: 'exclamationmark.triangle' });
-    }
+    await like.toggle();
   };
 
   if (!now || !item) return <View style={styles.root} />;
@@ -346,7 +328,7 @@ export function NowPlayingScreen() {
           </Text>
         ) : null}
       </View>
-      <RoundButton icon={isFav ? 'heart.fill' : 'heart'} label={isFav ? 'Remove from favourites' : 'Add to favourites'} size={36} glyph={18} onPress={() => void toggleFavourite()} />
+      <RoundButton icon={isFav ? 'heart.fill' : 'heart'} label={isFav ? 'Unlike' : 'Like'} size={36} glyph={18} onPress={() => void toggleFavourite()} />
       <RoundButton icon="ellipsis" label="More" size={36} glyph={18} onPress={() => setSheet('more')} />
     </View>
   );
@@ -364,7 +346,7 @@ export function NowPlayingScreen() {
           </Text>
         ) : null}
       </View>
-      <RoundButton icon={isFav ? 'heart.fill' : 'heart'} label={isFav ? 'Remove from favourites' : 'Add to favourites'} size={36} glyph={18} onPress={() => void toggleFavourite()} />
+      <RoundButton icon={isFav ? 'heart.fill' : 'heart'} label={isFav ? 'Unlike' : 'Like'} size={36} glyph={18} onPress={() => void toggleFavourite()} />
     </View>
   );
 

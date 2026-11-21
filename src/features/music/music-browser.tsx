@@ -1,6 +1,6 @@
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { DEFAULT_MUSIC_OPTIONS, type MusicOptions, type MusicTab } from '@/api/jellyfin';
@@ -84,9 +84,11 @@ const SORTS: Record<MusicTab, SortChoice[]> = {
  * Home / Liked Songs / Albums / Artists / Playlists / Songs / Genres /
  * Downloaded (or Audiobooks / Authors), as a pager that follows a horizontal
  * swipe. The saved tab opens first; with none saved, the first tab (Home for
- * music).
+ * music). A memo: the Music tab's screen renders on every navigation (its
+ * header options follow the route), and the whole browser rendering with it
+ * cost a TV stick 370 ms.
  */
-export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string; kind?: AudioLibraryKind }) {
+export const MusicBrowser = memo(function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string; kind?: AudioLibraryKind }) {
   const tabs = kind === 'books' ? BOOK_TABS : MUSIC_TABS;
   const lastKey = `music.tab.${libraryId}`;
   const initial = Math.max(0, tabs.findIndex((t) => t.key === storage.getString(lastKey)));
@@ -106,7 +108,7 @@ export function MusicBrowser({ libraryId, kind = 'music' }: { libraryId: string;
       }
     />
   );
-}
+});
 
 /**
  * Liked Songs opens with the newest songs first, like the liked list of other
@@ -146,7 +148,8 @@ function SortBar({ tab, options, onChange }: { tab: MusicTab; options: MusicOpti
             onPress={() => onChange({ sortOrder: options.sortOrder === 'Ascending' ? 'Descending' : 'Ascending' })}
           />
         ) : null}
-        {tab !== 'genres' && tab !== 'liked' ? <Chip label="Favourites" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
+        {/* Songs leave it out: the Liked Songs tab is that list. */}
+        {tab !== 'genres' && tab !== 'liked' && tab !== 'songs' ? <Chip label="Liked" icon="heart" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
       </ScrollView>
       <OptionSheet
         visible={open}
@@ -194,9 +197,9 @@ function MusicPage({ libraryId, tab }: { libraryId: string; tab: MusicTab }) {
 
   const empty =
     tab === 'liked' ? (
-      <EmptyState icon="heart" title={EMPTY.liked} message="Add a song to your favourites to see it here." />
+      <EmptyState icon="heart" title={EMPTY.liked} message="Tap the heart on a song to see it here." />
     ) : (
-      <EmptyState icon="music.note" title={EMPTY[tab]} message={options.favorites ? 'No favourites here yet.' : undefined} />
+      <EmptyState icon="music.note" title={EMPTY[tab]} message={options.favorites ? 'Nothing liked here yet.' : undefined} />
     );
   const total = q.data?.pages[0]?.total ?? items.length;
   const header =

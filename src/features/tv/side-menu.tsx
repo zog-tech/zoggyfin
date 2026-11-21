@@ -14,14 +14,21 @@
  * until the panel is gone.
  */
 import { type Href, router, usePathname } from 'expo-router';
-import { TabList, Tabs, TabSlot, TabTrigger, useTabTrigger } from 'expo-router/ui';
+import { TabList, Tabs, type TabsDescriptor, TabSlot, type TabsSlotRenderOptions, TabTrigger, useTabTrigger } from 'expo-router/ui';
+import { Screen } from 'react-native-screens';
+import { TvVisibility } from '@/native/tv-visibility';
+
+import { useTvChrome } from './chrome-store';
 import { LinearGradient } from 'expo-linear-gradient';
-import { type ComponentRef, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import { type ComponentRef, memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, type SharedValue, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon, type IconName } from '@/components/icon';
+import { ItemImage } from '@/components/item-image';
+import { openFullPlayer } from '@/player';
+import { usePlayerStore } from '@/player/store';
 import { pageHref, pagePathname } from '@/features/extensions/nav';
 import { usePagePlacement } from '@/features/extensions/use-placement';
 import { tvKeyFromEvent } from '@/player/tv-keys';
@@ -93,15 +100,44 @@ const ITEM_END = spacing.sm;
 /** The icon's inset in its item, so the icon sits centred in the closed item. */
 const iconInset = (railWidth: number) => Math.round((railWidth - SAFE.x - ITEM_END - ICON) / 2);
 
-/** The (tabs) layout on TV: the tab content after the rail, and the side menu over it. */
+/**
+ * The (tabs) layout on TV: the tab content after the rail, and the side menu over it. It reads no
+ * route state itself (the parts that follow the page are in `TvContent` and `SideMenu`), so a
+ * navigation does not render the tab navigator again from here: that cost about 270 ms on a TV
+ * stick, twice per tab switch.
+ */
 export function TvTabsLayout() {
+  const content = useRef<ComponentRef<typeof View> | null>(null);
+  // Every remote key, so a page can tell a move into the side menu from a focus Android put there.
+  useTvRemote(isNativeTV, (e) => {
+    const k = tvKeyFromEvent(e);
+    if (k) noteRemoteKey(k.key);
+  });
+  return (
+    <Tabs style={styles.flex}>
+      {/* First in the tree, so the content (not the menu) takes the first focus. */}
+      <TvContent content={content} />
+      <SideMenu content={content} />
+      <TabList style={styles.hidden}>
+        {DESTINATIONS.map((d) => (
+          <TabTrigger key={d.name} name={d.name ?? ''} href={d.href} />
+        ))}
+      </TabList>
+    </Tabs>
+  );
+}
+
+/** The tab content after the rail. It follows the page (its top inset, the visible page for the focus). */
+function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> | null> }) {
   const l = useLayout();
   const rail = Math.round(tv.railWidth * tvScale(l.width));
-  const home = usePathname() === '/';
-  const content = useRef<ComponentRef<typeof View> | null>(null);
+  const pathname = usePathname();
+  // Home and item pages draw their art from the screen's top edge; their text keeps clear of the inset.
+  const fullBleed = pathname === '/' || /\/item\//.test(pathname);
   // The visible page of the tab stacks (Android TV). A focus that comes into the
   // content goes there, never to a page under it that is still in the window.
   const [page, setPage] = useState<FocusTarget | null>(null);
+  const shownTab = useTvChrome((st) => st.shownTab);
   useEffect(() => {
     setContentGuide(content.current);
     const sync = () => setPage(tvPages.active()?.guide.current ?? null);
@@ -112,30 +148,16 @@ export function TvTabsLayout() {
       off();
       setContentGuide(null);
     };
-  }, []);
-  // Every remote key, so a page can tell a move into the side menu from a focus Android put there.
-  useTvRemote(isNativeTV, (e) => {
-    const k = tvKeyFromEvent(e);
-    if (k) noteRemoteKey(k.key);
-  });
+  }, [content]);
   return (
-    <Tabs style={styles.flex}>
-      {/* First in the tree, so the content (not the menu) takes the first focus. */}
-      {/*
-        The pages start inside the overscan-safe area at the top and the bottom (theme/layout
-        `tv.safeY`). Home is the exception at the top: its billboard art runs to the top edge, and
-        its text and rows start well below the safe line.
-      */}
-      <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: home ? 0 : l.safe.y, paddingBottom: l.safe.y }]}>
-        <TabSlot />
-      </TvFocusGuide>
-      <SideMenu content={content} />
-      <TabList style={styles.hidden}>
-        {DESTINATIONS.map((d) => (
-          <TabTrigger key={d.name} name={d.name ?? ''} href={d.href} />
-        ))}
-      </TabList>
-    </Tabs>
+    /*
+      The pages start inside the overscan-safe area at the top (theme/layout `tv.safeY`), except
+      Home and item pages, whose art runs to the top edge. At the bottom every page runs on to the
+      edge (the next row peeks in, as in the streaming apps); scroll views pad their own end.
+    */
+    <TvFocusGuide ref={content} autoFocus destinations={[page]} style={[styles.flex, { paddingLeft: rail, paddingTop: fullBleed ? 0 : l.safe.y, paddingBottom: 0 }]}>
+      <TabSlot detachInactiveScreens={!TvVisibility} renderFn={(d, o) => renderTvTab(d, o, shownTab)} />
+    </TvFocusGuide>
   );
 }
 
@@ -223,11 +245,15 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
       }),
     );
   }, [open, reduced, progress]);
+  useEffect(() => {
+    useTvChrome.setState({ menuOpen: open });
+  }, [open]);
   const slide = menuW - railW;
   const panel = useAnimatedStyle(() => ({
     opacity: progress.get(),
     transform: [{ translateX: (progress.get() - 1) * slide }],
   }));
+  const dim = useAnimatedStyle(() => ({ opacity: progress.get() }));
   // The clip's trailing edge is the panel's; the items inside stay still.
   const clip = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.get() - 1) * slide }] }));
   const unclip = useAnimatedStyle(() => ({ transform: [{ translateX: (1 - progress.get()) * slide }] }));
@@ -247,6 +273,16 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      {/* Open, the page behind dims (as in the streaming apps), so the eye goes to the menu. It fades with the panel. */}
+      <Animated.View pointerEvents="none" style={[s.panel, { width: l.width }, dim]}>
+        <LinearGradient
+          colors={[withAlpha(c.bg, 0.92), withAlpha(c.bg, 0.55)]}
+          locations={[menuW / Math.max(1, l.width), 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
       {/* Open, the panel is solid: the labels never sit on the content's text. It slides in from under the rail. */}
       <Animated.View pointerEvents="none" style={[s.panel, s.panelBg, { width: menuW }, panel]} />
       {/*
@@ -259,6 +295,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
             <Icon name="line.horizontal.3" size={ICON} color={open ? c.text : c.text2} />
           </View>
           <View style={s.items}>
+            <NowPlayingItem open={wide} railWidth={railW} progress={progress} onFocus={onItemFocus} onBlur={onItemBlur} />
             {destinations.map((d) => (
               <MenuItem
                 key={d.key}
@@ -324,7 +361,27 @@ function MenuItem({
     // page) goes back to its first page through its stack.
     if (destination.name && tab.trigger?.isFocused) {
       if (router.canDismiss()) router.dismissTo(destination.href);
-    } else if (destination.name) tab.switchTab(destination.name, { resetOnFocus: true });
+    } else if (destination.name) {
+      // Reset only a tab with pages pushed on it (an album, an item). A tab at its first page opens
+      // as it was: a reset dropped its state and built the whole tab again (seconds on a TV stick).
+      const route = tab.trigger?.route;
+      const pushed = (route?.state?.index ?? 0) > 0;
+      const name = destination.name;
+      // A built tab at its first page shows now; the router follows after this frame.
+      if (TvVisibility && route?.state && !pushed) {
+        useTvChrome.setState({ shownTab: route.name });
+        // The menu closes now; the focus goes into the new page once the router knows it is the page.
+        onDone();
+        setTimeout(() => {
+          tab.switchTab(name, { resetOnFocus: false });
+          setTimeout(() => {
+            useTvChrome.setState({ shownTab: null });
+            onDone();
+          }, 0);
+        }, 16);
+        return;
+      } else tab.switchTab(name, { resetOnFocus: pushed });
+    }
     else router.navigate(destination.href);
     // Let the new screen mount, then give it the focus.
     setTimeout(onDone, 80);
@@ -360,8 +417,110 @@ function MenuItem({
   );
 }
 
+/**
+ * While music plays: the first entry of the menu, with the cover in place of an icon (so the
+ * closed rail shows what plays). One Left and Select open the player from any page; on TV
+ * there is no mini player over the content to reach with the D-pad.
+ */
+function NowPlayingItem({
+  open,
+  railWidth,
+  progress,
+  onFocus,
+  onBlur,
+}: {
+  open: boolean;
+  railWidth: number;
+  progress: SharedValue<number>;
+  onFocus: () => void;
+  onBlur: () => void;
+}) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const [focused, setFocused] = useState(false);
+  const item = usePlayerStore((st) => (st.now?.kind === 'audio' ? st.now.item : null));
+  const labelStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  if (!item) return null;
+  return (
+    <Pressable
+      onPress={openFullPlayer}
+      onFocus={() => {
+        setFocused(true);
+        onFocus();
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onBlur();
+      }}
+      accessibilityRole="menuitem"
+      accessibilityLabel={`Now playing: ${item.Name ?? ''}. Opens the player`}
+      style={[s.item, s.nowItem, webPressable]}>
+      <View style={[s.itemInner, { paddingLeft: iconInset(railWidth) }, focused && s.itemFocused]}>
+        <ItemImage item={item} variant="square" width={ICON} aspectRatio={1} rounded={radius.xs} hideArtTitle />
+        {open ? (
+          <Animated.View style={[s.nowText, labelStyle]}>
+            <Text style={[s.nowLabel, { color: focused ? c.bg : c.text2 }]} numberOfLines={1}>
+              Now playing
+            </Text>
+            <Text style={[s.label, { color: focused ? c.bg : c.text }]} numberOfLines={1}>
+              {item.Name ?? ''}
+            </Text>
+          </Animated.View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+/**
+ * The tab screens on TV. Like expo-router's own (the hidden tabs stay mounted and keep their state,
+ * focus memory and scroll), without what made a tab switch take seconds:
+ * - A hidden tab is not `display: none`, which made the new renderer drop every native view under
+ *   it and build them all again on the next visit. It sits in `TvVisibility` (Android
+ *   `View.INVISIBLE`): not drawn, no focus, its views and images kept. A build without that
+ *   module detaches the hidden tab with react-native-screens instead (a detached tab could come
+ *   back with images it never drew, so the visibility container comes first).
+ * - No `freezeOnBlur`: a frozen tab is hidden through Suspense, which sets `display: none` again.
+ * - A tab picked in the side menu that is already built shows at once (`shownTab`): the router's
+ *   switch took about a second of JS work on a TV stick before anything changed on screen.
+ */
+/**
+ * A tab's screen renders again only when its own route changes (a push in its stack). The tab
+ * navigator renders every tab on each switch; the hidden Music browser took 370 ms of it.
+ */
+const TabScreen = memo(
+  function TabScreen({ descriptor }: { descriptor: TabsDescriptor }) {
+    return descriptor.render();
+  },
+  (a, b) => a.descriptor.route === b.descriptor.route,
+);
+
+function renderTvTab(descriptor: TabsDescriptor, { isFocused: routed, loaded, detachInactiveScreens }: TabsSlotRenderOptions, shown: string | null) {
+  // A tab picked in the menu shows at once, before the router switches (`shownTab`).
+  const isFocused = shown ? descriptor.route.name === shown : routed;
+  if (!loaded && !isFocused) return null;
+  if (TvVisibility) {
+    return (
+      <TvVisibility key={descriptor.route.key} hidden={!isFocused} style={[StyleSheet.absoluteFill, isFocused ? styles.tabFocused : styles.tabHidden]}>
+        <TabScreen descriptor={descriptor} />
+      </TvVisibility>
+    );
+  }
+  return (
+    <Screen
+      key={descriptor.route.key}
+      enabled={detachInactiveScreens}
+      activityState={isFocused ? 2 : 0}
+      style={[StyleSheet.absoluteFill, isFocused ? styles.tabFocused : styles.tabHidden]}>
+      <TabScreen descriptor={descriptor} />
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  tabFocused: { zIndex: 1 },
+  tabHidden: { zIndex: -1 },
   hidden: { display: 'none' },
 });
 
@@ -381,6 +540,9 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
       borderRadius: radius.md,
     },
     itemFocused: { backgroundColor: c.text },
+    nowItem: { marginBottom: spacing.lg },
+    nowText: { flex: 1 },
+    nowLabel: { ...font(type.caption1), textTransform: 'uppercase' as const, letterSpacing: 0.8 },
     selectedBar: { position: 'absolute' as const, left: 0, top: '25%' as const, bottom: '25%' as const, width: 3, borderRadius: 2, backgroundColor: c.accent },
     label: { ...font(type.title3), flexShrink: 1 },
     labelSelected: { fontWeight: '700' as const },

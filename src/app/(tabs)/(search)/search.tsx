@@ -41,9 +41,7 @@ import { formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { useRootScreenOptions } from '@/lib/stack-options';
 import { useOffline } from '@/lib/online';
-import { toast } from '@/lib/toast';
 import { useDebounced } from '@/lib/use-debounced';
-import { voiceInput } from '@/native/voice-input';
 import { isTV } from '@/platform/tv';
 import { usePlayer } from '@/player';
 import { readJson, writeJson } from '@/storage/json';
@@ -67,6 +65,8 @@ import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 const RECENT_KEY = 'search.recent';
 const PLACEHOLDER = 'Movies, shows, music, people';
 const ownField = Platform.OS === 'web' || isTV;
+/** Android TV: the app's own field is not controlled (voice typing, see the TextInput). */
+const ownedField = ownField && Platform.OS === 'android';
 
 export default function SearchScreen() {
   const s = useStyles(makeStyles);
@@ -86,8 +86,6 @@ export default function SearchScreen() {
   const offline = useOffline();
   const genreList = browseGenres(useVideoGenres(!offline).data);
   const [genreSheet, setGenreSheet] = useState(false);
-  // The system speech screen (Android): the TV remote's voice button opens Google's search instead.
-  const [canSpeak] = useState(() => !!voiceInput?.available());
   const records = useDownloadsStore((st) => st.records);
   const nameOf = useServerNames();
   // With downloads from more than one server, each local result names its server.
@@ -140,8 +138,14 @@ export default function SearchScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const recent = useMemo(() => readJson<string[]>(RECENT_KEY, []), [active, recentVersion]);
 
+  // Android: the field owns its text (see `fieldKey`); a new text from the app builds the field again with it.
+  const [fieldKey, setFieldKey] = useState(0);
+  const setFieldText = (t: string) => {
+    setText(t);
+    if (ownedField) setFieldKey((k) => k + 1);
+  };
   const applyRecent = (r: string) => {
-    setText(r);
+    setFieldText(r);
     searchRef.current?.setText(r);
   };
 
@@ -152,21 +156,6 @@ export default function SearchScreen() {
     chipRow.current?.scrollTo({ x: 0, animated: false });
     // Episodes, Music and People do not exist within a genre.
     if (name && !GENRE_SEARCH_FILTERS.some((f) => f.value === filter)) setFilter('all');
-  };
-
-  // One speech screen at a time: a second press while it opens does nothing.
-  const listening = useRef(false);
-  const speak = async () => {
-    if (listening.current) return;
-    listening.current = true;
-    try {
-      const said = (await voiceInput?.listen('Search Zoggyfin'))?.trim();
-      if (said) applyRecent(said);
-    } catch {
-      toast('Voice search is not available on this device.', { icon: 'mic.fill' });
-    } finally {
-      listening.current = false;
-    }
   };
 
   return (
@@ -202,8 +191,11 @@ export default function SearchScreen() {
             <View style={s.field}>
               <Icon name="magnifyingglass" size={scaled(iconSize.sm)} color={c.text3} />
               <TextInput
+                key={fieldKey}
                 ref={inputRef}
-                value={text}
+                // Android: not controlled. The keyboard's voice typing streams its words as a
+                // composition; a controlled value written back late (a slow TV JS thread) replaced it.
+                {...(ownedField ? { defaultValue: text } : { value: text })}
                 onChangeText={setText}
                 placeholder={PLACEHOLDER}
                 placeholderTextColor={c.text3}
@@ -217,20 +209,15 @@ export default function SearchScreen() {
                 onSubmitEditing={remember}
               />
               {text ? (
-                <Touchable onPress={() => setText('')} hitSlop={10} radius={10} accessibilityRole="button" accessibilityLabel="Clear search">
+                <Touchable onPress={() => setFieldText('')} hitSlop={10} radius={10} accessibilityRole="button" accessibilityLabel="Clear search">
                   <Icon name="xmark.circle.fill" size={scaled(iconSize.sm)} color={c.text3} />
                 </Touchable>
               ) : null}
             </View>
-            {canSpeak ? (
-              <Touchable onPress={speak} radius={radius.md} hitSlop={8} accessibilityRole="button" accessibilityLabel="Search by voice" style={s.mic}>
-                <Icon name="mic.fill" size={scaled(iconSize.md)} color={c.text} />
-              </Touchable>
-            ) : null}
             {text ? (
               <Touchable
                 onPress={() => {
-                  setText('');
+                  setFieldText('');
                   inputRef.current?.blur();
                 }}
                 radius={8}
@@ -464,14 +451,6 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   },
   input: { ...font(type.body), ...webInput, color: c.text, flex: 1, height: '100%' as const },
   cancel: { ...font(type.body), color: c.accent },
-  mic: {
-    height: scaled(sizes.webSearchHeight),
-    width: scaled(sizes.webSearchHeight),
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: c.surface2,
-    borderRadius: radius.md + 2,
-  },
   chips: { flexGrow: 0, marginTop: spacing.md },
   chipsContent: { gap: spacing.sm },
   recent: { marginTop: spacing.xxl },

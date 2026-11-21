@@ -142,7 +142,7 @@ function NewReleases({ libraryId }: MusicHomeSectionProps) {
   return <ShelfRow libraryId={libraryId} shelf="newReleases" title="New releases" subtitle={albumSubtitle} />;
 }
 
-/** Favourite albums, then favourite artists. One section, so one claim on the first TV focus. */
+/** Liked albums, then liked artists. One section, so one claim on the first TV focus. */
 function Favourites({ libraryId }: MusicHomeSectionProps) {
   const offline = useOffline();
   const albums = useMusicShelf(libraryId, 'favouriteAlbums', undefined, !offline);
@@ -153,7 +153,7 @@ function Favourites({ libraryId }: MusicHomeSectionProps) {
   return (
     <>
       <ItemRow
-        title="Favourite albums"
+        title="Liked albums"
         shape="square"
         items={albums.data}
         tileSubtitle={albumSubtitle}
@@ -161,7 +161,7 @@ function Favourites({ libraryId }: MusicHomeSectionProps) {
         preferredFocus={row.preferredFocus}
       />
       <ItemRow
-        title="Favourite artists"
+        title="Liked artists"
         shape="circle"
         items={artists.data}
         onLongPress={row.onLongPress}

@@ -1,4 +1,4 @@
-import { mountedCut, rowsToMount, rowTraps, shelfWindow, type ShelfWindow } from '../shelf-window';
+import { mountedCut, restingWindow, rowsToMount, rowTraps, shelfWindow, type ShelfWindow } from '../shelf-window';
 
 describe('shelfWindow', () => {
   it('mounts a screen behind, the visible screen and a screen ahead of the focus', () => {
@@ -105,5 +105,16 @@ describe('mountedCut', () => {
 
   it('falls back to the one before when the last mounted section goes', () => {
     expect(mountedCut(['a', 'b', 'd'], new Set(['a', 'b', 'c']), 2)).toBe(2);
+  });
+});
+
+describe('restingWindow', () => {
+  it('holds the remembered tile, the screen after it and the one before it', () => {
+    expect(restingWindow(5, 40, 8.6)).toEqual({ start: 4, end: 15 });
+  });
+  it('stays inside the row', () => {
+    expect(restingWindow(0, 40, 8.6)).toEqual({ start: 0, end: 10 });
+    expect(restingWindow(38, 40, 8.6)).toEqual({ start: 37, end: 40 });
+    expect(restingWindow(3, 0, 8.6)).toEqual({ start: 0, end: 0 });
   });
 });
