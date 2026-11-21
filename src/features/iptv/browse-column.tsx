@@ -11,6 +11,7 @@ import { FlatList, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
+import { TvFocusGuide } from '@/features/tv/focus';
 import { useTvPageScroll } from '@/features/tv/page-scroll';
 import { ALL_GROUP, ALL_PROVIDERS, type BrowseEntry, FAVOURITES_GROUP, RECENTS_GROUP } from '@/iptv';
 import { isTV } from '@/platform/tv';
@@ -57,6 +58,8 @@ export function BrowseColumn({
   const list = useRef<ComponentRef<typeof FlatList<BrowseEntry>>>(null);
   const tvScroll = useTvPageScroll(useCallback(() => list.current?.getNativeScrollRef(), []));
   return (
+    // TV: Down at the last entry stays there (see the channel list). A row, so the list keeps its height.
+    <TvFocusGuide trapDown style={[s.trap, { width }]}>
     <FlatList
       ref={list}
       {...tvScroll.props}
@@ -134,11 +137,13 @@ export function BrowseColumn({
         );
       }}
     />
+    </TvFocusGuide>
   );
 }
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
   column: { flexGrow: 0 },
+  trap: { flexDirection: 'row' as const },
   row: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

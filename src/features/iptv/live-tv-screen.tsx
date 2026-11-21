@@ -34,7 +34,7 @@ import { Chip, chipRowTV } from '@/components/chip';
 import { Icon, type IconName } from '@/components/icon';
 import { LoadingState } from '@/components/states';
 import { Touchable } from '@/components/touchable';
-import { focusView } from '@/features/tv/focus';
+import { focusView, TvFocusGuide } from '@/features/tv/focus';
 import { TvScrollView, useTvPageScroll } from '@/features/tv/page-scroll';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
@@ -87,7 +87,7 @@ import { ProgrammeRow } from './programme-row';
 import { takeChannelSearch } from './search-request';
 import { liveTvSections, type LiveTvSection } from './sections';
 
-const COLUMN_WIDTH = scaled(isTV ? 200 : 220);
+const COLUMN_WIDTH = scaled(isTV ? 236 : 220);
 const DETAILS_WIDTH = scaled(isTV ? 290 : 320);
 const COLUMN_GAP = spacing.lg;
 
@@ -532,6 +532,12 @@ export function LiveTvScreen() {
       </View>
     </View>
   ) : (
+    /*
+      TV: Down at the last row stays there. Without the trap it went to the nearest view, the browse
+      column, and the next presses ran down the groups. The list's own guide traps Down only while
+      rows are left to mount. The guide is a row, like the columns row, so the list keeps its height.
+    */
+    <TvFocusGuide trapDown style={[s.listTrap, listWidth !== undefined ? { width: listWidth } : null]}>
     <FlatList
       ref={list}
       {...tvScroll.props}
@@ -577,6 +583,7 @@ export function LiveTvScreen() {
       }
       renderItem={renderItem}
     />
+    </TvFocusGuide>
   );
 
   return (
@@ -715,5 +722,6 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   listEmptyTop: { justifyContent: 'flex-start' as const, paddingTop: spacing.xl },
   listEmptyTitle: { ...font(type.headline), color: c.text, textAlign: 'center' as const },
   listEmptyText: { ...font(type.subheadline), color: c.text2, textAlign: 'center' as const, maxWidth: scaled(360) },
+  listTrap: { flex: 1, flexDirection: 'row' as const },
   columns: { flex: 1, flexDirection: 'row' as const, gap: COLUMN_GAP, paddingBottom: isTV ? spacing.sm : 0 },
 }));
