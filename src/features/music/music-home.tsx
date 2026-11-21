@@ -2,10 +2,13 @@
  * The Home tab of a music library: a vertical page of rows from the music
  * Home section registry (Recently played, Mixes for you, Genres and more).
  * Pull to refresh loads every row again. TV: the first row that shows takes
- * the first focus (`firstFilled`).
+ * the first focus (`firstFilled`), and the sections mount a few at a time
+ * (`TV_FIRST_SECTIONS`, then `TV_STEP` every `TV_STEP_MS`): mounting all of
+ * them at once (the catalog section alone can hold 12 rows) held the first
+ * open of the Music tab for seconds. Mounted sections stay mounted.
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { queryKeys } from '@/api/query-keys';
@@ -26,6 +29,10 @@ import { type MusicHomeRows, MusicHomeRowsContext, MusicHomeSectionId } from './
 
 registerBuiltinMusicHomeSections();
 
+const TV_FIRST_SECTIONS = 2;
+const TV_STEP = 2;
+const TV_STEP_MS = 250;
+
 export function MusicHome({ libraryId }: { libraryId: string }) {
   const { c } = useTheme();
   const { scope } = useApi();
@@ -34,6 +41,12 @@ export function MusicHome({ libraryId }: { libraryId: string }) {
   const bottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset: false });
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
   const [filled, setFilled] = useState<ReadonlySet<string>>(() => new Set());
+  const [mountCount, setMountCount] = useState(isTV ? TV_FIRST_SECTIONS : Number.POSITIVE_INFINITY);
+  useEffect(() => {
+    if (mountCount >= sections.length) return;
+    const t = setTimeout(() => setMountCount((n) => n + TV_STEP), TV_STEP_MS);
+    return () => clearTimeout(t);
+  }, [mountCount, sections.length]);
 
   const pull = usePullRefresh(() =>
     Promise.all([
@@ -69,7 +82,7 @@ export function MusicHome({ libraryId }: { libraryId: string }) {
         contentContainerStyle={{ paddingBottom: bottomPad }}
         refreshControl={isTV || !pull.onRefresh ? undefined : <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={refreshTint(c.text2)} />}>
         <MusicHomeRowsContext.Provider value={rows}>
-          {sections.map((sec) => (
+          {sections.slice(0, mountCount).map((sec) => (
             <MusicHomeSectionId.Provider key={sec.id} value={sec.id}>
               <View>
                 <sec.component libraryId={libraryId} />
