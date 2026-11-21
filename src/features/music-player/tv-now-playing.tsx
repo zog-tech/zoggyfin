@@ -2,7 +2,7 @@
  * TV: the music player, in the style of the music apps on TV. The art on the
  * left, the song on the right with a progress line, one row of large round
  * transport buttons (Play/Pause has the focus when the player opens) and one
- * row of pills: Up next, Lyrics, Favourite and More. The queue and the lyrics
+ * row of pills: Up next, Lyrics, Like and More. The queue and the lyrics
  * take the place of the art when their pill is pressed, so they are focus
  * stops only while they are open; Back closes them, and Back again closes the
  * player (the music keeps playing). The remote's Play/Pause key works through
@@ -16,10 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { describeError } from '@/api/errors';
-import * as jf from '@/api/jellyfin';
 import type { BaseItemDto } from '@/api/types';
-import { useApi } from '@/api/use-api';
 import { ItemImage } from '@/components/item-image';
 import { ToastHost } from '@/components/toast-host';
 import { tabGroupNow } from '@/features/extensions/tab-nav';
@@ -27,7 +24,6 @@ import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { TvButton, TvIconButton } from '@/features/tv/tv-button';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { itemHref } from '@/lib/navigation';
-import { toast } from '@/lib/toast';
 import { artistLine } from '@/player/audio/item';
 import { queueSections } from '@/player/audio/queue';
 import { audioSession } from '@/player/audio/session';
@@ -41,6 +37,7 @@ import { PlayerSheet, type SheetSection } from '../player/player-sheet';
 import { c } from '../player/tokens';
 import { ArtBackground } from './art-background';
 import { LyricsPanel } from './lyrics-panel';
+import { useLike } from './use-like';
 import { QueuePanel } from './queue-panel';
 
 type Panel = 'none' | 'queue' | 'lyrics';
@@ -60,12 +57,10 @@ export function TvNowPlaying() {
   const longForm = useAudioStore((st) => st.longForm);
   const queue = useAudioStore((st) => st.queue);
   const lyricsState = useAudioStore((st) => st.lyrics);
-  const { api, userId } = useApi();
   const session = audioSession();
   const [panel, setPanel] = useState<Panel>('none');
   const [more, setMore] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [favourite, setFavourite] = useState<{ id: string; on: boolean } | null>(null);
 
   useEffect(() => {
     setPlayerState({ presentation: 'full' });
@@ -81,6 +76,8 @@ export function TvNowPlaying() {
   useTvBack(panel !== 'none', () => setPanel('none'));
 
   const item = now?.item;
+  // Before the early return: hooks run on every render.
+  const like = useLike(item);
   if (!now || !item) return <View style={s.root} />;
 
   const lyrics = lyricsState?.status === 'ready' && lyricsState.itemId === item.Id ? lyricsState.lyrics : null;
@@ -91,18 +88,8 @@ export function TvNowPlaying() {
     const q = queueSections(queue);
     return q.upNext.length + q.rest.length;
   })();
-  const isFav = favourite && favourite.id === item.Id ? favourite.on : !!item.UserData?.IsFavorite;
-  const toggleFavourite = async () => {
-    if (!item.Id) return;
-    const on = !isFav;
-    setFavourite({ id: item.Id, on });
-    try {
-      await jf.setFavorite(api, userId, item.Id, on);
-    } catch (e) {
-      setFavourite({ id: item.Id, on: !on });
-      toast(describeError(e).title, { icon: 'exclamationmark.triangle' });
-    }
-  };
+  const isFav = like.liked;
+  const toggleFavourite = like.toggle;
   const go = (target: BaseItemDto) => {
     const href = itemHref(tabGroupNow('(music)'), target);
     leave();
@@ -187,7 +174,7 @@ export function TvNowPlaying() {
             {lyrics ? (
               <TvButton label="Lyrics" icon="quote.bubble" active={shown === 'lyrics'} onPress={() => setPanel((p) => (p === 'lyrics' ? 'none' : 'lyrics'))} />
             ) : null}
-            <TvButton label="Favourite" icon={isFav ? 'heart.fill' : 'heart'} active={isFav} onPress={() => void toggleFavourite()} />
+            <TvButton label={isFav ? 'Liked' : 'Like'} icon={isFav ? 'heart.fill' : 'heart'} active={isFav} onPress={() => void toggleFavourite()} />
             <TvButton label="More" icon="ellipsis" onPress={() => setMore(true)} />
           </View>
         </View>
