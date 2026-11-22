@@ -5,6 +5,7 @@ import {
   bufferInputOf,
   hlsBufferConfig,
   loadsWholeVideo,
+  MID_DEVICE_BUFFER_BYTES,
   mpvBufferOptions,
   nativeBufferOptions,
   UNKNOWN_LENGTH_SECONDS,
@@ -62,10 +63,28 @@ describe('nativeBufferOptions', () => {
       expect(o.maxBufferBytes).toBe(SMALL_DEVICE_BUFFER_BYTES);
       expect(o.prioritizeTimeOverSizeThreshold).toBe(false);
     }
-    // Lite mode Off keeps ExoPlayer's own size, also on a small device; iOS has no byte cap.
-    expect(nativeBufferOptions(off, 'android', stick, false).maxBufferBytes).toBeUndefined();
-    expect(nativeBufferOptions(on, 'android', 1.9 * GB, false).maxBufferBytes).toBe(0);
+    // Lite mode Off on a small device: the cap below 3 GB, never ExoPlayer's own 141 MB; iOS has no byte cap.
+    expect(nativeBufferOptions(off, 'android', stick, false).maxBufferBytes).toBe(MID_DEVICE_BUFFER_BYTES);
+    expect(nativeBufferOptions(on, 'android', 1.9 * GB, false).maxBufferBytes).toBe(MID_DEVICE_BUFFER_BYTES);
     expect(nativeBufferOptions(off, 'ios', stick, true).maxBufferBytes).toBeUndefined();
+  });
+
+  it('caps every load on Android below 3 GB (a 2 GB TV with a 192 MB heap)', () => {
+    const tv = 2.4 * GB;
+    for (const input of [off, on, { ...on, live: true }, { ...on, readAhead: 30 }]) {
+      const o = nativeBufferOptions(input, 'android', tv);
+      expect(o.maxBufferBytes).toBe(MID_DEVICE_BUFFER_BYTES);
+      expect(o.prioritizeTimeOverSizeThreshold).toBe(false);
+    }
+    // The cap leaves most of a 192 MB heap to the app, and the time targets stay.
+    expect(MID_DEVICE_BUFFER_BYTES).toBeLessThanOrEqual(192 * MB * 0.4);
+    expect(nativeBufferOptions(off, 'android', tv).preferredForwardBufferDuration).toBe(20);
+    expect(nativeBufferOptions(on, 'android', tv).preferredForwardBufferDuration).toBe(3660);
+    // Unknown memory counts as small; from 3 GB, off keeps ExoPlayer's own size; iOS has no byte cap.
+    expect(nativeBufferOptions(off, 'android', null).maxBufferBytes).toBe(MID_DEVICE_BUFFER_BYTES);
+    expect(nativeBufferOptions(off, 'android', 3 * GB).maxBufferBytes).toBeUndefined();
+    expect(nativeBufferOptions(off, 'ios', tv).maxBufferBytes).toBeUndefined();
+    expect(nativeBufferOptions(on, 'ios', tv).maxBufferBytes).toBeUndefined();
   });
 
   it('caps the bytes on Android and lets the cap win', () => {
@@ -78,10 +97,10 @@ describe('nativeBufferOptions', () => {
 
 describe('androidBufferBytes', () => {
   it('follows the device memory and stays under 2 GB', () => {
-    expect(androidBufferBytes(null)).toBe(0);
-    expect(androidBufferBytes(undefined)).toBe(0);
-    expect(androidBufferBytes(2 * GB)).toBe(0);
-    expect(androidBufferBytes(1 * GB)).toBe(0);
+    expect(androidBufferBytes(null)).toBe(MID_DEVICE_BUFFER_BYTES);
+    expect(androidBufferBytes(undefined)).toBe(MID_DEVICE_BUFFER_BYTES);
+    expect(androidBufferBytes(2 * GB)).toBe(MID_DEVICE_BUFFER_BYTES);
+    expect(androidBufferBytes(1 * GB)).toBe(MID_DEVICE_BUFFER_BYTES);
     expect(androidBufferBytes(4 * GB)).toBe(160 * MB);
     expect(androidBufferBytes(12 * GB)).toBe(200 * MB);
     expect(androidBufferBytes(64 * GB)).toBeLessThan(2 ** 31);

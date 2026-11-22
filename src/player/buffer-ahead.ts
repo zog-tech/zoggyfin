@@ -1,19 +1,24 @@
 /**
  * "Load the whole video ahead": how much each engine reads ahead of the
- * play position. Off, every engine keeps its defaults exactly. On, the
- * engine reads ahead as far as its memory cap lets it, up to the end of the
- * video. Nothing is saved: the buffer goes when the player closes.
+ * play position. Off, every engine keeps its defaults, except the Android
+ * byte cap below 3 GB (below). On, the engine reads ahead as far as its
+ * memory cap lets it, up to the end of the video. Nothing is saved: the
+ * buffer goes when the player closes.
  *
  * Rules: a live stream and a stream from a nearby host (`readAhead`, watch
- * together) never change; a local file needs no buffer. The byte caps keep
- * the app alive on small devices:
- * - Android: ExoPlayer keeps its buffer on the Java heap, which is about
- *   192 to 512 MB per app (no `largeHeap`). Its own default is about 141 MB.
- *   A TV stick with 1 GB of memory gives an app only 128 MB of Java heap, so
- *   there the default ran the app out of memory (a Fire TV Stick lost the app
- *   during a preview and during playback). In Lite mode (`platform/lite.ts`,
- *   Auto on for such sticks) every load, on or off, gets
- *   `SMALL_DEVICE_BUFFER_BYTES`. Lite mode Off keeps ExoPlayer's own size.
+ * together) never change their time target; a local file needs no buffer.
+ * The byte caps keep the app alive on small devices:
+ * - Android: ExoPlayer keeps its buffer on the Java heap. Its own default is
+ *   about 141 MB. The heap per app (no `largeHeap`) is 128 MB on a 1 GB TV
+ *   stick, 192 MB on most devices with 1.5 to 3 GB (TVs, streaming sticks,
+ *   small phones) and 256 to 512 MB on larger phones. The default ran the
+ *   app out of memory on both small sizes: a Fire TV Stick lost the app
+ *   during a preview and during playback, and a Google TV with 2.4 GB (192 MB
+ *   heap) lost it after a minute of playback, with 141 MB of video next to
+ *   the app's own 40 to 50 MB. So below 3 GB (or when the memory is not
+ *   known) every load, on or off, gets a byte cap: `SMALL_DEVICE_BUFFER_BYTES`
+ *   in Lite mode (`platform/lite.ts`, Auto on for 1 GB sticks), else
+ *   `MID_DEVICE_BUFFER_BYTES`. From 3 GB, off keeps ExoPlayer's own size.
  * - Browsers: a Media Source buffer holds about 150 MB of video in Chromium
  *   (less in Firefox) before it throws a quota error.
  * - The Mac app: libmpv keeps its cache in memory; Apple silicon Macs have
@@ -76,32 +81,51 @@ export interface NativeBufferOptions {
 export const SMALL_DEVICE_BUFFER_BYTES = 40 * MB;
 
 /**
+ * Android below 3 GB, Lite mode off: the most bytes ExoPlayer holds for any load. A third of a
+ * 192 MB heap, so the app keeps room for its own 40 to 50 MB and a paused Home preview. About 50 s
+ * of 1080p at 10 Mbit/s, or 10 s of a 4K file at 50 Mbit/s.
+ */
+export const MID_DEVICE_BUFFER_BYTES = 64 * MB;
+
+/**
+ * Android: the byte cap of every load, on or off, or null for none. Lite mode, below 3 GB, and an
+ * unknown memory size (assume the small heap) have one.
+ */
+function androidLoadCap(totalMemoryBytes: number | null | undefined, lite: boolean): number | null {
+  if (lite) return SMALL_DEVICE_BUFFER_BYTES;
+  if (!totalMemoryBytes || totalMemoryBytes < 3 * GB) return MID_DEVICE_BUFFER_BYTES;
+  return null;
+}
+
+/**
  * Android: the most bytes ExoPlayer holds with the setting on, by the device's
- * memory. Below 3 GB or not known: 0, ExoPlayer's own size. expo-video turns
- * the value into a 32-bit int, so it must stay under 2 GB.
+ * memory. Below 3 GB or not known: `MID_DEVICE_BUFFER_BYTES`, as for every
+ * load there. expo-video turns the value into a 32-bit int, so it must stay
+ * under 2 GB.
  */
 export function androidBufferBytes(totalMemoryBytes: number | null | undefined): number {
-  if (!totalMemoryBytes || totalMemoryBytes < 3 * GB) return 0;
+  if (!totalMemoryBytes || totalMemoryBytes < 3 * GB) return MID_DEVICE_BUFFER_BYTES;
   if (totalMemoryBytes < 6 * GB) return 160 * MB;
   return 200 * MB;
 }
 
 export function nativeBufferOptions(input: BufferInput, os: string, totalMemoryBytes: number | null | undefined, lite = false): NativeBufferOptions {
-  const small = lite && os === 'android';
-  // Lite mode on Android: the byte cap on every load, and it wins over the time target.
-  const cap = small ? { maxBufferBytes: SMALL_DEVICE_BUFFER_BYTES, prioritizeTimeOverSizeThreshold: false } : {};
+  const android = os === 'android';
+  const loadCap = android ? androidLoadCap(totalMemoryBytes, lite) : null;
+  // A byte cap on every load, and it wins over the time target.
+  const cap = loadCap !== null ? { maxBufferBytes: loadCap, prioritizeTimeOverSizeThreshold: false } : {};
   if (input.readAhead) return { preferredForwardBufferDuration: input.readAhead, minBufferForPlayback: 2, waitsToMinimizeStalling: true, ...cap };
   if (!loadsWholeVideo(input)) {
     // Android's default is 20 s; iOS's 0 lets AVPlayer decide (it can read minutes ahead).
     return { preferredForwardBufferDuration: os === 'ios' ? 0 : 20, minBufferForPlayback: 2, waitsToMinimizeStalling: true, ...cap };
   }
   const seconds = aheadSeconds(input.durationSeconds);
-  if (os !== 'android') return { preferredForwardBufferDuration: seconds, minBufferForPlayback: 2, waitsToMinimizeStalling: true };
+  if (!android) return { preferredForwardBufferDuration: seconds, minBufferForPlayback: 2, waitsToMinimizeStalling: true };
   return {
     preferredForwardBufferDuration: seconds,
     minBufferForPlayback: 2,
     waitsToMinimizeStalling: true,
-    maxBufferBytes: small ? SMALL_DEVICE_BUFFER_BYTES : androidBufferBytes(totalMemoryBytes),
+    maxBufferBytes: loadCap ?? androidBufferBytes(totalMemoryBytes),
     // True would let ExoPlayer pass the byte cap to reach the time target: the whole video.
     prioritizeTimeOverSizeThreshold: false,
   };
