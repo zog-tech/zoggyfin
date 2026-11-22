@@ -37,6 +37,7 @@ import { setChannelLiteCheck, startIptvSync } from '@/iptv';
 import { startMemProbe } from '@/platform/mem-probe';
 import { installAppContextMenu } from '@/components/context-menu';
 import { isDesktop } from '@/platform/desktop';
+import { setLiteCheck } from '@/platform/lite-flag';
 import { liteNow } from '@/platform/lite-now';
 import { useLite } from '@/platform/use-lite';
 import { isTV } from '@/platform/tv';
@@ -117,7 +118,10 @@ function Root({ session }: { session: boolean }) {
   // EXPO_PUBLIC_MEM_PROBE=1 builds only: the JS heap in the device log every 5 s.
   useEffect(() => startMemProbe(), []);
   // Lite mode drops the Live TV channel lists when no page uses them (iptv/holds.ts).
-  useEffect(() => setChannelLiteCheck(liteNow), []);
+  useEffect(() => {
+    setChannelLiteCheck(liteNow);
+    setLiteCheck(liteNow);
+  }, []);
   // Lite mode keeps the data of a closed page for 5 minutes, not 7 days.
   const lite = useLite();
   useEffect(() => applyLiteQueryCache(lite), [lite]);

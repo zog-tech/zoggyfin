@@ -16,4 +16,11 @@ describe('applyLiteQueryCache', () => {
     applyLiteQueryCache(false);
     expect(queryClient.getDefaultOptions().queries?.gcTime).toBe(7 * 24 * 60 * 60 * 1000);
   });
+
+  it('drops the pages no screen uses when Lite mode turns on in a running app', async () => {
+    applyLiteQueryCache(false);
+    await queryClient.prefetchQuery({ queryKey: ['jf', 's', 'u', 'item', '2'], queryFn: () => 2 });
+    applyLiteQueryCache(true);
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  });
 });

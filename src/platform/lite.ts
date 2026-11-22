@@ -9,8 +9,9 @@
  * - a page change empties the image memory cache,
  * - the Home backdrop loads at 1x density (not 1.5x).
  *
- * The choice is Auto (on for an Android device with less than 2 GB of
- * memory), On or Off. Pure, so it is unit-tested; `use-lite.ts` reads the device.
+ * The choice is Auto (on for an Android device with less than 1.5 GB of
+ * memory: a 1 GB stick reports about 0.9 GB, a "2 GB" device about 1.8 to
+ * 1.9 GB, as the kernel keeps a part), On or Off. Pure, so it is unit-tested; `use-lite.ts` reads the device.
  */
 export type LiteChoice = 'auto' | 'on' | 'off';
 
@@ -18,9 +19,9 @@ export const LITE_CHOICES: readonly LiteChoice[] = ['auto', 'on', 'off'];
 
 const GB = 1024 * 1024 * 1024;
 
-/** True for a device that Auto puts in Lite mode: Android with less than 2 GB of memory. */
+/** True for a device that Auto puts in Lite mode: Android with less than 1.5 GB of memory. */
 export function isSmallDevice(os: string, totalMemoryBytes: number | null | undefined): boolean {
-  return os === 'android' && !!totalMemoryBytes && totalMemoryBytes < 2 * GB;
+  return os === 'android' && !!totalMemoryBytes && totalMemoryBytes < 1.5 * GB;
 }
 
 /** True when Lite mode is on for this device. */

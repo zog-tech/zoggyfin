@@ -55,16 +55,17 @@ describe('nativeBufferOptions', () => {
     expect(nativeBufferOptions({ ...on, durationSeconds: null }, 'android', null).preferredForwardBufferDuration).toBe(UNKNOWN_LENGTH_SECONDS);
   });
 
-  it('caps every load on an Android device under 2 GB (a 1 GB TV stick)', () => {
+  it('caps every load on Android in Lite mode (a 1 GB TV stick)', () => {
     const stick = 0.9 * GB;
     for (const input of [off, on, { ...on, live: true }, { ...on, readAhead: 30 }]) {
-      const o = nativeBufferOptions(input, 'android', stick);
+      const o = nativeBufferOptions(input, 'android', stick, true);
       expect(o.maxBufferBytes).toBe(SMALL_DEVICE_BUFFER_BYTES);
       expect(o.prioritizeTimeOverSizeThreshold).toBe(false);
     }
-    // Not on iOS, and not when the memory is not known.
-    expect(nativeBufferOptions(off, 'ios', stick).maxBufferBytes).toBeUndefined();
-    expect(nativeBufferOptions(off, 'android', null).maxBufferBytes).toBeUndefined();
+    // Lite mode Off keeps ExoPlayer's own size, also on a small device; iOS has no byte cap.
+    expect(nativeBufferOptions(off, 'android', stick, false).maxBufferBytes).toBeUndefined();
+    expect(nativeBufferOptions(on, 'android', 1.9 * GB, false).maxBufferBytes).toBe(0);
+    expect(nativeBufferOptions(off, 'ios', stick, true).maxBufferBytes).toBeUndefined();
   });
 
   it('caps the bytes on Android and lets the cap win', () => {
@@ -80,7 +81,7 @@ describe('androidBufferBytes', () => {
     expect(androidBufferBytes(null)).toBe(0);
     expect(androidBufferBytes(undefined)).toBe(0);
     expect(androidBufferBytes(2 * GB)).toBe(0);
-    expect(androidBufferBytes(1 * GB)).toBe(SMALL_DEVICE_BUFFER_BYTES);
+    expect(androidBufferBytes(1 * GB)).toBe(0);
     expect(androidBufferBytes(4 * GB)).toBe(160 * MB);
     expect(androidBufferBytes(12 * GB)).toBe(200 * MB);
     expect(androidBufferBytes(64 * GB)).toBeLessThan(2 ** 31);

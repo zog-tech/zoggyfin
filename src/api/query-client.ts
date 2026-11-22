@@ -62,16 +62,22 @@ export const LITE_GC_TIME = 5 * 60 * 1000;
 /**
  * Lite mode (`platform/lite.ts`) keeps the data of a closed page for 5 minutes, not 7 days: on a 1 GB
  * TV stick every library page and item visited stayed in the JS heap. Open pages (Home) keep theirs,
- * so a cold start still shows Home at once. New queries take the new time; a query in the cache takes
- * it when it next closes.
+ * so a cold start still shows Home at once. The first call runs before the saved cache comes back, so the
+ * restored queries take the time. TanStack never shortens the time of a query already in the cache (it keeps
+ * the longer one), so a switch to Lite mode in a running app removes the queries that no page uses.
  */
 export function applyLiteQueryCache(lite: boolean): void {
   const gcTime = lite ? LITE_GC_TIME : 7 * DAY;
   const queries = queryClient.getDefaultOptions().queries;
+  const first = !liteCacheApplied;
+  liteCacheApplied = true;
   if (queries?.gcTime === gcTime) return;
   queryClient.setDefaultOptions({ ...queryClient.getDefaultOptions(), queries: { ...queries, gcTime } });
   for (const q of queryClient.getQueryCache().getAll()) q.setOptions({ ...q.options, gcTime });
+  if (lite && !first) queryClient.removeQueries({ predicate: (q) => q.getObserversCount() === 0 });
 }
+
+let liteCacheApplied = false;
 
 /** Bump to drop every persisted cache after a breaking change in cached shapes. */
 export const CACHE_BUSTER = 'v1';

@@ -14,7 +14,7 @@ first commit to today. All of it was built in the first weeks of the project.
 ### Added
 
 - **Lite mode for small devices.** Settings, Playback has Lite mode: Auto (on for Android devices
-  with less than 2 GB of memory, such as a Fire TV Stick), On or Off. In Lite mode Home plays no
+  with about 1 GB of memory, such as a Fire TV Stick), On or Off. In Lite mode Home plays no
   previews and a TV tab that you leave is closed, so the app uses about a third less memory.
   Lite mode also lets go of the Live TV channel lists 10 seconds after you leave Live TV, loads
   the Home backdrop at a lower density and clears the image memory on a page change.
@@ -314,8 +314,8 @@ first commit to today. All of it was built in the first weeks of the project.
   over the still art.
 - **Android: the app no longer runs out of memory during playback on a 1 GB TV stick.** The video
   player kept up to about 141 MB of video ahead, more than the 128 MB that such a device gives an
-  app, and a Fire TV Stick closed the app during playback and Home previews. On Android devices
-  with less than 2 GB of memory the player now keeps at most 40 MB, and a Home preview at most 8 MB.
+  app, and a Fire TV Stick closed the app during playback and Home previews. In Lite mode the
+  player now keeps at most 40 MB, and a Home preview always keeps at most 8 MB.
 - **TV: Down at the end of a Live TV list stays there.** Down past the last channel (or the last
   entry of the column) moved the focus into the other list, so a held Down ran through the groups.
 - **TV: a slimmer side menu.** The closed rail is narrower and nearer the screen's edge, with a line
