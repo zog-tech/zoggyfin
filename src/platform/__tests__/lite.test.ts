@@ -3,8 +3,9 @@ import { isSmallDevice, liteActive, liteLabel } from '../lite';
 const GB = 1024 * 1024 * 1024;
 
 describe('Lite mode', () => {
-  it('is on by itself for an Android device under 2 GB (a 1 GB Fire TV Stick)', () => {
+  it('is on by itself for a 1 GB Android device, not a "2 GB" one', () => {
     expect(liteActive('auto', 'android', 0.9 * GB)).toBe(true);
+    expect(liteActive('auto', 'android', 1.85 * GB)).toBe(false);
     expect(liteActive('auto', 'android', 3 * GB)).toBe(false);
     expect(liteActive('auto', 'ios', 0.9 * GB)).toBe(false);
     expect(liteActive('auto', 'android', null)).toBe(false);
@@ -17,6 +18,6 @@ describe('Lite mode', () => {
     expect(liteLabel('auto', true)).toBe('Auto (on)');
     expect(liteLabel('auto', false)).toBe('Auto (off)');
     expect(liteLabel('on', true)).toBe('On');
-    expect(isSmallDevice('android', 1.5 * GB)).toBe(true);
+    expect(isSmallDevice('android', 1.4 * GB)).toBe(true);
   });
 });

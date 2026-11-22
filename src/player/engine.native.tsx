@@ -9,6 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Platform, type StyleProp, View, type ViewStyle } from 'react-native';
 
 import { setAutoPictureInPicture } from '@/native/zoggyfin-native';
+import { liteFlag } from '@/platform/lite-flag';
 
 import { bufferInputOf, nativeBufferOptions } from './buffer-ahead';
 import { expoTrackId, fromExpoVideo } from './embedded-tracks';
@@ -224,7 +225,7 @@ class NativeEngine implements VideoEngine {
     // A player that plays keeps its rate on a new source: it is to stay paused, so pause it now.
     if (!this.pendingPlay && this.playing) p.pause();
     // Defaults, watch together's read-ahead, or "Load the whole video ahead" (buffer-ahead.ts).
-    p.bufferOptions = nativeBufferOptions(bufferInputOf(source), Platform.OS, Device.totalMemory);
+    p.bufferOptions = nativeBufferOptions(bufferInputOf(source), Platform.OS, Device.totalMemory, liteFlag());
     p.replace({
       uri: source.uri,
       contentType: source.isHls ? 'hls' : 'progressive',
