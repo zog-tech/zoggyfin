@@ -180,7 +180,7 @@ class AudioSession {
   /** The queue entry whose catalog song the server is fetching now (`fetchCatalogSong`). */
   private catalogFetch: string | null = null;
   /** Autoplay (`radio.ts`): the request that runs now, the queue end it ran for, and recently played song ids. */
-  private radioRun: Promise<boolean> | null = null;
+  private radioRun: { tail: string; done: Promise<boolean> } | null = null;
   private radioTried: string | null = null;
   private recent: string[] = [];
   /** "Fade between songs" (`crossfade.ts`): the fade's share of the volume, and its fine-step timer. */
@@ -368,9 +368,12 @@ class AudioSession {
       return;
     }
     // Autoplay had no songs ready (a slow server, or the queue ran out fast): wait for it once.
-    if (!nq && audioState().sleep.kind !== 'end') {
+    // The ended player is unloaded first: a song that joins the native queue now could start by
+    // itself (iOS keeps the rate after the last item) and move the queue under this wait.
+    if (!nq && audioState().sleep.kind !== 'end' && entry) {
+      this.engine.unload();
       await this.extendRadio();
-      if (id !== this.loadId) return;
+      if (id !== this.loadId || currentEntry(audioState().queue)?.key !== entry.key) return;
       const more = advance(audioState().queue);
       if (more) {
         setAudioState({ queue: more, resumedAt: null });
@@ -587,21 +590,26 @@ class AudioSession {
 
   /**
    * Adds similar songs when the queue is about to end (`radio.ts`). One
-   * request at a time: a second call gets the running one. It asks once per
-   * queue end, so a server with no mix is not asked again and again.
+   * request per queue end: a second call for the same end gets the running
+   * one; a new queue starts its own (the old one finds itself stale). A queue
+   * end with no songs is not asked again, unless the request failed: then
+   * the next call (the queue end itself) tries once more.
    * Resolves true when songs were added.
    */
   private extendRadio(): Promise<boolean> {
-    if (this.radioRun) return this.radioRun;
     const q = audioState().queue;
     const tail = q.entries[q.entries.length - 1];
+    if (tail && this.radioRun?.tail === tail.key) return this.radioRun.done;
     if (!tail || this.radioTried === tail.key || isOffline() || !radioWanted(q, this.radioConditions())) return Promise.resolve(false);
     this.radioTried = tail.key;
-    const run = this.fetchRadio(tail.key).finally(() => {
-      if (this.radioRun === run) this.radioRun = null;
-    });
+    const run = {
+      tail: tail.key,
+      done: this.fetchRadio(tail.key).finally(() => {
+        if (this.radioRun === run) this.radioRun = null;
+      }),
+    };
     this.radioRun = run;
-    return run;
+    return run.done;
   }
 
   private async fetchRadio(tailKey: string): Promise<boolean> {
@@ -621,9 +629,15 @@ class AudioSession {
       const songs = pickRadio(mix.filter((i) => i.Id).map(slimItem), q, this.recent);
       if (!songs.length) return false;
       setAudioState({ queue: appendAutoplay(q, songs) });
+      // After the queue ended the engine is unloaded (`onQueueEnd`), so this preloads nothing there.
       this.syncNext();
       this.persistQueue();
       return true;
+    };
+    // A failed request may try again at the queue end; an answer with no new songs does not.
+    const failed = () => {
+      if (this.radioTried === tailKey) this.radioTried = null;
+      return false;
     };
     // The library first. A catalog song that is not in the library yet has no mix.
     for (const seed of radioSeeds(audioState().queue, (item) => !isCatalogSong(item))) {
@@ -631,15 +645,18 @@ class AudioSession {
       try {
         mix = await jf.getInstantMix(ctx.api, ctx.userId, seed as BaseItemDto);
       } catch {
-        break;
+        if (stale()) return false;
+        const radio = await jf.getOnDemandRadio(ctx.api, radioPluginSeeds(audioState().queue), RADIO_BATCH * 2);
+        if (stale()) return false;
+        return radio ? add(radio) : failed();
       }
       if (stale()) return false;
       if (add(mix)) return true;
     }
     // Then the catalog plugin's radio, when the server has it (null: no plugin).
     const radio = await jf.getOnDemandRadio(ctx.api, radioPluginSeeds(audioState().queue), RADIO_BATCH * 2);
-    if (!radio || stale()) return false;
-    return add(radio);
+    if (stale()) return false;
+    return radio ? add(radio) : false;
   }
 
   // ---- Fade between songs -----------------------------------------------------------
@@ -652,10 +669,15 @@ class AudioSession {
     if (!entry) return null;
     const next = upcomingEntry(a.queue);
     const conditions = { seconds, longForm: a.longForm, repeatOne: a.queue.repeat === 'one', together: !!this.shared || controlGate.active || this.groupMuted };
-    const fadeOut = fadeBetween(entry.item, next && next.key !== entry.key ? next.item : null, conditions);
+    // A catalog song is not preloaded: it starts after its fetch, with no fade-in, so the song before it does not fade out.
+    const nextItem = next && next.key !== entry.key && !isCatalogSong(next.item) ? next.item : null;
+    const fadeOut = fadeBetween(entry.item, nextItem, conditions);
     const fadeIn = this.fadeIn && !conditions.longForm && !conditions.together;
-    this.fadeOutKey = fadeOut ? entry.key : null;
-    return { position, duration, seconds, fadeIn, fadeOut };
+    const point = { position, duration, seconds, fadeIn, fadeOut };
+    // Marked only once the fade-out has begun: a Next press earlier also moves the native
+    // playlist on by itself (gapless), and that song must not fade in.
+    this.fadeOutKey = fadeOut && fadeGain({ ...point, fadeIn: false }) < 1 ? entry.key : null;
+    return point;
   }
 
   /**

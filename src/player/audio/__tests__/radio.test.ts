@@ -108,3 +108,12 @@ describe('radioPluginSeeds', () => {
     expect(radioPluginSeeds(playNow([], 0, {}, deps))).toEqual([]);
   });
 });
+
+describe('shuffle with autoplay songs', () => {
+  it('shuffles the queue and keeps the autoplay songs after it', () => {
+    const q = appendAutoplay(playNow([song('a'), song('b'), song('c'), song('d')], 0, {}, deps), [song('x'), song('y')], deps);
+    const on = setShuffle(q, true, { makeKey: deps.makeKey, random: () => 0 });
+    expect(on.entries.slice(-2).map((e) => e.item.Id)).toEqual(['x', 'y']);
+    expect(on.entries.slice(1, 4).map((e) => e.item.Id).sort()).toEqual(['b', 'c', 'd']);
+  });
+});

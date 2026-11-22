@@ -237,8 +237,10 @@ export function setShuffle<T>(q: QueueState<T>, on: boolean, deps: QueueDeps = d
   const end = userBlockEnd(q);
   const head = q.entries.slice(0, end);
   if (on) {
-    const rest = shuffled(q.entries.slice(end), deps.random);
-    return { ...q, entries: [...head, ...rest], shuffle: true };
+    // Autoplay songs stay after the queue, so the queue panel shows the order that plays.
+    const tail = q.entries.slice(end);
+    const rest = shuffled(tail.filter((e) => !e.autoplay), deps.random);
+    return { ...q, entries: [...head, ...rest, ...tail.filter((e) => e.autoplay)], shuffle: true };
   }
   const current = q.entries[q.index] as QueueEntry<T>;
   const byKey = new Map(q.entries.map((e) => [e.key, e] as const));
