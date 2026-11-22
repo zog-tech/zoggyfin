@@ -22,4 +22,9 @@ describe('mini player rules', () => {
     expect(shouldDismiss(80, 0)).toBe(true);
     expect(shouldDismiss(10, 900)).toBe(true);
   });
+  it('can run on the UI thread', () => {
+    // The swipe gesture calls it in a worklet. A plain function there throws on the
+    // UI runtime, and the app aborts (iOS crash on a swipe down, 2026-11-21).
+    expect((shouldDismiss as unknown as { __workletHash?: number }).__workletHash).toEqual(expect.any(Number));
+  });
 });

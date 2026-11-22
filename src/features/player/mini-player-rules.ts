@@ -17,7 +17,11 @@ export function canSwipeDismiss(o: { isAudio: boolean; web: boolean; tv: boolean
   return o.isAudio && !o.web && !o.tv;
 }
 
-/** Past the distance, or a fast fling down, stops playback. */
+/**
+ * Past the distance, or a fast fling down, stops playback.
+ * A worklet: the swipe gesture calls it on the UI thread, where a plain function throws and the app aborts.
+ */
 export function shouldDismiss(translationY: number, velocityY: number): boolean {
+  'worklet';
   return translationY > DISMISS_DISTANCE || velocityY > DISMISS_VELOCITY;
 }
