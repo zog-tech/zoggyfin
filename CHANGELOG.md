@@ -116,10 +116,10 @@ first commit to today. All of it was built in the first weeks of the project.
 - **Load the whole video ahead.** A new switch in Settings, Playback (on by default). When on, the
   player reads ahead to the end of the video while it plays, so a slow or unstable connection stalls
   less and seeks forward are fast. Each platform keeps a memory cap: about 160 to 200 MB on Android
-  phones with 3 GB of memory or more (the player's own size on smaller devices and most TV sticks),
-  120 MB in a browser, 1 GB in the Mac app; on iPhone and iPad the system sets the limit. Live
-  streams, downloads and watch together keep the normal buffer. Nothing is saved after the player
-  closes.
+  phones with 3 GB of memory or more, 64 MB on smaller Android devices and most TVs and sticks
+  (40 MB in Lite mode), 120 MB in a browser, 1 GB in the Mac app; on iPhone and iPad the system sets
+  the limit. Live streams, downloads and watch together keep the normal buffer. Nothing is saved
+  after the player closes.
 - **Extension results in Search.** An extension search with `global: true` also shows its results
   in the Search tab, as a row after the server's results, under its own title. Each extension
   loads on its own, so the server's results never wait. See `docs/extensions.md`.
@@ -312,6 +312,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **Android: the app no longer runs out of memory during playback on a TV with 2 GB of memory.**
+  On Android devices with less than 3 GB (most Google TVs and streaming sticks), the video player
+  kept up to about 141 MB of video ahead. Android gives an app about 192 MB there, and with the
+  app's own memory a TV closed the app after a minute of playback. The player now keeps at most
+  64 MB on these devices, with "Load the whole video ahead" on or off (40 MB in Lite mode).
 - **The video player turns smoothly.** When the phone turned during a video, the controls laid out
   again in several steps and jumped. The controls now go out while the screen turns and fade back in
   on the finished layout; the video turns with the screen.
