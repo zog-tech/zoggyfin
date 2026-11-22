@@ -109,6 +109,7 @@ export const Tile = memo(function Tile({
     <Touchable
       // A round tile (people, artists): press, hover and focus show on the circle only, not around the name.
       kind={circle ? 'plain' : 'tile'}
+      single
       ring={!circle && !(isTV && captioned)}
       radius={r}
       onPress={() => onPress(item)}

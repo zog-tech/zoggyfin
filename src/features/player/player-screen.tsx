@@ -95,7 +95,7 @@ import { PlayerScrubber } from './scrubber';
 import { SkipPill } from './skip-pill';
 import { SubtitleOverlay } from './subtitle-overlay';
 import { useTurnFade } from './use-turn-fade';
-import { TurnCrossfade } from '@/native/turn-crossfade';
+import { nativeTurnHidesContent, TurnCrossfade } from '@/native/turn-crossfade';
 import { c, ease, iconSize, motion, player, radius, spacing, textStyle, type } from './tokens';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
@@ -239,7 +239,8 @@ export function PlayerScreen() {
     fade.set(withTiming(visible ? 1 : 0, { duration: motion.duration.fast, easing: visible ? ease.enter : ease.exit }));
   }, [visible, fade]);
   // The controls go out while the screen turns and come back on the finished layout (use-turn-fade.ts).
-  const turn = useTurnFade({ width, height });
+  // Builds whose native view hides the overlays during the turn need no JS fade; build 23 does.
+  const turn = useTurnFade({ width, height }, nativeTurnHidesContent);
   const controlsStyle = useAnimatedStyle(() => ({ opacity: fade.get() * turn.get() }));
   const turnStyle = useAnimatedStyle(() => ({ opacity: turn.get() }));
   // Mac app: the window buttons sit in a strip above the page, out of reach of the top scrim.
@@ -904,8 +905,6 @@ export function PlayerScreen() {
       <StatusBar hidden={!visible} animated style="light" />
       {/* TV: the focus stays in the player. */}
       <TvFocusGuide trapFocus={isNativeTV} style={styles.root}>
-      {/* iOS builds with the native view crossfade the old layout into the new one on a turn. */}
-      <TurnCrossfade layoutSize={{ width, height }} style={styles.root}>
       <Animated.View style={[styles.root, frameStyle]} onPointerMove={onPointerMove}>
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           {/* Audio plays now (this screen is about to close): no video surface, so no old frame shows. */}
@@ -941,6 +940,9 @@ export function PlayerScreen() {
           />
         ) : null}
 
+        {/* iOS builds with the native view crossfade the old overlays into the new ones on a turn.
+            The video is not in it: it takes the new size at once, so a picture of it showed two videos. */}
+        <TurnCrossfade layoutSize={{ width, height }} hidesContent style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Animated.View style={[StyleSheet.absoluteFill, turnStyle]} pointerEvents="none">
           <SubtitleOverlay bottom={visible ? 132 + bottomPad : bottomPad + spacing.xl} />
         </Animated.View>
@@ -1214,8 +1216,8 @@ export function PlayerScreen() {
             </View>
           </View>
         ) : null}
+        </TurnCrossfade>
       </Animated.View>
-      </TurnCrossfade>
       </TvFocusGuide>
 
       <PlayerSheet visible={sheet === 'tracks'} title="Audio & Subtitles" sections={trackSections} onClose={() => setSheet(null)} />

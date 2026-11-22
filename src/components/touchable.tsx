@@ -9,6 +9,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { NavigationContext } from 'expo-router/build/react-navigation/core/index';
 import Animated, { Easing, type SharedValue, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { forgetContentFocus, noteControlFocus, noteControlMounted, notePreferredControl, rememberContentFocus, TvPageContext, tvPageFocus } from '@/features/tv/focus';
@@ -47,6 +48,12 @@ export interface TouchableProps extends Omit<PressableProps, 'style' | 'children
    * elsewhere it is `hasTVPreferredFocus`.
    */
   firstFocus?: boolean;
+  /**
+   * Drop a second press within `REPEAT_PRESS_MS`, so a double tap does not
+   * open a page twice. Default true for tiles and rows; buttons keep fast
+   * repeats (skip, next).
+   */
+  single?: boolean;
   ref?: Ref<ComponentRef<typeof View>>;
 }
 
@@ -68,6 +75,9 @@ const useContentMark: (mark: SharedValue<number> | null, disabled: boolean) => S
   : () => null;
 const useFocusMark: () => SharedValue<number> | null = isTV ? () => useSharedValue(0) : () => null;
 
+/** A tile or row ignores a second press this soon after the first. */
+const REPEAT_PRESS_MS = 600;
+
 function pressScale(kind: TouchKind): number {
   if (kind === 'tile') return motion.press.tileScale;
   if (kind === 'icon') return motion.press.buttonScale;
@@ -88,6 +98,10 @@ function pressScale(kind: TouchKind): number {
  * open one) gives the focus to the visible page at once, and a control that
  * mounts on the visible page takes a focus that was lost (features/tv/focus).
  * Reduce Motion keeps the overlays and drops the scale.
+ * A double tap must not open a page twice. A press on a screen that is no
+ * longer the focused one is dropped, and a tile or row drops a second press
+ * within `REPEAT_PRESS_MS` (the new page may not be in the navigation state
+ * yet when the second tap comes).
  * Web and the Mac app: a right click on a control with `onLongPress` runs it
  * and hides the browser menu (context-menu.ts).
  * TV: a focus move does no React work. The ring (or the row fill) is always
@@ -103,6 +117,7 @@ export function Touchable({
   children,
   ring = true,
   firstFocus = false,
+  single,
   onPressIn,
   onPressOut,
   onHoverIn,
@@ -110,11 +125,16 @@ export function Touchable({
   onFocus,
   onBlur,
   onLongPress,
+  onPress,
   disabled,
   ref,
   ...rest
 }: TouchableProps) {
   const t = useTheme();
+  // The screen this control is on; null outside a navigator (the root hosts).
+  const nav = useContext(NavigationContext);
+  // When this tile or row last ran its press (a ref: two taps in one frame both see old state).
+  const lastPress = useRef(0);
   const reduced = useReducedMotion();
   const scale = useSharedValue(1);
   const [pressed, setPressed] = useState(false);
@@ -193,6 +213,21 @@ export function Touchable({
       ref={setRef}
       disabled={disabled}
       onLongPress={onLongPress}
+      onPress={
+        onPress
+          ? (e) => {
+              // A second fast tap on a tile that opened a page lands on the page under it: drop it.
+              if (nav && !nav.isFocused()) return;
+              // The new page may not be in the navigation state yet, so a tile or row also drops a quick repeat.
+              if (single ?? (kind === 'tile' || kind === 'row')) {
+                const now = Date.now();
+                if (now - lastPress.current < REPEAT_PRESS_MS) return;
+                lastPress.current = now;
+              }
+              onPress(e);
+            }
+          : undefined
+      }
       {...contextMenu}
       onPressIn={(e) => {
         setPressed(true);

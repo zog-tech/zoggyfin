@@ -18,12 +18,19 @@ import UIKit
 /// The picture turns with the screen. When JS sends a layout size with the new
 /// orientation, the new layout is mounted in that same transaction; the
 /// picture then fades out. After `maxHold` it fades out in any case.
+///
+/// With `hidesContent` the picture goes above the view (a sibling) and the
+/// view itself goes out while it shows, then the two crossfade. This is for
+/// content that is not opaque (the video player's controls over the video):
+/// the live children would show through the picture, and the video under them
+/// takes the new size at once, so it must stay out of the picture.
 class TurnCrossfadeView: ExpoView {
   private var laidOut = CGSize.zero
   private var shownBounds = CGSize.zero
   private var cover: UIView?
   private var coverTimer: Timer?
   private var fading = false
+  var hidesContent = false
 
   static let fadeDuration: TimeInterval = 0.25
   static let maxHold: TimeInterval = 1.5
@@ -48,8 +55,12 @@ class TurnCrossfadeView: ExpoView {
     guard window != nil, size.width > 0, size.height > 0, shownBounds.width > 0, shownBounds.height > 0 else { return }
     if let cover {
       // A second size change during the turn: keep the picture centred.
-      cover.center = CGPoint(x: bounds.midX, y: bounds.midY)
-      bringSubviewToFront(cover)
+      if cover.superview === self {
+        cover.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        bringSubviewToFront(cover)
+      } else {
+        cover.center = center
+      }
       // Turned back before JS caught up: the children fit again.
       if Self.sameOrientation(laidOut, size) { DispatchQueue.main.async { [weak self] in self?.fadeCover() } }
       return
@@ -60,9 +71,16 @@ class TurnCrossfadeView: ExpoView {
     // `afterScreenUpdates: false` copies the pixels that are on the screen now: the old layout.
     guard let picture = snapshotView(afterScreenUpdates: false) else { return }
     picture.frame = CGRect(origin: .zero, size: shownBounds)
-    picture.center = CGPoint(x: bounds.midX, y: bounds.midY)
     picture.isUserInteractionEnabled = false
-    addSubview(picture)
+    if hidesContent, let parent = superview {
+      // Last in the parent's children, so the parent's own child indexes do not change.
+      picture.center = center
+      parent.insertSubview(picture, aboveSubview: self)
+      alpha = 0
+    } else {
+      picture.center = CGPoint(x: bounds.midX, y: bounds.midY)
+      addSubview(picture)
+    }
     cover = picture
     fading = false
     coverTimer?.invalidate()
@@ -83,6 +101,7 @@ class TurnCrossfadeView: ExpoView {
     coverTimer = nil
     UIView.animate(withDuration: Self.fadeDuration, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
       picture.alpha = 0
+      self.alpha = 1
     } completion: { [weak self] _ in
       picture.removeFromSuperview()
       if self?.cover === picture {
@@ -98,6 +117,7 @@ class TurnCrossfadeView: ExpoView {
     cover?.removeFromSuperview()
     cover = nil
     fading = false
+    alpha = 1
   }
 
   /// Both sizes are landscape, or both are portrait.
@@ -110,10 +130,16 @@ public class ZoggyfinTurnModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ZoggyfinTurn")
 
+    // JS checks it: builds without it ignore `hidesContent`.
+    Constant("hidesContent") { true }
+
     View(TurnCrossfadeView.self) {
       Prop("layoutSize") { (view: TurnCrossfadeView, size: [Double]) in
         guard size.count == 2 else { return }
         view.setLayoutSize(width: size[0], height: size[1])
+      }
+      Prop("hidesContent") { (view: TurnCrossfadeView, on: Bool) in
+        view.hidesContent = on
       }
     }
   }
