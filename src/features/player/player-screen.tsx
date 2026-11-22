@@ -238,7 +238,7 @@ export function PlayerScreen() {
     fade.set(withTiming(visible ? 1 : 0, { duration: motion.duration.fast, easing: visible ? ease.enter : ease.exit }));
   }, [visible, fade]);
   // The controls go out while the screen turns and come back on the finished layout (use-turn-fade.ts).
-  const turn = useTurnFade();
+  const turn = useTurnFade({ width, height });
   const controlsStyle = useAnimatedStyle(() => ({ opacity: fade.get() * turn.get() }));
   const turnStyle = useAnimatedStyle(() => ({ opacity: turn.get() }));
   // Mac app: the window buttons sit in a strip above the page, out of reach of the top scrim.
