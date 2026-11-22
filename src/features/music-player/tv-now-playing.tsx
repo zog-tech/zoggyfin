@@ -86,7 +86,7 @@ export function TvNowPlaying() {
   const from = queue.source?.name ?? item.Album ?? null;
   const upcoming = (() => {
     const q = queueSections(queue);
-    return q.upNext.length + q.rest.length;
+    return q.upNext.length + q.rest.length + q.autoplay.length;
   })();
   const isFav = like.liked;
   const toggleFavourite = like.toggle;

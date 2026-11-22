@@ -12,6 +12,8 @@
  *   the original order (`original`) around the current entry.
  * - Repeat one replays the current entry when it ends; Next still moves on.
  *   Repeat all wraps from the last entry to the first.
+ * - Autoplay entries (`appendAutoplay`, similar songs from `radio.ts`) go at
+ *   the very end, after the context.
  */
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -29,6 +31,8 @@ export interface QueueEntry<T> {
   item: T;
   /** Added with Play next or Add to queue. */
   user: boolean;
+  /** Added by autoplay (similar music after the queue). Absent on every other entry. */
+  autoplay?: true;
 }
 
 export interface QueueState<T> {
@@ -177,6 +181,23 @@ export function replaceItem<T>(q: QueueState<T>, key: string, item: T): QueueSta
   return { ...q, entries };
 }
 
+/**
+ * Adds autoplay entries at the end of the queue. They are context entries
+ * (in `original` too), so turning shuffle off keeps them.
+ */
+export function appendAutoplay<T>(q: QueueState<T>, items: readonly T[], deps: QueueDeps = defaultDeps): QueueState<T> {
+  if (!items.length || q.index < 0) return q;
+  const added: QueueEntry<T>[] = items.map((item) => ({ key: deps.makeKey(), item, user: false, autoplay: true }));
+  return { ...q, entries: [...q.entries, ...added], original: [...q.original, ...added.map((e) => e.key)] };
+}
+
+/** Removes the upcoming autoplay entries (autoplay was turned off). The current entry stays. */
+export function dropAutoplay<T>(q: QueueState<T>): QueueState<T> {
+  const drop = new Set(q.entries.filter((e, i) => e.autoplay && i > q.index).map((e) => e.key));
+  if (!drop.size) return q;
+  return { ...q, entries: q.entries.filter((e) => !drop.has(e.key)), original: q.original.filter((k) => !drop.has(k)) };
+}
+
 /** Makes the entry with this key current. */
 export function jumpTo<T>(q: QueueState<T>, key: string): QueueState<T> {
   const at = q.entries.findIndex((e) => e.key === key);
@@ -216,8 +237,10 @@ export function setShuffle<T>(q: QueueState<T>, on: boolean, deps: QueueDeps = d
   const end = userBlockEnd(q);
   const head = q.entries.slice(0, end);
   if (on) {
-    const rest = shuffled(q.entries.slice(end), deps.random);
-    return { ...q, entries: [...head, ...rest], shuffle: true };
+    // Autoplay songs stay after the queue, so the queue panel shows the order that plays.
+    const tail = q.entries.slice(end);
+    const rest = shuffled(tail.filter((e) => !e.autoplay), deps.random);
+    return { ...q, entries: [...head, ...rest, ...tail.filter((e) => e.autoplay)], shuffle: true };
   }
   const current = q.entries[q.index] as QueueEntry<T>;
   const byKey = new Map(q.entries.map((e) => [e.key, e] as const));
@@ -243,15 +266,19 @@ export interface QueueSections<T> {
   upNext: { entry: QueueEntry<T>; index: number }[];
   /** The rest of the album, playlist or mix. */
   rest: { entry: QueueEntry<T>; index: number }[];
+  /** Similar music that autoplay added after the queue. */
+  autoplay: { entry: QueueEntry<T>; index: number }[];
 }
 
 export function queueSections<T>(q: QueueState<T>): QueueSections<T> {
   const end = userBlockEnd(q);
   const at = (from: number, to: number) => q.entries.slice(from, to).map((entry, i) => ({ entry, index: from + i }));
+  const after = q.index < 0 ? [] : at(end, q.entries.length);
   return {
     current: currentEntry(q),
     upNext: q.index < 0 ? [] : at(q.index + 1, end),
-    rest: q.index < 0 ? [] : at(end, q.entries.length),
+    rest: after.filter((r) => !r.entry.autoplay),
+    autoplay: after.filter((r) => r.entry.autoplay),
   };
 }
 
@@ -268,9 +295,9 @@ export function restoreQueue<T>(raw: unknown, isItem: (v: unknown) => v is T): Q
   const entries: QueueEntry<T>[] = [];
   for (const e of r.entries) {
     if (!e || typeof e !== 'object') return null;
-    const { key, item, user } = e as Partial<QueueEntry<unknown>>;
+    const { key, item, user, autoplay } = e as Partial<QueueEntry<unknown>>;
     if (typeof key !== 'string' || !isItem(item)) return null;
-    entries.push({ key, item, user: user === true });
+    entries.push(autoplay === true ? { key, item, user: user === true, autoplay: true } : { key, item, user: user === true });
   }
   if (!entries.length) return null;
   const index = Math.min(Math.max(0, Math.floor(r.index)), entries.length - 1);

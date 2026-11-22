@@ -1,4 +1,4 @@
-import { ONDEMAND_MAX_SECTIONS, parseOnDemandHome } from '../ondemand';
+import { ONDEMAND_MAX_SECTIONS, parseOnDemandHome, parseOnDemandRadio } from '../ondemand';
 
 const song = (id: string, extra: Record<string, unknown> = {}) => ({ Id: id, Name: `Song ${id}`, Type: 'Audio', ...extra });
 const album = (id: string) => ({ Id: id, Name: `Album ${id}`, Type: 'MusicAlbum' });
@@ -84,5 +84,20 @@ describe('parseOnDemandHome', () => {
     const home = parseOnDemandHome({ Sections: rows }, 20);
     expect(home?.sections).toHaveLength(ONDEMAND_MAX_SECTIONS);
     expect(home?.sections[0].items).toHaveLength(20);
+  });
+});
+
+describe('parseOnDemandRadio', () => {
+  it('keeps the songs once, in order, up to the limit', () => {
+    const body = { Version: 1, Items: [song('a'), album('x'), song('b'), song('a'), { Id: 'c' }, song('d')] };
+    expect(parseOnDemandRadio(body)?.map((i) => i.Id)).toEqual(['a', 'b', 'd']);
+    expect(parseOnDemandRadio(body, 2)?.map((i) => i.Id)).toEqual(['a', 'b']);
+  });
+
+  it('gives an empty list for an empty answer and null for anything that is not one', () => {
+    expect(parseOnDemandRadio({ Version: 1, Items: [] })).toEqual([]);
+    expect(parseOnDemandRadio({ Sections: [] })).toBeNull();
+    expect(parseOnDemandRadio('<html>')).toBeNull();
+    expect(parseOnDemandRadio({ Version: 0, Items: [] })).toBeNull();
   });
 });

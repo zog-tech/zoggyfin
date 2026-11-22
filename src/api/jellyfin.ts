@@ -27,7 +27,7 @@ import axios, { isCancel } from 'axios';
 import { clientIdentity } from '@/auth/identity';
 import { devOffline } from '@/lib/dev-offline';
 
-import { type OnDemandHome, parseOnDemandHome } from './ondemand';
+import { type OnDemandHome, parseOnDemandHome, parseOnDemandRadio } from './ondemand';
 import { buildAuthHeader } from './auth-header';
 import { musicSort } from './music-sort';
 import type { LibraryQuery } from './query-keys';
@@ -916,6 +916,24 @@ export async function getOnDemandHome(api: Api, limit: number): Promise<OnDemand
       headers: { Authorization: buildAuthHeader(clientIdentity(), api.accessToken) },
     });
     return parseOnDemandHome(res.data, limit);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Songs like these (newest first) from the catalog plugin's radio, or null
+ * when the server has no such plugin. Library songs come back as library items.
+ */
+export async function getOnDemandRadio(api: Api, ids: readonly string[], limit: number): Promise<BaseItemDto[] | null> {
+  if (devOffline() || !ids.length) return null;
+  try {
+    const res = await axios.get<unknown>(`${api.basePath}/OnDemand/Radio`, {
+      params: { ids: ids.join(','), limit },
+      timeout: ONDEMAND_TIMEOUT_MS,
+      headers: { Authorization: buildAuthHeader(clientIdentity(), api.accessToken) },
+    });
+    return parseOnDemandRadio(res.data, limit);
   } catch {
     return null;
   }

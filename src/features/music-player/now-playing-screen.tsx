@@ -229,7 +229,7 @@ export function NowPlayingScreen() {
   const back = longForm ? 15 : 10;
   const fwd = longForm ? 30 : 10;
   const sections = queueSections(queue);
-  const upcoming = sections.upNext.length + sections.rest.length;
+  const upcoming = sections.upNext.length + sections.rest.length + sections.autoplay.length;
   const resumedCaption = resumedAt && captionClock - resumedAt < 4000 ? 'Resumes where you left off' : null;
   const caption = resumedCaption ?? (longForm && chapter?.name ? chapter.name : format);
   const sleepLeft = sleepRemaining(sleep, clock);

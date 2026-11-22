@@ -61,6 +61,7 @@ export const ANDROID_SYMBOLS = {
   'line.3.horizontal.decrease': 'filter_list',
   'arrow.up.arrow.down': 'swap_vert',
   shuffle: 'shuffle',
+  infinity: 'all_inclusive',
   trash: 'delete',
   'rectangle.portrait.and.arrow.right': 'logout',
   qrcode: 'qr_code',

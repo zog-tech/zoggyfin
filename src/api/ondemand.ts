@@ -73,3 +73,28 @@ export function parseOnDemandHome(body: unknown, maxItems = ONDEMAND_MAX_ITEMS):
   return { version, sections };
 }
 
+
+/** The most songs one radio answer keeps. */
+export const ONDEMAND_RADIO_MAX = 50;
+
+/**
+ * The plugin's radio answer (`GET /OnDemand/Radio?ids=`): songs like the
+ * given ones, library songs and catalog songs mixed. Null when the body is
+ * not one (no plugin, or an older plugin without radio). Only songs count;
+ * each Id once.
+ */
+export function parseOnDemandRadio(body: unknown, max = ONDEMAND_RADIO_MAX): BaseItemDto[] | null {
+  if (!isRecord(body) || !Array.isArray(body.Items)) return null;
+  const version = body.Version === undefined ? 1 : body.Version;
+  if (typeof version !== 'number' || !Number.isFinite(version) || version < 1) return null;
+  const out: BaseItemDto[] = [];
+  const seen = new Set<string>();
+  for (const raw of body.Items) {
+    const item = parseItem(raw);
+    if (!item || item.Type !== 'Audio' || seen.has(item.Id ?? '')) continue;
+    seen.add(item.Id ?? '');
+    out.push(item);
+    if (out.length >= max) break;
+  }
+  return out;
+}
