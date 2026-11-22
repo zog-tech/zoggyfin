@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 
 import type { DownloadQuality } from '@/downloads/types';
+import { FADE_CHOICES } from '@/player/audio/crossfade';
 import { LITE_CHOICES, type LiteChoice } from '@/platform/lite';
 import { readJson, writeJson } from '@/storage/json';
 
@@ -57,6 +58,10 @@ export interface PlaybackSettings {
   previews: boolean;
   /** Lite mode (`platform/lite.ts`): Auto, On or Off. */
   liteMode: LiteChoice;
+  /** Music: similar songs play when the queue ends (`player/audio/radio.ts`). */
+  autoplaySimilar: boolean;
+  /** Music: "Fade between songs", in seconds; 0 is off (`player/audio/crossfade.ts`). */
+  fadeSeconds: number;
 }
 
 const KEY = 'settings.playback.v1';
@@ -72,6 +77,8 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   loadWholeVideoChosen: false,
   previews: true,
   liteMode: 'auto',
+  autoplaySimilar: true,
+  fadeSeconds: 0,
 };
 
 interface Store extends PlaybackSettings {
@@ -94,6 +101,8 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
       loadWholeVideoChosen: s.loadWholeVideoChosen,
       previews: s.previews,
       liteMode: s.liteMode,
+      autoplaySimilar: s.autoplaySimilar,
+      fadeSeconds: s.fadeSeconds,
     };
     writeJson(KEY, saved);
   },
@@ -113,6 +122,7 @@ export function readPlaybackSettings(saved: unknown): PlaybackSettings {
   }
   if (!out.loadWholeVideoChosen) out.loadWholeVideo = DEFAULT_PLAYBACK_SETTINGS.loadWholeVideo;
   if (!LITE_CHOICES.includes(out.liteMode)) out.liteMode = DEFAULT_PLAYBACK_SETTINGS.liteMode;
+  if (!FADE_CHOICES.includes(out.fadeSeconds)) out.fadeSeconds = DEFAULT_PLAYBACK_SETTINGS.fadeSeconds;
   return out;
 }
 

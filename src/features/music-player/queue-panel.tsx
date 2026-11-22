@@ -23,6 +23,7 @@ import { artistLine, type AudioItem } from '@/player/audio/item';
 import { queueSections, type QueueEntry } from '@/player/audio/queue';
 import { audioSession } from '@/player/audio/session';
 import { useAudioStore } from '@/player/audio/store';
+import { usePlaybackSettings } from '@/settings/playback';
 import { font, scriptStyle, tv, type } from '@/theme';
 
 import { PlayerSheet } from '../player/player-sheet';
@@ -59,11 +60,13 @@ export function QueuePanel({
   toolbar?: boolean;
 }) {
   const queue = useAudioStore((s) => s.queue);
+  const autoplayOn = usePlaybackSettings((st) => st.autoplaySimilar);
   const sections = useMemo(() => queueSections(queue), [queue]);
   const s = audioSession();
   const sourceName = queue.source?.name;
   const restShown = sections.rest.slice(0, MAX_ROWS);
   const hidden = sections.rest.length - restShown.length;
+  const autoplayShown = sections.autoplay.slice(0, Math.max(0, MAX_ROWS - restShown.length));
   const repeatIcon: IconName = queue.repeat === 'one' ? 'repeat.1' : 'repeat';
   const repeatLabel = queue.repeat === 'off' ? 'Repeat off' : queue.repeat === 'all' ? 'Repeat all' : 'Repeat one';
   // TV: the row whose menu is open, with the section it can move in.
@@ -87,6 +90,12 @@ export function QueuePanel({
         <View style={styles.controls}>
         <Toggle icon="shuffle" label="Shuffle" active={queue.shuffle} onPress={() => s.toggleShuffle()} />
         <Toggle icon={repeatIcon} label={repeatLabel} active={queue.repeat !== 'off'} onPress={() => s.cycleRepeat()} />
+        <Toggle
+          icon="infinity"
+          label={autoplayOn ? 'Autoplay similar music on' : 'Autoplay similar music off'}
+          active={autoplayOn}
+          onPress={() => s.setAutoplay(!autoplayOn)}
+        />
         <View style={styles.flex} />
         <Touchable
           kind="button"
@@ -98,7 +107,7 @@ export function QueuePanel({
           style={styles.clear}>
           <Text style={styles.clearText}>Save</Text>
         </Touchable>
-        {sections.upNext.length + sections.rest.length > 0 ? (
+        {sections.upNext.length + sections.rest.length + sections.autoplay.length > 0 ? (
           <Touchable kind="button" radius={radius.sm} onPress={() => s.clearQueue()} accessibilityRole="button" accessibilityLabel="Clear the queue" hitSlop={8} style={styles.clear}>
             <Text style={styles.clearText}>Clear</Text>
           </Touchable>
@@ -131,7 +140,16 @@ export function QueuePanel({
             {hidden > 0 ? <Text style={styles.more}>And {hidden} more</Text> : null}
           </>
         ) : null}
-        {!sections.upNext.length && !restShown.length ? <Text style={styles.empty}>Nothing plays after this.</Text> : null}
+        {autoplayShown.length ? (
+          <>
+            <Text style={styles.header} accessibilityRole="header" numberOfLines={1}>
+              Autoplay
+            </Text>
+            <Text style={styles.autoplayNote}>Similar music, after your queue</Text>
+            <ReorderList rows={autoplayShown} selectedKey={selectedKey} onSelect={onSelect} onMenu={setMenu} />
+          </>
+        ) : null}
+        {!sections.upNext.length && !restShown.length && !autoplayShown.length ? <Text style={styles.empty}>Nothing plays after this.</Text> : null}
       </ScrollView>
       {isTV ? (
         <PlayerSheet
@@ -511,5 +529,6 @@ const styles = StyleSheet.create({
   sub: { ...font(type.footnote), color: c.textOnMediaSecondary },
   handle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   more: { ...font(type.footnote), color: c.textOnMediaSecondary, marginTop: spacing.md, textAlign: 'center' },
+  autoplayNote: { ...font(type.footnote), color: c.textOnMediaSecondary, marginTop: -spacing.xs, marginBottom: spacing.xs },
   empty: { ...font(type.subheadline), color: c.textOnMediaSecondary, marginTop: spacing.xl, textAlign: 'center' },
 });

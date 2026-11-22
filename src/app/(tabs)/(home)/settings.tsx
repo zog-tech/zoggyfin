@@ -36,6 +36,8 @@ import { APPEARANCE_OPTIONS, useAppearance } from '@/settings/appearance';
 import { useHomeSettings } from '@/settings/home';
 import { useTabBarSettings } from '@/settings/tab-bar';
 import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from '@/settings/playback';
+import { FADE_CHOICES, fadeLabel } from '@/player/audio/crossfade';
+import { audioSession } from '@/player/audio/session';
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
 import { HAS_ACCESSORY, useTabBottomPadding } from '@/lib/tab-bar-inset';
@@ -185,7 +187,7 @@ function ServersSection() {
   );
 }
 
-type PickerKey = 'wifi' | 'cellular' | 'back' | 'forward' | null;
+type PickerKey = 'wifi' | 'cellular' | 'back' | 'forward' | 'fade' | null;
 
 function AppearanceSection() {
   const choice = useAppearance((st) => st.choice);
@@ -271,6 +273,7 @@ function PlaybackSection() {
   const { c } = useTheme();
   const quality: Option<number>[] = QUALITY_OPTIONS.map((q) => ({ value: q.value, label: q.label }));
   const skips: Option<number>[] = SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} s` }));
+  const fades: Option<number>[] = FADE_CHOICES.map((n) => ({ value: n, label: fadeLabel(n) }));
   const sheet =
     picker === 'wifi'
       ? { title: 'Streaming quality on Wi-Fi', options: quality, selected: st.wifiBitrate, set: (v: number) => st.update({ wifiBitrate: v }) }
@@ -280,7 +283,9 @@ function PlaybackSection() {
           ? { title: 'Skip back', options: skips, selected: st.skipBackSeconds, set: (v: number) => st.update({ skipBackSeconds: v }) }
           : picker === 'forward'
             ? { title: 'Skip forward', options: skips, selected: st.skipForwardSeconds, set: (v: number) => st.update({ skipForwardSeconds: v }) }
-            : null;
+            : picker === 'fade'
+              ? { title: 'Fade between songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
+              : null;
   const cellular = Platform.OS !== 'web' && !isTV;
   const lite = useLite();
   const [liteOpen, setLiteOpen] = useState(false);
@@ -290,7 +295,7 @@ function PlaybackSection() {
   return (
     <Group
       title="Playback"
-      footer={`Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
+      footer={`Autoplay similar music adds songs like the last ones when the queue ends. Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
       <SettingsRow icon="gauge" label="Quality on Wi-Fi" value={qualityLabel(st.wifiBitrate)} onPress={() => setPicker('wifi')} />
       {cellular ? (
         <SettingsRow icon="antenna.radiowaves.left.and.right" label="Quality on cellular" value={qualityLabel(st.cellularBitrate)} onPress={() => setPicker('cellular')} />
@@ -314,6 +319,24 @@ function PlaybackSection() {
           />
         }
       />
+      <SettingsRow
+        icon="music.note.list"
+        label="Autoplay similar music"
+        onPress={() => audioSession().setAutoplay(!st.autoplaySimilar)}
+        role="switch"
+        checked={st.autoplaySimilar}
+        trailing={
+          <Switch
+            value={st.autoplaySimilar}
+            onValueChange={(v) => audioSession().setAutoplay(v)}
+            trackColor={{ true: c.accent, false: c.surface3 }}
+            thumbColor={mediaColors.white}
+            {...webSwitchColors}
+            accessibilityLabel="Autoplay similar music"
+          />
+        }
+      />
+      <SettingsRow icon="speaker.wave.2.fill" label="Fade between songs" value={fadeLabel(st.fadeSeconds)} onPress={() => setPicker('fade')} />
       {liteRow ? <SettingsRow icon="gauge" label="Lite mode" value={liteLabel(st.liteMode, lite)} onPress={() => setLiteOpen(true)} /> : null}
       {isTV ? (
         <SettingsRow

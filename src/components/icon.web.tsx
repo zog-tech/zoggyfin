@@ -62,6 +62,7 @@ import Heart from 'lucide-react/dist/esm/icons/heart';
 import History from 'lucide-react/dist/esm/icons/history';
 import House from 'lucide-react/dist/esm/icons/house';
 import Image from 'lucide-react/dist/esm/icons/image';
+import InfinityIcon from 'lucide-react/dist/esm/icons/infinity';
 import Info from 'lucide-react/dist/esm/icons/info';
 import KeyRound from 'lucide-react/dist/esm/icons/key-round';
 import Keyboard from 'lucide-react/dist/esm/icons/keyboard';
@@ -195,6 +196,7 @@ const LUCIDE: Record<IconName, Glyph> = {
   'line.3.horizontal.decrease': { icon: ListFilter },
   'arrow.up.arrow.down': { icon: ArrowUpDown },
   shuffle: { icon: Shuffle },
+  infinity: { icon: InfinityIcon },
   trash: { icon: Trash2 },
   'rectangle.portrait.and.arrow.right': { icon: LogOut },
   qrcode: { icon: QrCode },

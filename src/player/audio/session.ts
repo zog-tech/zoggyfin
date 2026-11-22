@@ -45,6 +45,8 @@ import { positions } from './resume';
 import {
   addToQueue,
   advance,
+  appendAutoplay,
+  dropAutoplay,
   back,
   clearUpcoming,
   currentEntry,
@@ -65,6 +67,8 @@ import {
   upcomingIndex,
 } from './queue';
 import { isCatalogSong } from './catalog';
+import { fadeBetween, fadeGain, type FadePoint, inFadeWindow } from './crossfade';
+import { pickRadio, type RadioConditions, radioSeeds, radioWanted, rememberPlayed } from './radio';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
 import { audioState, initialAudioState, setAudioState } from './store';
 import { formatLine, hasCodecInfo, predictPlayMethod, universalAudioUrl } from './stream-url';
@@ -175,6 +179,19 @@ class AudioSession {
   private trackListeners = new Set<(key: string) => void>();
   /** The queue entry whose catalog song the server is fetching now (`fetchCatalogSong`). */
   private catalogFetch: string | null = null;
+  /** Autoplay (`radio.ts`): the request that runs now, the queue end it ran for, and recently played song ids. */
+  private radioRun: Promise<boolean> | null = null;
+  private radioTried: string | null = null;
+  private recent: string[] = [];
+  /** "Fade between songs" (`crossfade.ts`): the fade's share of the volume, and its fine-step timer. */
+  private fadeVolume = 1;
+  /** The current track fades in: it came after a fade-out. */
+  private fadeIn = false;
+  /** The entry that fades out at its end (from the last check). */
+  private fadeOutKey: string | null = null;
+  private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  /** When the current track began by itself (ms), for the fade-in before its first status. */
+  private trackStartedAt = 0;
 
   constructor() {
     this.engine.subscribe(this.onEngine);
@@ -197,6 +214,7 @@ class AudioSession {
           if (!e.playing) this.saveNow();
         }
         setPlayerState(patch);
+        this.updateFade(e.position, e.duration > 0 ? e.duration : playerState().duration);
         this.measureGap(key, e.position, e.duration);
         this.throttledSaves(e.position);
         break;
@@ -304,6 +322,11 @@ class AudioSession {
     setAudioState({ queue: nq, resumedAt: null });
     const entry = currentEntry(nq);
     if (!entry) return;
+    this.recent = rememberPlayed(this.recent, entry.item.Id);
+    // A song that follows a fade-out starts silent and fades in.
+    this.fadeIn = natural && !!prev && prev.key === this.fadeOutKey;
+    this.trackStartedAt = Date.now();
+    this.updateFade(0, ticksToSecondsExact(entry.item.RunTimeTicks));
     this.trackListeners.forEach((l) => l(entry.key));
     // Sleep timer "end of track": the next track has already begun, so pause it at its start.
     const sleep = audioState().sleep;
@@ -324,6 +347,7 @@ class AudioSession {
     }
     this.syncNext();
     this.persistQueue();
+    void this.extendRadio();
   }
 
   private async onQueueEnd() {
@@ -342,6 +366,17 @@ class AudioSession {
       setAudioState({ queue: nq, resumedAt: null });
       void this.startCurrent({ autoplay: true, startSeconds: 0 });
       return;
+    }
+    // Autoplay had no songs ready (a slow server, or the queue ran out fast): wait for it once.
+    if (!nq && audioState().sleep.kind !== 'end') {
+      await this.extendRadio();
+      if (id !== this.loadId) return;
+      const more = advance(audioState().queue);
+      if (more) {
+        setAudioState({ queue: more, resumedAt: null });
+        void this.startCurrent({ autoplay: true, startSeconds: 0 });
+        return;
+      }
     }
     this.engine.unload();
     if (audioState().sleep.kind === 'end') this.setSleep(sleepOff);
@@ -510,13 +545,140 @@ class AudioSession {
       this.engine.setRate(rate);
       setPlayerState({ rate });
     }
+    // A track that starts by a press (or a new queue) does not fade in.
+    this.fadeIn = false;
     await this.engine.load(current, next, start, opts.autoplay);
     if (id !== this.loadId) return;
+    this.recent = rememberPlayed(this.recent, entry.item.Id);
+    this.updateFade(start, duration);
     this.trackListeners.forEach((l) => l(entry.key));
     this.startReporter(entry);
     this.afterTrackStart(entry);
     this.watchAppState();
     this.persistQueue();
+    void this.extendRadio();
+  }
+
+  // ---- Autoplay (similar music after the queue) -------------------------------------
+
+  /** The Autoplay switch (queue toolbar, Settings). Off removes the similar songs that wait in the queue. */
+  setAutoplay(on: boolean): void {
+    usePlaybackSettings.getState().update({ autoplaySimilar: on });
+    if (on) {
+      this.radioTried = null;
+      void this.extendRadio();
+      return;
+    }
+    const q = audioState().queue;
+    const nq = dropAutoplay(q);
+    if (nq === q) return;
+    setAudioState({ queue: nq });
+    this.syncNext();
+    this.persistQueue();
+  }
+
+  private radioConditions(): RadioConditions {
+    return {
+      enabled: usePlaybackSettings.getState().autoplaySimilar,
+      longForm: audioState().longForm,
+      together: !!this.shared || controlGate.active || queueGate.locked !== null,
+    };
+  }
+
+  /**
+   * Adds similar songs when the queue is about to end (`radio.ts`). One
+   * request at a time: a second call gets the running one. It asks once per
+   * queue end, so a server with no mix is not asked again and again.
+   * Resolves true when songs were added.
+   */
+  private extendRadio(): Promise<boolean> {
+    if (this.radioRun) return this.radioRun;
+    const q = audioState().queue;
+    const tail = q.entries[q.entries.length - 1];
+    if (!tail || this.radioTried === tail.key || isOffline() || !radioWanted(q, this.radioConditions())) return Promise.resolve(false);
+    this.radioTried = tail.key;
+    const run = this.fetchRadio(tail.key).finally(() => {
+      if (this.radioRun === run) this.radioRun = null;
+    });
+    this.radioRun = run;
+    return run;
+  }
+
+  private async fetchRadio(tailKey: string): Promise<boolean> {
+    let ctx: Ctx;
+    try {
+      ctx = context();
+    } catch {
+      return false;
+    }
+    // A catalog song that is not in the library yet has no mix.
+    for (const seed of radioSeeds(audioState().queue, (item) => !isCatalogSong(item))) {
+      let mix: BaseItemDto[];
+      try {
+        mix = await jf.getInstantMix(ctx.api, ctx.userId, seed as BaseItemDto);
+      } catch {
+        return false;
+      }
+      const q = audioState().queue;
+      // The queue changed while the server answered (a new album, songs added): the next track start decides again.
+      if (q.entries[q.entries.length - 1]?.key !== tailKey || !radioWanted(q, this.radioConditions())) return false;
+      const add = pickRadio(mix.map(slimItem), q, this.recent);
+      if (!add.length) continue;
+      setAudioState({ queue: appendAutoplay(q, add) });
+      this.syncNext();
+      this.persistQueue();
+      return true;
+    }
+    return false;
+  }
+
+  // ---- Fade between songs -----------------------------------------------------------
+
+  private fadePoint(position: number, duration: number): FadePoint | null {
+    const seconds = usePlaybackSettings.getState().fadeSeconds;
+    if (seconds <= 0) return null;
+    const a = audioState();
+    const entry = currentEntry(a.queue);
+    if (!entry) return null;
+    const next = upcomingEntry(a.queue);
+    const conditions = { seconds, longForm: a.longForm, repeatOne: a.queue.repeat === 'one', together: !!this.shared || controlGate.active || this.groupMuted };
+    const fadeOut = fadeBetween(entry.item, next && next.key !== entry.key ? next.item : null, conditions);
+    const fadeIn = this.fadeIn && !conditions.longForm && !conditions.together;
+    this.fadeOutKey = fadeOut ? entry.key : null;
+    return { position, duration, seconds, fadeIn, fadeOut };
+  }
+
+  /**
+   * Sets the fade's share of the volume for this position. The engine's
+   * status comes every 500 ms; inside a fade window a timer steps the volume
+   * every 100 ms, so the fade sounds smooth.
+   */
+  /**
+   * The position for a fade step. Right after a track change the engine still
+   * gives the old track's position until the new track's first status: then
+   * the time since the change counts.
+   */
+  private fadePosition(): number {
+    const position = this.engine.livePosition();
+    if (!this.fadeIn) return position;
+    const since = ((Date.now() - this.trackStartedAt) / 1000) * (playerState().rate || 1);
+    return position > since + 1 ? since : position;
+  }
+
+  private updateFade(position: number, duration: number): void {
+    const p = this.fadePoint(position, duration);
+    const gain = p ? fadeGain(p) : 1;
+    if (gain !== this.fadeVolume) {
+      this.fadeVolume = gain;
+      this.applyVolume();
+    }
+    const fine = !!p && this.engine.loaded && playerState().playing && inFadeWindow(p);
+    if (fine && !this.fadeTimer) {
+      this.fadeTimer = setInterval(() => this.updateFade(this.fadePosition(), playerState().duration), 100);
+    } else if (!fine && this.fadeTimer) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = null;
+    }
   }
 
   /** A catalog song that would stream from the active server (not a download, not a listen-together guest). */
@@ -1155,7 +1317,7 @@ class AudioSession {
   }
 
   private applyVolume(): void {
-    this.engine.setVolume(this.groupMuted ? 0 : this.sleepVolume);
+    this.engine.setVolume(this.groupMuted ? 0 : this.sleepVolume * this.fadeVolume);
   }
 
   // ---- Listen together ---------------------------------------------------------------

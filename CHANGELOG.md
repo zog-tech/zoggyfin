@@ -13,6 +13,14 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Autoplay similar music.** When 2 songs or fewer are left in the queue, similar songs from your
+  library join it (the server's Instant Mix), so the music does not stop. They show in the queue
+  under "Autoplay". The ∞ button in the queue, or Settings, Playback, turns it off. Autoplay is off
+  for audiobooks and podcasts, with Repeat, and in a listen-together session.
+- **Fade between songs.** Settings, Playback has "Fade between songs" (Off, or 2 to 12 seconds). The
+  song fades out over its last seconds and the next one fades in. Two songs that follow each other
+  on one album stay seamless. The two songs do not overlap: the music player plays one track at a
+  time.
 - **Lite mode for small devices.** Settings, Playback has Lite mode: Auto (on for Android devices
   with about 1 GB of memory, such as a Fire TV Stick), On or Off. In Lite mode Home plays no
   previews and a TV tab that you leave is closed, so the app uses about a third less memory.

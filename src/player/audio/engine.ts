@@ -464,7 +464,12 @@ export class AudioEngine {
 
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
-    if (this.playlist) this.playlist.volume = this.volume;
+    if (!this.playlist) return;
+    this.playlist.volume = this.volume;
+    // The web playlist gives the preloaded next track the volume of the moment it preloaded, so after
+    // a fade-out the next song began at full volume until its fade-in began. Native players have one volume.
+    const next = (this.playlist as unknown as { _nextMedia?: { volume: number } | null })._nextMedia;
+    if (next && typeof next.volume === 'number') next.volume = this.volume;
   }
 
   setLockScreen(info: LockScreenInfo, controls: LockScreenControls): void {
