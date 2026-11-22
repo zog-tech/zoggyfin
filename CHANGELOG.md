@@ -322,6 +322,12 @@ first commit to today. All of it was built in the first weeks of the project.
 - **Both players crossfade when the phone turns (iOS, new build).** The old screen turns with the
   phone and fades into the new layout, as in the system apps. Nothing goes blank. Older builds
   keep the fade.
+- **The video shows once while the phone turns.** The video takes the new size at once, so the
+  picture of the old screen showed a second video for half a second. Now only the controls and
+  subtitles crossfade; in new iOS builds the old controls fade out as the new ones fade in.
+- **A double tap opens a page once.** Two fast taps on a tile opened its page twice, so Back had
+  to be pressed twice. A tile or row now ignores a second tap within 0.6 s, and a control on a
+  page that is no longer in front ignores taps.
 - **A catalog song starts by itself once the server has it.** The first play of a song marked
   " ☁" makes the server fetch the file. The player now asks the server to fetch it first and then
   streams the saved song (with its real name and album), and it plays again when iOS leaves a

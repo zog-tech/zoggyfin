@@ -6,8 +6,8 @@
  * the new layout. A screen that passes `laidOut` (the size its layout used)
  * gets the content back only after that layout has the new orientation.
  * TV windows never turn, so TV gets a constant 1. An iOS build with the
- * native crossfade (`TurnCrossfade`) also gets 1: the native view covers the
- * turn with a picture of the old layout, so nothing goes blank.
+ * native crossfade (`TurnCrossfade`) also gets 1 (unless the caller says the
+ * view does not cover it): a picture of the old layout covers the turn.
  */
 import { useEffect, useRef } from 'react';
 import { Dimensions, type ScaledSize } from 'react-native';
@@ -28,14 +28,18 @@ interface TurnState {
   check: () => void;
 }
 
-/** 1 normally, 0 while the screen turns. Multiply the content's opacity by it. */
-export function useTurnFade(laidOut?: Size): SharedValue<number> {
+/**
+ * 1 normally, 0 while the screen turns. Multiply the content's opacity by it.
+ * `native`: false when the screen's native crossfade does not cover this
+ * content, so the fade must run in builds with the native view too.
+ */
+export function useTurnFade(laidOut?: Size, native: boolean = hasNativeTurnCrossfade): SharedValue<number> {
   const shown = useSharedValue(1);
   const reduced = useReducedMotion();
   const state = useRef<TurnState>({ hiddenAt: null, changedAt: 0, timer: null, window: { width: 0, height: 0 }, laidOut: null, check: () => {} });
 
   useEffect(() => {
-    if (isTV || hasNativeTurnCrossfade) return;
+    if (isTV || native) return;
     const st = state.current;
     st.window = Dimensions.get('window');
     const check = () => {
@@ -77,7 +81,7 @@ export function useTurnFade(laidOut?: Size): SharedValue<number> {
       st.check = () => {};
       shown.set(1);
     };
-  }, [shown, reduced]);
+  }, [shown, reduced, native]);
 
   // The screen rendered with a new size: the wait counts from now.
   const w = laidOut?.width ?? 0;
