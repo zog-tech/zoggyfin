@@ -315,6 +315,10 @@ first commit to today. All of it was built in the first weeks of the project.
 - **The video player turns smoothly.** When the phone turned during a video, the controls laid out
   again in several steps and jumped. The controls now go out while the screen turns and fade back in
   on the finished layout; the video turns with the screen.
+- **The music player turns smoothly.** On an iPhone the music player showed its old layout at the
+  new size for a moment after a turn, then jumped. The player content now goes out while the screen
+  turns and fades back in when the new layout is on the screen. Both players now wait for the new
+  layout, not for a fixed time.
 - **A catalog song starts by itself once the server has it.** The first play of a song marked
   " ☁" makes the server fetch the file. The player now asks the server to fetch it first and then
   streams the saved song (with its real name and album), and it plays again when iOS leaves a

@@ -21,6 +21,7 @@ import { useTvRemote } from '@/features/tv/use-tv-remote';
 import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { useHideDevToolsButton } from '@/lib/dev-tools';
 import { itemHref } from '@/lib/navigation';
+import { useTurnFade } from '@/features/player/use-turn-fade';
 import { useWindowFrame } from '@/lib/use-window-frame';
 import { KeyInput } from '@/native/key-input';
 import type { KeyPress } from '@/native/key-input-types';
@@ -175,9 +176,12 @@ export function NowPlayingScreen() {
 
   // Swipe down on the artwork area to minimize; the screen follows the finger.
   const dragY = useSharedValue(0);
+  // The content goes out while the screen turns and comes back on the finished layout
+  // (use-turn-fade.ts). On an iPhone the old layout showed for a moment at the new size.
+  const turn = useTurnFade({ width, height });
   const frameStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: dragY.get() }],
-    opacity: reduced ? 1 - Math.min(0.6, dragY.get() / Math.max(1, height)) : 1,
+    opacity: (reduced ? 1 - Math.min(0.6, dragY.get() / Math.max(1, height)) : 1) * turn.get(),
   }));
   const dismiss = useMemo(
     () =>
