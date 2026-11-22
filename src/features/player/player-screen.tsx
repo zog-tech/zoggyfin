@@ -94,6 +94,7 @@ import { RoundButton } from './round-button';
 import { PlayerScrubber } from './scrubber';
 import { SkipPill } from './skip-pill';
 import { SubtitleOverlay } from './subtitle-overlay';
+import { useTurnFade } from './use-turn-fade';
 import { c, ease, iconSize, motion, player, radius, spacing, textStyle, type } from './tokens';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
@@ -236,7 +237,10 @@ export function PlayerScreen() {
   useEffect(() => {
     fade.set(withTiming(visible ? 1 : 0, { duration: motion.duration.fast, easing: visible ? ease.enter : ease.exit }));
   }, [visible, fade]);
-  const controlsStyle = useAnimatedStyle(() => ({ opacity: fade.get() }));
+  // The controls go out while the screen turns and come back on the finished layout (use-turn-fade.ts).
+  const turn = useTurnFade();
+  const controlsStyle = useAnimatedStyle(() => ({ opacity: fade.get() * turn.get() }));
+  const turnStyle = useAnimatedStyle(() => ({ opacity: turn.get() }));
   // Mac app: the window buttons sit in a strip above the page, out of reach of the top scrim.
   useEffect(() => {
     setTitleBarShade(visible ? player.topScrim[0] : null);
@@ -934,7 +938,9 @@ export function PlayerScreen() {
           />
         ) : null}
 
-        <SubtitleOverlay bottom={visible ? 132 + bottomPad : bottomPad + spacing.xl} />
+        <Animated.View style={[StyleSheet.absoluteFill, turnStyle]} pointerEvents="none">
+          <SubtitleOverlay bottom={visible ? 132 + bottomPad : bottomPad + spacing.xl} />
+        </Animated.View>
 
         {ripple ? (
           <Animated.View
@@ -1160,8 +1166,8 @@ export function PlayerScreen() {
         </Animated.View>
 
         {/* Prompts stay visible with the controls hidden. */}
-        <View
-          style={[styles.prompts, { right: sideInset, bottom: visible ? bottomPad + 96 : bottomPad + spacing.lg }]}
+        <Animated.View
+          style={[styles.prompts, { right: sideInset, bottom: visible ? bottomPad + 96 : bottomPad + spacing.lg }, turnStyle]}
           pointerEvents="box-none">
           {phase === 'counting' && now?.next ? (
             <NextUpCard
@@ -1186,7 +1192,7 @@ export function PlayerScreen() {
               }}
             />
           ) : null}
-        </View>
+        </Animated.View>
 
         {status === 'error' ? (
           <View style={styles.errorWrap} pointerEvents="box-none">

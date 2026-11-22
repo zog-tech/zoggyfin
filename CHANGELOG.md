@@ -312,6 +312,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- **The video player turns smoothly.** When the phone turned during a video, the controls laid out
+  again in several steps and jumped. The controls now go out while the screen turns and fade back in
+  on the finished layout; the video turns with the screen.
 - **A catalog song starts by itself once the server has it.** The first play of a song marked
   " ☁" makes the server fetch the file. The player now asks the server to fetch it first and then
   streams the saved song (with its real name and album), and it plays again when iOS leaves a
