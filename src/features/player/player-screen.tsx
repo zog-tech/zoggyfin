@@ -95,6 +95,7 @@ import { PlayerScrubber } from './scrubber';
 import { SkipPill } from './skip-pill';
 import { SubtitleOverlay } from './subtitle-overlay';
 import { useTurnFade } from './use-turn-fade';
+import { TurnCrossfade } from '@/native/turn-crossfade';
 import { c, ease, iconSize, motion, player, radius, spacing, textStyle, type } from './tokens';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
@@ -903,6 +904,8 @@ export function PlayerScreen() {
       <StatusBar hidden={!visible} animated style="light" />
       {/* TV: the focus stays in the player. */}
       <TvFocusGuide trapFocus={isNativeTV} style={styles.root}>
+      {/* iOS builds with the native view crossfade the old layout into the new one on a turn. */}
+      <TurnCrossfade layoutSize={{ width, height }} style={styles.root}>
       <Animated.View style={[styles.root, frameStyle]} onPointerMove={onPointerMove}>
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           {/* Audio plays now (this screen is about to close): no video surface, so no old frame shows. */}
@@ -1212,6 +1215,7 @@ export function PlayerScreen() {
           </View>
         ) : null}
       </Animated.View>
+      </TurnCrossfade>
       </TvFocusGuide>
 
       <PlayerSheet visible={sheet === 'tracks'} title="Audio & Subtitles" sections={trackSections} onClose={() => setSheet(null)} />

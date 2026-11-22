@@ -22,6 +22,7 @@ import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { useHideDevToolsButton } from '@/lib/dev-tools';
 import { itemHref } from '@/lib/navigation';
 import { useTurnFade } from '@/features/player/use-turn-fade';
+import { TurnCrossfade } from '@/native/turn-crossfade';
 import { useWindowFrame } from '@/lib/use-window-frame';
 import { KeyInput } from '@/native/key-input';
 import type { KeyPress } from '@/native/key-input-types';
@@ -672,8 +673,11 @@ export function NowPlayingScreen() {
   return (
     <KeyInput enabled={!sheet} onKey={onKey} style={styles.root}>
       <StatusBar style="light" animated />
-      <ArtBackground item={item} />
-      <Animated.View style={[styles.root, frameStyle, { paddingBottom: bottomPad(insets.bottom) }]}>{body}</Animated.View>
+      {/* iOS builds with the native view crossfade the old layout into the new one on a turn. */}
+      <TurnCrossfade layoutSize={{ width, height }} style={styles.root}>
+        <ArtBackground item={item} />
+        <Animated.View style={[styles.root, frameStyle, { paddingBottom: bottomPad(insets.bottom) }]}>{body}</Animated.View>
+      </TurnCrossfade>
       <PlayerSheet visible={sheet !== null} title={sheetTitle} sections={sheetSections} onClose={() => setSheet(null)} />
       <TogetherSheetHost where="music" />
       <ToastHost overlay />

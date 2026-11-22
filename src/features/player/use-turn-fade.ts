@@ -5,12 +5,15 @@
  * goes to 0 in the first frame JS hears of the turn, before the screen renders
  * the new layout. A screen that passes `laidOut` (the size its layout used)
  * gets the content back only after that layout has the new orientation.
- * TV windows never turn, so TV gets a constant 1.
+ * TV windows never turn, so TV gets a constant 1. An iOS build with the
+ * native crossfade (`TurnCrossfade`) also gets 1: the native view covers the
+ * turn with a picture of the old layout, so nothing goes blank.
  */
 import { useEffect, useRef } from 'react';
 import { Dimensions, type ScaledSize } from 'react-native';
 import { type SharedValue, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { hasNativeTurnCrossfade } from '@/native/turn-crossfade';
 import { isTV } from '@/platform/tv';
 import { ease } from './tokens';
 import { caughtUp, type Size, TURN_FADE_IN_MS, turned, turnWait } from './turn-fade';
@@ -32,7 +35,7 @@ export function useTurnFade(laidOut?: Size): SharedValue<number> {
   const state = useRef<TurnState>({ hiddenAt: null, changedAt: 0, timer: null, window: { width: 0, height: 0 }, laidOut: null, check: () => {} });
 
   useEffect(() => {
-    if (isTV) return;
+    if (isTV || hasNativeTurnCrossfade) return;
     const st = state.current;
     st.window = Dimensions.get('window');
     const check = () => {

@@ -319,6 +319,9 @@ first commit to today. All of it was built in the first weeks of the project.
   new size for a moment after a turn, then jumped. The player content now goes out while the screen
   turns and fades back in when the new layout is on the screen. Both players now wait for the new
   layout, not for a fixed time.
+- **Both players crossfade when the phone turns (iOS, new build).** The old screen turns with the
+  phone and fades into the new layout, as in the system apps. Nothing goes blank. Older builds
+  keep the fade.
 - **A catalog song starts by itself once the server has it.** The first play of a song marked
   " ☁" makes the server fetch the file. The player now asks the server to fetch it first and then
   streams the saved song (with its real name and album), and it plays again when iOS leaves a
