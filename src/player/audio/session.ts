@@ -68,7 +68,7 @@ import {
 } from './queue';
 import { isCatalogSong } from './catalog';
 import { fadeBetween, fadeGain, type FadePoint, inFadeWindow } from './crossfade';
-import { pickRadio, type RadioConditions, radioSeeds, radioWanted, rememberPlayed } from './radio';
+import { pickRadio, RADIO_BATCH, type RadioConditions, radioPluginSeeds, radioSeeds, radioWanted, rememberPlayed } from './radio';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
 import { audioState, initialAudioState, setAudioState } from './store';
 import { formatLine, hasCodecInfo, predictPlayMethod, universalAudioUrl } from './stream-url';
@@ -611,25 +611,35 @@ class AudioSession {
     } catch {
       return false;
     }
-    // A catalog song that is not in the library yet has no mix.
+    // The queue changed while the server answered (a new album, songs added): the next track start decides again.
+    const stale = () => {
+      const q = audioState().queue;
+      return q.entries[q.entries.length - 1]?.key !== tailKey || !radioWanted(q, this.radioConditions());
+    };
+    const add = (mix: BaseItemDto[]): boolean => {
+      const q = audioState().queue;
+      const songs = pickRadio(mix.filter((i) => i.Id).map(slimItem), q, this.recent);
+      if (!songs.length) return false;
+      setAudioState({ queue: appendAutoplay(q, songs) });
+      this.syncNext();
+      this.persistQueue();
+      return true;
+    };
+    // The library first. A catalog song that is not in the library yet has no mix.
     for (const seed of radioSeeds(audioState().queue, (item) => !isCatalogSong(item))) {
       let mix: BaseItemDto[];
       try {
         mix = await jf.getInstantMix(ctx.api, ctx.userId, seed as BaseItemDto);
       } catch {
-        return false;
+        break;
       }
-      const q = audioState().queue;
-      // The queue changed while the server answered (a new album, songs added): the next track start decides again.
-      if (q.entries[q.entries.length - 1]?.key !== tailKey || !radioWanted(q, this.radioConditions())) return false;
-      const add = pickRadio(mix.map(slimItem), q, this.recent);
-      if (!add.length) continue;
-      setAudioState({ queue: appendAutoplay(q, add) });
-      this.syncNext();
-      this.persistQueue();
-      return true;
+      if (stale()) return false;
+      if (add(mix)) return true;
     }
-    return false;
+    // Then the catalog plugin's radio, when the server has it (null: no plugin).
+    const radio = await jf.getOnDemandRadio(ctx.api, radioPluginSeeds(audioState().queue), RADIO_BATCH * 2);
+    if (!radio || stale()) return false;
+    return add(radio);
   }
 
   // ---- Fade between songs -----------------------------------------------------------

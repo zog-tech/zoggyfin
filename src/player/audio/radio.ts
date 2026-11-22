@@ -9,6 +9,10 @@
  * - Never with Repeat (the queue loops), for long-form items (audiobooks,
  *   podcasts), or for a listen-together guest (the queue is the host's).
  * - A song already in the queue or played recently is not added again.
+ * - The library's Instant Mix comes first. When it gives nothing new (a small
+ *   library, or a catalog song that the server cannot mix from), a server
+ *   with the catalog plugin gives its radio (`/OnDemand/Radio`): library
+ *   songs and catalog songs that the server fetches on first play.
  *
  * Pure, so it is unit-tested.
  */
@@ -67,6 +71,19 @@ export function radioSeeds<T extends RadioItem>(q: QueueState<T>, usable: (item:
 
 function isSong(item: RadioItem): boolean {
   return item.MediaType === 'Audio' || item.Type === 'Audio';
+}
+
+/** How many of the last songs the catalog radio gets as seeds. */
+export const RADIO_PLUGIN_SEEDS = 3;
+
+/** The ids of the last songs in the queue, newest first, for the catalog radio. Catalog songs count too. */
+export function radioPluginSeeds<T extends RadioItem>(q: QueueState<T>, max = RADIO_PLUGIN_SEEDS): string[] {
+  const out: string[] = [];
+  for (let i = q.entries.length - 1; i >= 0 && out.length < max; i--) {
+    const id = q.entries[i]?.item.Id;
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
 }
 
 /** The songs of a mix to add: songs only, none in the queue or the recent list, each once, at most `max`. */

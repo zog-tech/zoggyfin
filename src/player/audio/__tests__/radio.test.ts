@@ -1,5 +1,5 @@
 import { appendAutoplay, dropAutoplay, playNow, queueSections, restoreQueue, setShuffle, type QueueDeps } from '../queue';
-import { pickRadio, RADIO_HISTORY, radioSeeds, radioWanted, rememberPlayed, type RadioItem } from '../radio';
+import { pickRadio, RADIO_HISTORY, radioPluginSeeds, radioSeeds, radioWanted, rememberPlayed, type RadioItem } from '../radio';
 
 let n = 0;
 const deps: QueueDeps = { makeKey: () => `k${n++}`, random: () => 0.5 };
@@ -98,5 +98,13 @@ describe('dropAutoplay', () => {
     expect(out.original).toHaveLength(2);
     const plain = playNow([song('a')], 0, {}, deps);
     expect(dropAutoplay(plain)).toBe(plain);
+  });
+});
+
+describe('radioPluginSeeds', () => {
+  it('gives the last songs, newest first, each once, catalog songs included', () => {
+    const q = playNow([song('a'), song('b'), song('c'), song('b'), song('cat ☁')], 0, {}, deps);
+    expect(radioPluginSeeds(q)).toEqual(['cat ☁', 'b', 'c']);
+    expect(radioPluginSeeds(playNow([], 0, {}, deps))).toEqual([]);
   });
 });

@@ -15,7 +15,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 - **Autoplay similar music.** When 2 songs or fewer are left in the queue, similar songs from your
   library join it (the server's Instant Mix), so the music does not stop. They show in the queue
-  under "Autoplay". The ∞ button in the queue, or Settings, Playback, turns it off. Autoplay is off
+  under "Autoplay". On a server with the catalog plugin, autoplay also asks the plugin's radio
+  (`/OnDemand/Radio`) when the library has nothing similar, so catalog songs can play next.
+  The ∞ button in the queue, or Settings, Playback, turns it off. Autoplay is off
   for audiobooks and podcasts, with Repeat, and in a listen-together session.
 - **Fade between songs.** Settings, Playback has "Fade between songs" (Off, or 2 to 12 seconds). The
   song fades out over its last seconds and the next one fades in. Two songs that follow each other
