@@ -246,6 +246,17 @@ export function useOnDemandHome(enabled = true) {
   });
 }
 
+/** An artist's top songs from the catalog plugin; null on a server without it (see `useOnDemandHome`). */
+export function useOnDemandArtistTop(artistId: string | undefined, enabled = true) {
+  const { api, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.onDemandArtistTop(scope, artistId ?? ''),
+    queryFn: () => jf.getOnDemandArtistTop(api, artistId ?? '', ONDEMAND_LIMIT),
+    staleTime: 30 * 60 * 1000,
+    enabled: enabled && !!artistId,
+  });
+}
+
 /** Items by Id for a music Home row (mixes, Rediscover). The Ids are part of the key. */
 export function useMusicItemsByIds(libraryId: string, part: string, ids: readonly string[], enabled = true) {
   const { api, userId, scope } = useApi();

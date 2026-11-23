@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { type ReactNode, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { useChildren, useEpisodes, useNextUp, useSeasons, useSimilar } from '@/api/queries';
+import { useChildren, useEpisodes, useNextUp, useOnDemandArtistTop, useSeasons, useSimilar } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { Chip, chipRowTV } from '@/components/chip';
@@ -16,6 +16,7 @@ import { isTV } from '@/platform/tv';
 import { usePlayer } from '@/player';
 import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles } from '@/theme';
 
+import { mergeTopSongs } from './artist-top';
 import { DetailScaffold } from './detail-scaffold';
 import { EpisodeRow, personToItem, TrackRow } from './rows';
 import { useTrailerAction } from './trailer-action';
@@ -355,8 +356,11 @@ export function ArtistDetail({ item, onRefresh }: ViewProps) {
   const ownAlbums = new Set((albums.data ?? []).map((a) => a.Id));
   const features = (appearsOn.data ?? []).filter((a) => !ownAlbums.has(a.Id));
   const songs = useChildren(item.Id ?? undefined, 'artistSongs');
+  // The catalog plugin's top songs (null without the plugin) come first: see `artist-top.ts`.
+  const top = useOnDemandArtistTop(item.Id ?? undefined);
   const player = usePlayer();
-  const songList = songs.data ?? [];
+  const songList = mergeTopSongs(top.data, songs.data ?? []);
+  const songsPending = (songs.isPending || top.isPending) && !songList.length;
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
   return (
     <>
@@ -373,10 +377,10 @@ export function ArtistDetail({ item, onRefresh }: ViewProps) {
           <>
             <ItemRow title="Albums" shape="square" items={albums.data} isLoading={albums.isPending} error={albums.error} onRetry={albums.refetch} />
             {features.length ? <ItemRow title="Appears on" shape="square" items={features} /> : null}
-            {songList.length || songs.isPending || songs.error ? (
+            {songList.length || songsPending || songs.error ? (
               <Block>
                 <RowHeader title="Top songs" />
-                {songs.isPending ? <LoadingState rows={5} /> : null}
+                {songsPending ? <LoadingState rows={5} /> : null}
                 {songs.error && !songs.data ? <ErrorState error={songs.error} onRetry={songs.refetch} compact /> : null}
               </Block>
             ) : null}
