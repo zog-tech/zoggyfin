@@ -151,6 +151,9 @@ export class AudioEngine {
           this.pendingPlay = false;
         });
       }
+      // A new load empties the native playlist, and ExoPlayer then sends one last status of the old
+      // track: finished, at the old track's length. It is not about the new track: drop it.
+      if (this.loading && s.didJustFinish) return;
       // Until the new track is ready (and has seeked to its start), keep reporting the start position.
       if (this.loading && s.isLoaded && this.pendingStart === null) this.loading = false;
       this.lastIndex = index;
