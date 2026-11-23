@@ -302,3 +302,19 @@ export function scrubTarget(from: number, run: ScrubRun, duration: number): numb
   const to = from + run.dir * scrubStep(run.at - run.start);
   return Math.min(Math.max(0, to), duration > 0 ? duration : to);
 }
+
+/** What a remote key does while music is the current player (TV, any screen but the video player). */
+export type MusicKeyAction = { type: 'previous' } | { type: 'next' } | { type: 'skip'; seconds: number } | null;
+
+/**
+ * Music: rewind and fast forward are Previous and Next, as on the screen's buttons
+ * next to Play. In an audiobook or a podcast (`longForm`) they jump back 15 s and
+ * forward 30 s, as there. A held key acts once, when it is let go. Play and pause
+ * go through the media session already.
+ */
+export function musicKeyAction(ev: TvKeyEvent, longForm: boolean): MusicKeyAction {
+  if (ev.phase === 'holdStart') return null;
+  if (ev.key === 'rewind') return longForm ? { type: 'skip', seconds: -15 } : { type: 'previous' };
+  if (ev.key === 'fastForward') return longForm ? { type: 'skip', seconds: 30 } : { type: 'next' };
+  return null;
+}
