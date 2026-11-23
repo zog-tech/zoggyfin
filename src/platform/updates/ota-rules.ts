@@ -19,6 +19,8 @@ import type { UpdateState } from './machine';
 export const OTA_FIRST_CHECK_MS = 5_000;
 /** A check on return to the foreground waits at least this long after the last check. */
 export const OTA_FOREGROUND_GAP_MS = 30 * 60 * 1000;
+/** TV: "Snooze" hides the ready popup for this long; then it shows again. */
+export const OTA_SNOOZE_MS = 60 * 60 * 1000;
 /** The card shows at most this many characters of the update message. */
 export const OTA_MESSAGE_MAX = 120;
 

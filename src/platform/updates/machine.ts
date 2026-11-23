@@ -105,7 +105,9 @@ export type UpdateEvent =
   | { type: 'installer-closed' }
   | { type: 'later' }
   | { type: 'close' }
-  | { type: 'reopen' };
+  | { type: 'reopen' }
+  /** The snooze of a ready over-the-air update ended: its card opens again (not as a manual open). */
+  | { type: 'remind' };
 
 export function initialUpdateState(
   current: string,
@@ -253,6 +255,10 @@ export function updateReducer(state: UpdateState, event: UpdateEvent): UpdateSta
     case 'reopen': {
       if (!state.offer) return state;
       return { ...state, open: true, manual: true };
+    }
+    case 'remind': {
+      if (!state.offer || state.open || state.phase.kind !== 'ready') return state;
+      return { ...state, open: true, manual: false };
     }
   }
 }
