@@ -13,6 +13,7 @@ import { episodeLabel, formatClock, formatDuration, playedFraction } from '@/lib
 import { isTV } from '@/platform/tv';
 import { savedName } from '@/player/audio/catalog';
 import { useSavedId } from '@/player/audio/catalog-links';
+import { openFullPlayer } from '@/player';
 import { useSongMark } from '@/player/use-song-mark';
 import { createStyles,
   type AppTheme,
@@ -88,7 +89,8 @@ export const TrackRow = memo(function TrackRow({
       kind="row"
       radius={inset ? radius.md : 0}
       containerStyle={[tvMore ? s.flex : null, inset && { marginLeft: inset.marginLeft, marginRight: tvMore ? 0 : inset.marginRight }]}
-      onPress={() => onPress(item)}
+      // TV: the song that plays opens the full player; it does not start again.
+      onPress={() => (isTV && playing ? openFullPlayer() : onPress(item))}
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
       accessibilityLabel={[name, artist, time, mark === 'loading' ? 'loading' : playing ? 'playing' : null, downloadLabel(download)].filter(Boolean).join(', ')}

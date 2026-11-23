@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { memo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
@@ -120,7 +121,8 @@ export const Tile = memo(function Tile({
       single
       ring={!circle && !(isTV && captioned)}
       radius={r}
-      onPress={() => onPress(item)}
+      // TV: the song that plays opens the full player; it does not start again.
+      onPress={() => (isTV && mark !== 'none' ? router.navigate('/now-playing') : onPress(item))}
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       firstFocus={preferredFocus}
       onFocus={onFocusItem ? () => onFocusItem(item, index) : undefined}
