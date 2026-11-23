@@ -2,6 +2,7 @@ import {
   createDoublePress,
   DOUBLE_PRESS_MS,
   liveKeyAction,
+  musicKeyAction,
   NO_PRESS,
   NO_RUN,
   nextRun,
@@ -15,6 +16,7 @@ import {
   stackFeedback,
   tvKeyFromEvent,
   tvKeyFromWeb,
+  type TvKey,
 } from '../tv-keys';
 
 describe('double press', () => {
@@ -257,5 +259,23 @@ describe('player focus owner (TV)', () => {
     // The keys do not depend on the focus owner: they come from the remote handler.
     expect(playerKeyAction('right', true)).toEqual({ type: 'seek', seconds: 10 });
     expect(liveKeyAction('up', 'hidden')).toEqual({ type: 'zap', delta: 1 });
+  });
+});
+
+describe('musicKeyAction', () => {
+  const press = (key: TvKey) => ({ key, phase: 'press' as const });
+  it('makes rewind and fast forward Previous and Next', () => {
+    expect(musicKeyAction(press('rewind'), false)).toEqual({ type: 'previous' });
+    expect(musicKeyAction(press('fastForward'), false)).toEqual({ type: 'next' });
+  });
+  it('jumps in an audiobook or a podcast', () => {
+    expect(musicKeyAction(press('rewind'), true)).toEqual({ type: 'skip', seconds: -15 });
+    expect(musicKeyAction(press('fastForward'), true)).toEqual({ type: 'skip', seconds: 30 });
+  });
+  it('acts once for a held key, and ignores other keys', () => {
+    expect(musicKeyAction({ key: 'fastForward', phase: 'holdStart' }, false)).toBeNull();
+    expect(musicKeyAction({ key: 'fastForward', phase: 'holdEnd' }, false)).toEqual({ type: 'next' });
+    expect(musicKeyAction(press('playPause'), false)).toBeNull();
+    expect(musicKeyAction(press('left'), false)).toBeNull();
   });
 });

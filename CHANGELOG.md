@@ -285,6 +285,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- TV: the remote's rewind and fast forward keys go to the previous and the next song while music
+  plays, on every screen. In an audiobook or a podcast they jump back 15 seconds and forward 30.
+  Before, they did nothing in music.
+
 - TV: "An update is ready" is a popup in the middle of the screen that takes the focus, with
   "Restart now" and "Snooze". Snooze (or Back) hides it for an hour. Before, a small card in the
   corner was easy to miss and hard to reach with the remote.

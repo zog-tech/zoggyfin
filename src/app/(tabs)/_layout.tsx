@@ -8,7 +8,7 @@ import { pageTabIcon } from '@/features/extensions/icons';
 import { hiddenTriggers } from '@/features/extensions/placement';
 import { usePagePlacement } from '@/features/extensions/use-placement';
 import { liveTvTab } from '@/features/iptv/nav';
-import { GlobalPlayerKeys } from '@/features/player/global-keys';
+import { GlobalPlayerKeys, TvMusicKeys } from '@/features/player/global-keys';
 import { MiniPlayer, useMiniPlayerVisible } from '@/features/player/mini-player';
 import { RoomLayer } from '@/features/together/room-bar';
 import { TvTabsLayout } from '@/features/tv/side-menu';
@@ -60,6 +60,7 @@ function TvLayout() {
   return (
     <View style={styles.flex}>
       <TvTabsLayout />
+      <TvMusicKeys />
       {mini ? (
         <View pointerEvents="box-none" style={[styles.floating, { bottom: spacing.lg, right: l.gutter, width: l.contentWidth * 0.45 }]}>
           <MiniPlayer floating />
