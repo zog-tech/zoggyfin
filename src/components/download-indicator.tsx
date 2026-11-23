@@ -62,7 +62,7 @@ export const DownloadGlyph = memo(function DownloadGlyph({ id, size = 16, status
   if (st.state === 'completed') {
     return (
       <Animated.View style={arrival}>
-        <Icon name="arrow.down.circle.fill" size={s} color={c.success} />
+        <Icon name="arrow.down.circle.fill" size={s} color={c.accent} />
       </Animated.View>
     );
   }

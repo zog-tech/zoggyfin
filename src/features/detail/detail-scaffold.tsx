@@ -229,7 +229,7 @@ export function DetailScaffold<Row>({
       download: download.state,
       icon: v.icon,
       label: v.label,
-      tint: v.tint === 'success' ? c.success : v.tint === 'danger' ? c.danger : undefined,
+      tint: v.tint === 'accent' ? c.accent : v.tint === 'danger' ? c.danger : undefined,
       ring: v.ring,
       a11y: v.a11y,
       onPress: () => run(dlAction),

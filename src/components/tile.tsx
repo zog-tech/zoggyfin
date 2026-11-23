@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { memo } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { DownloadBadge, downloadLabel } from '@/components/download-indicator';
@@ -9,6 +9,9 @@ import { useDownloadStatus } from '@/downloads';
 import { tvFocusRest } from '@/features/tv/focus-settle';
 import { playedFraction, remainingLabel, subtitleFor } from '@/lib/format';
 import { isTV } from '@/platform/tv';
+import { savedName } from '@/player/audio/catalog';
+import { useSavedId } from '@/player/audio/catalog-links';
+import { useSongMark } from '@/player/use-song-mark';
 import { createStyles,
   type AppTheme,
   font,
@@ -95,7 +98,12 @@ export const Tile = memo(function Tile({
   const progress = showProgress ? playedFraction(item) : null;
   const played = !!item.UserData?.Played && item.Type !== 'MusicAlbum' && item.Type !== 'Audio' && item.Type !== 'Series';
   const unplayed = item.Type === 'Series' ? item.UserData?.UnplayedItemCount ?? 0 : 0;
-  const titleText = title ?? (item.Type === 'Episode' ? item.SeriesName ?? item.Name : item.Name) ?? '';
+  // A song tile shows when it plays; a catalog song (☁) the server saved shows the saved name.
+  const song = item.Type === 'Audio' ? item.Id : null;
+  const mark = useSongMark(song);
+  const saved = useSavedId(song);
+  const name = song && saved !== song ? savedName(item.Name) : item.Name;
+  const titleText = title ?? (item.Type === 'Episode' ? item.SeriesName ?? item.Name : name) ?? '';
   const sub = subtitle !== undefined ? subtitle : item.Type === 'Episode' ? item.Name : subtitleFor(item);
   const left = remainingLabel(item);
   const lines = fontScale >= 1.5 ? 2 : 1;
@@ -103,7 +111,7 @@ export const Tile = memo(function Tile({
 
   // TV: a tile with a caption shows the focus as the lit caption strip, not a ring (design system §7.19).
   const captioned = !titleOnArt && !artOnly;
-  const label = [titleText, sub, progress !== null ? left : null, played ? 'played' : null, downloadLabel(download)].filter(Boolean).join(', ');
+  const label = [titleText, sub, mark === 'loading' ? 'loading' : mark === 'playing' ? 'playing' : null, progress !== null ? left : null, played ? 'played' : null, downloadLabel(download)].filter(Boolean).join(', ');
 
   return (
     <Touchable
@@ -164,8 +172,16 @@ export const Tile = memo(function Tile({
           ) : progress !== null ? (
             <Progress fraction={progress} />
           ) : null}
-          {download.state !== 'none' ? (
-            // One badge per tile: the download state comes first.
+          {mark !== 'none' ? (
+            // One badge per tile: the playing song first, then the download state.
+            <View style={s.badge}>
+              {mark === 'loading' ? (
+                <ActivityIndicator size="small" color={mediaColors.white} style={s.badgeSpinner} />
+              ) : (
+                <Icon name="waveform" size={iconSize.xs} color={mediaColors.white} weight="bold" />
+              )}
+            </View>
+          ) : download.state !== 'none' ? (
             <DownloadBadge status={download} id={item.Id} />
           ) : played ? (
             <View style={s.badge}>
@@ -301,6 +317,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
+  badgeSpinner: { transform: [{ scale: 0.75 }] },
   countBadge: { paddingHorizontal: 6 },
   count: { ...font(type.caption2, { tabular: true }), color: mediaColors.white },
 }));

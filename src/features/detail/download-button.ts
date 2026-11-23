@@ -9,7 +9,7 @@
  */
 import type { CollectionCounts, DownloadStatus } from '@/downloads';
 
-export type DownloadButtonTint = 'success' | 'danger' | null;
+export type DownloadButtonTint = 'accent' | 'danger' | null;
 
 export interface DownloadButtonView {
   icon: 'arrow.down.circle' | 'arrow.down.circle.fill' | 'exclamationmark.triangle';
@@ -29,7 +29,7 @@ export function downloadButtonView(st: DownloadStatus, counts: CollectionCounts 
         icon: 'arrow.down.circle.fill',
         label: 'Downloaded',
         a11y: counts ? `Downloaded, ${counts.total} ${counts.total === 1 ? 'item' : 'items'}. Remove the download` : 'Downloaded. Remove the download',
-        tint: 'success',
+        tint: 'accent',
       };
     case 'failed':
       if (st.missing) return { icon: 'arrow.down.circle', label: 'Download again', a11y: 'The downloaded file is missing. Download it again', tint: 'danger' };

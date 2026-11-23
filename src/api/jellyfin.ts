@@ -248,7 +248,7 @@ export async function getEpisodes(api: Api, userId: string, seriesId: string, se
   return res.data.Items ?? [];
 }
 
-export type ChildrenKind = 'tracks' | 'items' | 'playlist' | 'artistAlbums' | 'personItems' | 'artistSongs';
+export type ChildrenKind = 'tracks' | 'items' | 'playlist' | 'artistAlbums' | 'artistAppearsOn' | 'personItems' | 'artistSongs';
 
 /** Children of a container: album tracks, collection items, playlist entries, an artist's albums, a person's titles. */
 export async function getChildren(api: Api, userId: string, parentId: string, kind: ChildrenKind): Promise<BaseItemDto[]> {
@@ -275,6 +275,20 @@ export async function getChildren(api: Api, userId: string, parentId: string, ki
         recursive: true,
         sortBy: ['ProductionYear', 'SortName'],
         sortOrder: ['Descending', 'Ascending'],
+        ...tile,
+      });
+      return res.data.Items ?? [];
+    }
+    case 'artistAppearsOn': {
+      // Albums of other artists with a song by this artist (a feature): the artist is a song artist, not the album artist.
+      const res = await lib.getItems({
+        userId,
+        contributingArtistIds: [parentId],
+        includeItemTypes: ['MusicAlbum'],
+        recursive: true,
+        sortBy: ['ProductionYear', 'SortName'],
+        sortOrder: ['Descending', 'Ascending'],
+        limit: 50,
         ...tile,
       });
       return res.data.Items ?? [];
