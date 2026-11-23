@@ -155,6 +155,9 @@ export class AudioEngine {
     const p = createAudioPlaylist({ sources: [], updateInterval: 500, loop: 'none' });
     p.addListener('playlistStatusUpdate', (raw) => {
       const s = this.webFix(raw);
+      // No track (after `unload`, while the server fetches a catalog song): a status is the old
+      // track's. Its finish ended "the queue", and the session went on to the song after the one chosen.
+      if (!this.keys.length) return;
       // A new load empties the native playlist, and ExoPlayer then sends the last statuses of the
       // old track: loaded at its old position, then finished. They are not about the new track.
       if (this.loading && staleStatus(s, this.loadStart, Platform.OS === 'android')) return;
