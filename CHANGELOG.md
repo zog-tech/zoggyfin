@@ -332,9 +332,10 @@ first commit to today. All of it was built in the first weeks of the project.
   top. When the menu closed, the focus was lost, so the next presses did nothing or went to the
   wrong place. The menu now sits outside the page list, and the focus goes back to ⋯.
 
-- Android: a song selected while another one played could stop at once, when the song after it
-  was not preloaded (a catalog song, or the end of the list). Emptying the player's list made it
-  send a last "finished" status of the old song, and the new song took it as its own end.
+- Android: a song selected while another one played could stop at once, and the next song
+  played, when the song after it was not preloaded (a catalog song, or the end of the list).
+  Emptying the player's list made it send the last statuses of the old song (its position, then
+  "finished"), and the new song took them as its own. The player now drops them while it loads.
 
 - A catalog song (☁) shows as playing and as downloaded after the server saves it. The server gives
   the saved song a new id, so before, the row you tapped never showed the playing mark or the

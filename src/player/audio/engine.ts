@@ -74,6 +74,20 @@ const guardSession = Platform.OS === 'ios';
 /** Native players only: a browser refuses a play that no tap started, so a second try changes nothing there. */
 const watchStarts = Platform.OS !== 'web';
 
+/** How far (s) a status of a track that loads may be from its start, or from 0 before its start seek. */
+const STALE_SLACK_S = 3;
+
+/**
+ * True for a status that cannot be the track that loads: a finish, the second item of the list, or
+ * a position far from both 0 and the start. Such a status is the old track's, sent after the list
+ * was emptied.
+ */
+export function staleStatus(s: { didJustFinish?: boolean; currentIndex?: number; currentTime: number }, start: number, byPosition: boolean): boolean {
+  if (s.didJustFinish || (s.currentIndex ?? 0) !== 0) return true;
+  // Only ExoPlayer (Android) sends the old track's position after the list was emptied.
+  return byPosition && s.currentTime > STALE_SLACK_S && Math.abs(s.currentTime - start) > STALE_SLACK_S;
+}
+
 export class AudioEngine {
   private playlist: AudioPlaylist | null = null;
   private keys: string[] = [];
@@ -85,6 +99,8 @@ export class AudioEngine {
   private lastIndex = 0;
   private lastPosition = 0;
   private lastDuration = 0;
+  /** The start inside the stream of the track being loaded: its first statuses are near it (or at 0). */
+  private loadStart = 0;
   private lockControls: LockScreenControls | null = null;
   private modeSet = false;
   private rate = 1;
@@ -139,6 +155,9 @@ export class AudioEngine {
     const p = createAudioPlaylist({ sources: [], updateInterval: 500, loop: 'none' });
     p.addListener('playlistStatusUpdate', (raw) => {
       const s = this.webFix(raw);
+      // A new load empties the native playlist, and ExoPlayer then sends the last statuses of the
+      // old track: loaded at its old position, then finished. They are not about the new track.
+      if (this.loading && staleStatus(s, this.loadStart, Platform.OS === 'android')) return;
       const index = s.currentIndex ?? 0;
       const offset = this.offsets[index] ?? 0;
       if (this.pendingStart !== null && s.isLoaded && index === 0) {
@@ -151,9 +170,6 @@ export class AudioEngine {
           this.pendingPlay = false;
         });
       }
-      // A new load empties the native playlist, and ExoPlayer then sends one last status of the old
-      // track: finished, at the old track's length. It is not about the new track: drop it.
-      if (this.loading && s.didJustFinish) return;
       // Until the new track is ready (and has seeked to its start), keep reporting the start position.
       if (this.loading && s.isLoaded && this.pendingStart === null) this.loading = false;
       this.lastIndex = index;
@@ -354,6 +370,7 @@ export class AudioEngine {
     this.lastIndex = 0;
     this.lastPosition = startSeconds;
     this.lastDuration = 0;
+    this.loadStart = Math.max(0, startSeconds - (current.offset ?? 0));
     p.add({ uri: current.uri });
     this.keys.push(current.key);
     this.offsets.push(current.offset ?? 0);
