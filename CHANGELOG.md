@@ -328,6 +328,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- TV: the song menu (⋯) on an artist, album or playlist page no longer scrolls the page to its
+  top. When the menu closed, the focus was lost, so the next presses did nothing or went to the
+  wrong place. The menu now sits outside the page list, and the focus goes back to ⋯.
+
 - Android: a song selected while another one played could stop at once, when the song after it
   was not preloaded (a catalog song, or the end of the list). Emptying the player's list made it
   send a last "finished" status of the old song, and the new song took it as its own end.

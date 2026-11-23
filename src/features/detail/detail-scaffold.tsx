@@ -89,6 +89,12 @@ interface DetailScaffoldProps<Row> {
   beforeRows?: ReactNode;
   /** Shown after the rows: cast, similar items. */
   footer?: ReactNode;
+  /**
+   * Sheets (an item's action sheet). They go outside the list: inside it, the
+   * focus in a sheet reached the TV page scroll, which scrolled the page to
+   * its top, and the row that opened the sheet lost the focus when it closed.
+   */
+  sheets?: ReactNode;
   /** May return a promise; the spinner shows until it settles. */
   onRefresh?: () => unknown;
 }
@@ -119,6 +125,7 @@ export function DetailScaffold<Row>({
   rowKey,
   beforeRows,
   footer,
+  sheets,
   onRefresh,
 }: DetailScaffoldProps<Row>) {
   const s = useStyles(makeStyles);
@@ -519,6 +526,7 @@ export function DetailScaffold<Row>({
         }
       />
       </TvRowScroll.Provider>
+      {sheets}
       <ItemActionSheet item={item} visible={sheet} onClose={() => setSheet(false)} />
       <TogetherSheetHost where="item" />
     </>

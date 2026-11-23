@@ -243,7 +243,7 @@ export function SeasonDetail({ item, onRefresh }: ViewProps) {
       rows={episodes.data}
       rowKey={(e, i) => e.Id ?? String(i)}
       renderRow={(e) => <EpisodeRow item={e} onPress={open} onLongPress={l.tv ? undefined : menu.open} />}
-      footer={menu.sheet}
+      sheets={menu.sheet}
     />
   );
 }
@@ -310,7 +310,7 @@ function TrackListDetail({ item, onRefresh, kind }: ViewProps & { kind: 'tracks'
         playable
         onShuffle={() => player.play({ item, shuffle: true })}
         onRefresh={() => Promise.all([onRefresh(), tracks.refetch()])}
-        footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
+        sheets={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
         beforeRows={
           <View style={{ marginTop: spacing.xl }}>
             {tracks.isPending ? <LoadingState rows={6} /> : null}
@@ -371,7 +371,7 @@ export function ArtistDetail({ item, onRefresh }: ViewProps) {
         playable
         onShuffle={() => player.play({ item, shuffle: true })}
         extraActions={[{ icon: 'wand.and.stars', label: 'Instant mix', onPress: () => player.instantMix(item) }]}
-        footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
+        sheets={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
         onRefresh={onRefresh}
         beforeRows={
           <>

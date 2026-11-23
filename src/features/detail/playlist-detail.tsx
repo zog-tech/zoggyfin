@@ -98,7 +98,7 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
           { icon: 'pencil', label: 'Rename', onPress: () => openRenamePlaylist(item) },
         ]}
         onRefresh={() => Promise.all([onRefresh(), entries.refetch()])}
-        footer={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
+        sheets={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
         beforeRows={
           <View style={{ marginTop: spacing.xl }}>
             {entries.isPending ? <LoadingState rows={6} /> : null}
