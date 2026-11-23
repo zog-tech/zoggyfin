@@ -1,5 +1,5 @@
 import { initialUpdateState, laterKey, retryAction, type UpdateEvent, type UpdateOffer, updateReducer, type UpdateState } from '../machine';
-import { checkForOta, laterOta, type OtaSource, restartOta, retryOta, setOtaSourceForTesting, useOtaStore } from '../ota';
+import { checkForOta, laterOta, type OtaSource, restartOta, retryOta, setOtaSourceForTesting, snoozeOta, useOtaStore } from '../ota';
 import {
   chooseUpdateCard,
   OTA_FOREGROUND_GAP_MS,
@@ -230,5 +230,45 @@ describe('OTA controller', () => {
     await Promise.resolve();
     expect(src.reload).toHaveBeenCalledTimes(2);
     expect(state().phase.kind).toBe('installing');
+  });
+});
+
+describe('OTA snooze (TV)', () => {
+  const ready = () => run(start, { type: 'check', manual: false }, { type: 'found', offer: offer(), at: 1 }, { type: 'install' }, { type: 'downloaded' });
+
+  it('reopens a snoozed ready card, not as a manual open', () => {
+    const snoozed = updateReducer(ready(), { type: 'later' });
+    expect(snoozed.open).toBe(false);
+    const reminded = updateReducer(snoozed, { type: 'remind' });
+    expect(reminded.open).toBe(true);
+    expect(reminded.manual).toBe(false);
+    // Not manual: it still waits while something plays.
+    expect(chooseUpdateCard(null, reminded, { playing: true, playerOpen: false })).toBeNull();
+    expect(chooseUpdateCard(null, reminded, idle)).toBe('ota');
+  });
+
+  it('does nothing without a ready update, or when the card is open', () => {
+    const r = ready();
+    expect(updateReducer(r, { type: 'remind' })).toBe(r);
+    expect(updateReducer(start, { type: 'remind' })).toBe(start);
+  });
+
+  it('opens the card again after the snooze time', async () => {
+    jest.useFakeTimers();
+    try {
+      const fake: OtaSource = { check: async () => offer(), fetch: async () => true, reload: async () => undefined };
+      setOtaSourceForTesting(fake);
+      await checkForOta(false);
+      expect(useOtaStore.getState().state.open).toBe(true);
+      snoozeOta(1000);
+      expect(useOtaStore.getState().state.open).toBe(false);
+      jest.advanceTimersByTime(999);
+      expect(useOtaStore.getState().state.open).toBe(false);
+      jest.advanceTimersByTime(1);
+      expect(useOtaStore.getState().state.open).toBe(true);
+    } finally {
+      jest.useRealTimers();
+      setOtaSourceForTesting(null);
+    }
   });
 });

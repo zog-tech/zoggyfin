@@ -20,7 +20,7 @@ import { create } from 'zustand';
 import { otaLabel, runningOta } from '@/lib/ota';
 
 import { initialUpdateState, retryAction, type UpdateEvent, type UpdateOffer, updateReducer, type UpdateState } from './machine';
-import { OTA_FIRST_CHECK_MS, type OtaCheckReason, otaManifestInfo, otaMessage, shouldCheckOta } from './ota-rules';
+import { OTA_FIRST_CHECK_MS, OTA_SNOOZE_MS, type OtaCheckReason, otaManifestInfo, otaMessage, shouldCheckOta } from './ota-rules';
 
 /** The parts of expo-updates that the controller uses (a fake in tests and on the web preview). */
 export interface OtaSource {
@@ -139,6 +139,18 @@ export function retryOta(): void {
 }
 
 export const laterOta = () => send({ type: 'later' });
+
+let snoozeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** TV "Snooze": hides the ready card, and opens it again after `OTA_SNOOZE_MS` (still not over playback). */
+export function snoozeOta(ms: number = OTA_SNOOZE_MS): void {
+  send({ type: 'later' });
+  if (snoozeTimer) clearTimeout(snoozeTimer);
+  snoozeTimer = setTimeout(() => {
+    snoozeTimer = null;
+    send({ type: 'remind' });
+  }, ms);
+}
 export const closeOtaCard = () => send({ type: 'close' });
 export const reopenOtaCard = () => send({ type: 'reopen' });
 

@@ -5,10 +5,12 @@
  *
  * - Small and not modal: the page under it stays usable. Phones: across the
  *   bottom, above the tab bar and the mini player. Wide windows: bottom
- *   trailing, width 340. TV: bottom trailing inside the overscan-safe area.
- * - It never takes the focus by itself, so the TV remote stays where it is;
- *   the D-pad reaches its buttons. After a manual check, "Restart now"
- *   (or "Try again") takes the focus.
+ *   trailing, width 340. On phones and computers it never takes the focus by
+ *   itself; after a manual check, "Restart now" (or "Try again") takes it.
+ * - TV: a centred popup (`Sheet`) that holds the remote's focus, with
+ *   "Restart now" focused. A card in the corner was easy to miss and hard to
+ *   reach with the D-pad. "Snooze" (and Back) hides it for an hour
+ *   (`snoozeOta`); it still waits while something plays or a player is open.
  * - "Restart now" asks first while video or audio plays. "Later" hides the
  *   card for this update; the update still starts on the next cold start.
  */
@@ -19,12 +21,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
+import { Sheet } from '@/components/sheet';
 import { Touchable } from '@/components/touchable';
 import { confirmDestructive } from '@/lib/confirm';
 import { ACCESSORY_HEIGHT, FLOATING_MINI_HEIGHT, HAS_ACCESSORY, TAB_BAR_HEIGHT } from '@/lib/tab-bar-inset';
 import { isTV } from '@/platform/tv';
 import type { UpdateState } from '@/platform/updates/machine';
-import { closeOtaCard, laterOta, restartOta, retryOta } from '@/platform/updates/ota';
+import { closeOtaCard, laterOta, restartOta, retryOta, snoozeOta } from '@/platform/updates/ota';
 import { restartNeedsConfirm, shortMessage } from '@/platform/updates/ota-rules';
 import { playerState, usePlayerStore } from '@/player/store';
 import { createStyles, type AppTheme, font, iconSize, motion, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
@@ -46,10 +49,8 @@ export async function restartForUpdate(): Promise<void> {
 
 /** The bottom offset of the card: clear of the tab bar and the mini player. */
 function useBottom(wide: boolean): number {
-  const l = useLayout();
   const safeBottom = useSafeAreaInsets().bottom;
   const mini = usePlayerStore((st) => !!st.now && st.presentation === 'mini');
-  if (isTV) return l.safe.y;
   if (Platform.OS === 'web' && wide) return FLOATING_MINI_HEIGHT + spacing.lg * 2;
   const miniHeight = mini ? (HAS_ACCESSORY ? ACCESSORY_HEIGHT : FLOATING_MINI_HEIGHT + spacing.sm) : 0;
   // iOS 26 floats a taller tab bar; the extra gap keeps the card clear of it.
@@ -58,21 +59,57 @@ function useBottom(wide: boolean): number {
 }
 
 export function OtaUpdateCard({ state }: { state: UpdateState }) {
+  return isTV ? <TvOtaPopup state={state} /> : <OtaCorner state={state} />;
+}
+
+/** TV: Back snoozes a ready update, closes anything else (never during the restart). */
+function TvOtaPopup({ state }: { state: UpdateState }) {
+  const onBack = () => {
+    if (state.phase.kind === 'installing') return;
+    if (state.phase.kind === 'ready') snoozeOta();
+    else closeOtaCard();
+  };
+  return (
+    <Sheet visible onClose={onBack}>
+      <OtaBody state={state} tv />
+    </Sheet>
+  );
+}
+
+function OtaCorner({ state }: { state: UpdateState }) {
   const s = useStyles(makeStyles);
-  const { c } = useTheme();
   const l = useLayout();
-  const wide = isTV || l.bp !== 'compact';
+  const wide = l.bp !== 'compact';
   const bottom = useBottom(wide);
-  const actionsRef = useRef<ComponentRef<typeof View>>(null);
   const y = useSharedValue(12);
   const opacity = useSharedValue(0);
-  const { phase, offer, manual } = state;
 
   useEffect(() => {
     y.set(withSpring(0, { ...motion.spring.smooth, reduceMotion: ReduceMotion.System }));
     opacity.set(withTiming(1, { duration: motion.duration.base }));
   }, [y, opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.get(), transform: [{ translateY: y.get() }] }));
+  const place = wide ? { right: l.gutter, width: scaled(CARD_WIDTH) } : { left: l.gutter, right: l.gutter };
+
+  return (
+    <View pointerEvents="box-none" style={[s.host, place, { bottom }]}>
+      <Animated.View exiting={FadeOut.duration(motion.duration.fast)} style={[s.shadow, style]}>
+        <View style={s.card}>
+          <OtaBody state={state} tv={false} />
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
+/** The content: the same in the corner card and in the TV popup. */
+function OtaBody({ state, tv }: { state: UpdateState; tv: boolean }) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  const actionsRef = useRef<ComponentRef<typeof View>>(null);
+  const { phase, offer, manual } = state;
+  // TV: the main button always takes the remote's focus (the popup holds it).
+  const focusMain = tv || manual;
 
   const title = titleFor(state);
   useEffect(() => {
@@ -94,12 +131,9 @@ export function OtaUpdateCard({ state }: { state: UpdateState }) {
 
   const message = offer?.notes[0] ?? null;
   const error = phase.kind === 'error' ? (shortMessage(phase.message, ERROR_MAX) ?? 'Unknown error.') : null;
-  const place = wide ? { right: isTV ? l.safe.x : l.gutter, width: scaled(CARD_WIDTH) } : { left: l.gutter, right: l.gutter };
 
   return (
-    <View pointerEvents="box-none" style={[s.host, place, { bottom }]}>
-      <Animated.View exiting={FadeOut.duration(motion.duration.fast)} style={[s.shadow, style]}>
-        <View style={s.card} role="dialog" aria-modal={false} accessibilityLabel={title} accessibilityLiveRegion="polite">
+        <View style={s.body} role="dialog" aria-modal={tv} accessibilityLabel={title} accessibilityLiveRegion="polite">
           <View style={s.header}>
             <View style={[s.badge, phase.kind === 'error' && s.badgeError]}>
               <Icon name={iconFor(state)} size={scaled(iconSize.sm)} color={phase.kind === 'error' ? c.danger : c.accent} />
@@ -112,7 +146,7 @@ export function OtaUpdateCard({ state }: { state: UpdateState }) {
                 {subtitleFor(state)}
               </Text>
             </View>
-            {phase.kind === 'current' ? (
+            {phase.kind === 'current' && !tv ? (
               <Touchable onPress={closeOtaCard} hitSlop={8} radius={radius.pill} accessibilityRole="button" accessibilityLabel="Close">
                 <Icon name="xmark.circle.fill" size={scaled(iconSize.md)} color={c.text3} />
               </Touchable>
@@ -145,19 +179,22 @@ export function OtaUpdateCard({ state }: { state: UpdateState }) {
           ) : null}
           {phase.kind === 'ready' ? (
             <View ref={actionsRef} style={s.actions}>
-              <Button variant="smallTonal" title="Later" onPress={laterOta} />
-              <Button variant="small" title="Restart now" onPress={() => void restartForUpdate()} preferredFocus={manual} />
+              {tv ? <Button variant="smallTonal" title="Snooze" onPress={() => snoozeOta()} /> : <Button variant="smallTonal" title="Later" onPress={laterOta} />}
+              <Button variant="small" title="Restart now" onPress={() => void restartForUpdate()} preferredFocus={focusMain} />
             </View>
           ) : null}
           {phase.kind === 'error' ? (
             <View ref={actionsRef} style={s.actions}>
               <Button variant="smallTonal" title={offer ? 'Later' : 'Close'} onPress={offer ? laterOta : closeOtaCard} />
-              <Button variant="small" title="Try again" onPress={retryOta} preferredFocus={manual} />
+              <Button variant="small" title="Try again" onPress={retryOta} preferredFocus={focusMain} />
+            </View>
+          ) : null}
+          {tv && (phase.kind === 'current' || phase.kind === 'checking') ? (
+            <View style={s.actions}>
+              <Button variant="small" title="Close" onPress={closeOtaCard} preferredFocus />
             </View>
           ) : null}
         </View>
-      </Animated.View>
-    </View>
   );
 }
 
@@ -231,8 +268,8 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
     borderWidth: sizes.hairline,
     borderColor: c.separator,
     padding: spacing.lg,
-    gap: spacing.md,
   },
+  body: { gap: spacing.md },
   header: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: spacing.md },
   badge: {
     width: scaled(sizes.settingsIcon),
