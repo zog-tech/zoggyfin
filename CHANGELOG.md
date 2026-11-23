@@ -328,6 +328,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- Android: a song selected while another one played could stop at once, when the song after it
+  was not preloaded (a catalog song, or the end of the list). Emptying the player's list made it
+  send a last "finished" status of the old song, and the new song took it as its own end.
+
 - A catalog song (☁) shows as playing and as downloaded after the server saves it. The server gives
   the saved song a new id, so before, the row you tapped never showed the playing mark or the
   download, and kept the ☁. Now the device keeps a link from the catalog id to the saved id. While
