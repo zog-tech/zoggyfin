@@ -35,11 +35,11 @@ Use tokens only. Do not put a raw hex value in a screen.
 | `text2` | `#A8A8B3` | `#595963` | Secondary text, metadata |
 | `text3` | `#96969F` | `#63636C` | Tertiary text: counts, timestamps, placeholder |
 | `textOnMedia` | `#FFFFFF` | `#FFFFFF` | Text on artwork scrims and on video |
-| `accent` | `#FF7A59` | `#B53A17` | Primary button, progress, selected tab, links |
+| `accent` | `#FF7A59` | `#B53A17` | Primary button, progress, selected tab, links, the downloaded mark |
 | `accentPressed` | `#E8684A` | `#9C3113` | Accent while pressed |
 | `onAccent` | `#1A0B06` | `#FFFFFF` | Text on an accent fill |
 | `accentSoft` | Ember 16 % | Ember deep 10 % | Selected row, selected tab capsule |
-| `success` | `#3DD68C` | `#12703F` | Downloaded, completed |
+| `success` | `#3DD68C` | `#12703F` | Completed (not downloads: the downloaded mark is `accent`) |
 | `warning` | `#F2B54B` | `#855300` | Low space, metered network |
 | `danger` | `#FF6B6B` | `#BE2329` | Failed, delete |
 | `separator` | white 9 % | ink 12 % | Hairlines (decorative) |

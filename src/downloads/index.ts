@@ -31,6 +31,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { BaseItemDto } from '@/api/types';
 import { useSessionStore } from '@/auth/session-store';
 import { features } from '@/platform/tv';
+import { savedId, useSavedId } from '@/player/audio/catalog-links';
 import type { ExternalPlayRequest } from '@/player/types';
 
 import { files } from './files';
@@ -96,10 +97,14 @@ export async function checkDownloadedFiles(ids: readonly (string | null | undefi
 
 // ---- Lookups (synchronous, for the players) --------------------------------------
 
-/** The download record for a Jellyfin item id, or null. */
+/**
+ * The download record for a Jellyfin item id, or null. A catalog song's id finds
+ * the download of the song the server saved for it (`catalog-links.ts`).
+ */
 export function findDownload(itemId: string | null | undefined): DownloadRecord | null {
   if (!itemId) return null;
-  return downloadsState().records[itemId] ?? null;
+  const records = downloadsState().records;
+  return records[itemId] ?? records[savedId(itemId) ?? ''] ?? null;
 }
 
 /** The document directory as a file:// URI, once downloads started; null on web. */
@@ -141,9 +146,16 @@ export function downloadedItem(id: string): BaseItemDto | null {
 
 // ---- Hooks -----------------------------------------------------------------------
 
-/** One item's or container's download state, for buttons and row badges. */
+/** One item's or container's download state, for buttons and row badges. A catalog song's id reads its saved song's state. */
 export function useDownloadStatus(id: string | null | undefined): DownloadStatus {
-  return useDownloadsStore(useShallow((s) => (id && downloadsSupported ? statusOf(id, s) : ({ state: 'none' } as DownloadStatus))));
+  const saved = useSavedId(id);
+  return useDownloadsStore(
+    useShallow((s) => {
+      if (!id || !downloadsSupported) return { state: 'none' } as DownloadStatus;
+      const key = saved && saved !== id && !s.records[id] && !s.collections[id] ? saved : id;
+      return statusOf(key, s);
+    }),
+  );
 }
 
 /**

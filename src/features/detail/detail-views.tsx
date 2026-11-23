@@ -350,6 +350,10 @@ export { PlaylistDetail } from './playlist-detail';
 
 export function ArtistDetail({ item, onRefresh }: ViewProps) {
   const albums = useChildren(item.Id ?? undefined, 'artistAlbums');
+  const appearsOn = useChildren(item.Id ?? undefined, 'artistAppearsOn');
+  // The server can also list the artist's own albums here: keep only the albums of other artists.
+  const ownAlbums = new Set((albums.data ?? []).map((a) => a.Id));
+  const features = (appearsOn.data ?? []).filter((a) => !ownAlbums.has(a.Id));
   const songs = useChildren(item.Id ?? undefined, 'artistSongs');
   const player = usePlayer();
   const songList = songs.data ?? [];
@@ -368,6 +372,7 @@ export function ArtistDetail({ item, onRefresh }: ViewProps) {
         beforeRows={
           <>
             <ItemRow title="Albums" shape="square" items={albums.data} isLoading={albums.isPending} error={albums.error} onRetry={albums.refetch} />
+            {features.length ? <ItemRow title="Appears on" shape="square" items={features} /> : null}
             {songList.length || songs.isPending || songs.error ? (
               <Block>
                 <RowHeader title="Top songs" />

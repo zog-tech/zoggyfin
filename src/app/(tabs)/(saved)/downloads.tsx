@@ -388,7 +388,7 @@ function GroupRow({ group: g, last }: { group: DownloadGroupView; last: boolean 
                 {g.name}
               </Text>
               <View style={s.statusRow}>
-                <Icon name="arrow.down.circle.fill" size={scaled(12)} color={c.success} />
+                <Icon name="arrow.down.circle.fill" size={scaled(12)} color={c.accent} />
                 <Text style={s.status} numberOfLines={1}>
                   {meta}
                 </Text>
@@ -473,7 +473,7 @@ function ExtensionRow({ record: r, last }: { record: DownloadRecord; last: boole
               {title}
             </Text>
             <View style={s.statusRow}>
-              <Icon name="arrow.down.circle.fill" size={scaled(12)} color={c.success} />
+              <Icon name="arrow.down.circle.fill" size={scaled(12)} color={c.accent} />
               <Text style={s.status} numberOfLines={1}>
                 {meta}
               </Text>

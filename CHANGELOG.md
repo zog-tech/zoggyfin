@@ -13,6 +13,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Download a song from its row.** A song that is not on the device has a download button at the
+  end of its row (search, albums, playlists, artists), so it downloads without playing. Then the
+  row shows the progress ring and the orange downloaded mark. Not on TV, which has no downloads.
+- **Appears on.** An artist page shows the albums of other artists that have a song by this
+  artist (a feature), under "Appears on". Top songs already counted songs with features.
+
 - **Autoplay similar music.** When 2 songs or fewer are left in the queue, similar songs from your
   library join it (the server's Instant Mix), so the music does not stop. They show in the queue
   under "Autoplay". On a server with the catalog plugin, autoplay also asks the plugin's radio
@@ -275,6 +281,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- The downloaded mark on songs, tiles and the Downloads tab is orange (the accent colour), not
+  green. In a song list with art, the mark sits before the artist name.
+
 - **The tab bar stays in place by default (iOS 26).** Scrolling a page no longer shrinks the tab
   bar and the mini player under it. Turn it back on in Settings, Tab bar, "Collapse on scroll".
 - **One name for the heart in music.** Liked Songs, the player heart, the action sheet and the
@@ -311,6 +320,12 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- A catalog song (☁) shows as playing and as downloaded after the server saves it. The server gives
+  the saved song a new id, so before, the row you tapped never showed the playing mark or the
+  download, and kept the ☁. Now the device keeps a link from the catalog id to the saved id. While
+  the server fetches the song, its row and its tile show a spinner, and song tiles on music Home
+  show the playing song.
 
 - **Android: the app no longer runs out of memory during playback on a TV with 2 GB of memory.**
   On Android devices with less than 3 GB (most Google TVs and streaming sticks), the video player

@@ -61,6 +61,7 @@ import {
   subtitleTargets,
   withResolvedFile,
 } from './extension-media';
+import { linkCatalogSong } from '@/player/audio/catalog-links';
 import { canResume, isWholeFile, resumeHint } from './resume';
 import { stallAction } from './stall';
 import { type DownloadEvent, dueForPoll, dueForRetry, isActive, isFileMissing, pickToStart, reorder, transition } from './state-machine';
@@ -538,6 +539,8 @@ class DownloadManager {
     const full = await jf.getItem(ctx.api, ctx.userId, r.itemId);
     let id = r.itemId;
     if (full.Id && full.Id !== r.itemId) {
+      // Rows that still list the catalog id show this download through the link.
+      if (r.kind !== 'video') linkCatalogSong(r.itemId, full.Id);
       const result = rekeyRecord(r.itemId, full.Id, `${ROOT}/${full.Id}`);
       if (result === 'missing') return null;
       // The old folder holds at most a partial file of the old id.

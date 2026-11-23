@@ -23,6 +23,8 @@ import { browseGenres, inGenre } from '@/features/genres/genres';
 import { OfflineBanner } from '@/features/offline/offline-banner';
 import { useTabRootPlace } from '@/features/extensions/tab-nav';
 import { useServerNames } from '@/features/servers/use-server-names';
+import { savedName } from '@/player/audio/catalog';
+import { useSavedId } from '@/player/audio/catalog-links';
 import {
   filterSections,
   GENRE_SEARCH_FILTERS,
@@ -388,6 +390,9 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
     .join(' · ');
   const resume = !!item.UserData?.PlaybackPositionTicks;
   const download = useDownloadStatus(item.Id);
+  // A catalog song (☁) the server saved shows the saved name.
+  const saved = useSavedId(item.Type === 'Audio' ? item.Id : null);
+  const name = item.Type === 'Audio' && saved !== item.Id ? savedName(item.Name) : item.Name;
   return (
     <View style={{ marginTop: spacing.lg, paddingHorizontal: l.gutter }}>
       <Text style={s.topHeader} accessibilityRole="header">
@@ -401,7 +406,7 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
           onPress={() => open(item)}
           onLongPress={l.tv ? undefined : () => menu.open(item)}
           accessibilityRole="button"
-          accessibilityLabel={[item.Name, facts, downloadLabel(download)].filter(Boolean).join(', ')}
+          accessibilityLabel={[name, facts, downloadLabel(download)].filter(Boolean).join(', ')}
           containerStyle={StyleSheet.absoluteFill}
           style={({ pressed, hovered }) => [s.topCardBg, (pressed || hovered) && s.topCardBgActive]}
         />
@@ -411,8 +416,8 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
           </View>
           <View style={s.topBody} pointerEvents="box-none">
             <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={s.topText}>
-              <Text style={[s.topTitle, scriptStyle(item.Name, s.topTitle)]} numberOfLines={2}>
-                {item.Name}
+              <Text style={[s.topTitle, scriptStyle(name, s.topTitle)]} numberOfLines={2}>
+                {name}
               </Text>
               {facts || download.state !== 'none' ? (
                 <View style={s.topMetaRow}>

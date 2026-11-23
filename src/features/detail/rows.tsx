@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 
 import type { BaseItemDto, BaseItemPerson } from '@/api/types';
 import { DownloadGlyph, downloadLabel } from '@/components/download-indicator';
@@ -7,11 +7,13 @@ import { Icon } from '@/components/icon';
 import { SwipeRow } from '@/components/swipe-row';
 import { ItemImage } from '@/components/item-image';
 import { Touchable } from '@/components/touchable';
-import { useDownloadStatus } from '@/downloads';
+import { canDownload, downloads, useDownloadStatus } from '@/downloads';
 import { canQueue, queueAccessibilityActions, type QueueSwipe, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { episodeLabel, formatClock, formatDuration, playedFraction } from '@/lib/format';
 import { isTV } from '@/platform/tv';
-import { usePlayerStore } from '@/player/store';
+import { savedName } from '@/player/audio/catalog';
+import { useSavedId } from '@/player/audio/catalog-links';
+import { useSongMark } from '@/player/use-song-mark';
 import { createStyles,
   type AppTheme,
   font,
@@ -67,7 +69,11 @@ export const TrackRow = memo(function TrackRow({
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();
-  const playing = usePlayerStore((st) => !!item.Id && st.now?.item.Id === item.Id);
+  // A catalog song and the song the server saved for it count as one (`catalog-links.ts`).
+  const mark = useSongMark(item.Id);
+  const playing = mark !== 'none';
+  const saved = useSavedId(item.Id);
+  const name = saved !== item.Id ? savedName(item.Name) : item.Name;
   const artist = [item.Artists?.join(', ') ?? item.AlbumArtist, note].filter(Boolean).join(' · ') || undefined;
   const time = formatClock(item.RunTimeTicks);
   const download = useDownloadStatus(item.Id);
@@ -85,7 +91,7 @@ export const TrackRow = memo(function TrackRow({
       onPress={() => onPress(item)}
       onLongPress={onLongPress ? () => onLongPress(item) : undefined}
       accessibilityRole="button"
-      accessibilityLabel={[item.Name, artist, time, playing ? 'playing' : null, downloadLabel(download)].filter(Boolean).join(', ')}
+      accessibilityLabel={[name, artist, time, mark === 'loading' ? 'loading' : playing ? 'playing' : null, downloadLabel(download)].filter(Boolean).join(', ')}
       accessibilityActions={a11yActions.length ? a11yActions : undefined}
       onAccessibilityAction={(e) => {
         if (queueSwipe.runAccessibility(e.nativeEvent.actionName, item)) return;
@@ -93,26 +99,49 @@ export const TrackRow = memo(function TrackRow({
       }}
       style={({ pressed, hovered, focused }) => [s.track, { paddingLeft: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
       {showArt ? (
-        <ItemImage item={item} variant="square" width={scaled(sizes.trackArt)} aspectRatio={1} rounded={6} hideArtTitle />
+        <View>
+          <ItemImage item={item} variant="square" width={scaled(sizes.trackArt)} aspectRatio={1} rounded={6} hideArtTitle />
+          {playing ? (
+            <View style={s.artMark} pointerEvents="none">
+              {mark === 'loading' ? (
+                <ActivityIndicator size="small" color={mediaColors.white} />
+              ) : (
+                <Icon name="waveform" size={scaled(iconSize.sm - 2)} color={mediaColors.white} weight="semibold" />
+              )}
+            </View>
+          ) : null}
+        </View>
       ) : playing ? (
         <View style={s.trackNoBox}>
-          <Icon name="waveform" size={scaled(iconSize.sm - 2)} color={c.accent} weight="semibold" />
+          {mark === 'loading' ? (
+            <ActivityIndicator size="small" color={c.accent} />
+          ) : (
+            <Icon name="waveform" size={scaled(iconSize.sm - 2)} color={c.accent} weight="semibold" />
+          )}
         </View>
       ) : (
         <Text style={s.trackNo}>{item.IndexNumber ?? index + 1}</Text>
       )}
       <View style={[s.trackBody, { paddingRight: tvMore ? spacing.md : inset ? inset.padX : l.gutter }, !last && s.line]}>
         <View style={s.flex}>
-          <Text style={[s.trackTitle, playing && { color: c.accent }, scriptStyle(item.Name, s.trackTitle)]} numberOfLines={1}>
-            {item.Name}
+          <Text style={[s.trackTitle, playing && { color: c.accent }, scriptStyle(name, s.trackTitle)]} numberOfLines={1}>
+            {name}
           </Text>
           {artist && showArt ? (
-            <Text style={[s.trackSub, scriptStyle(artist, s.trackSub)]} numberOfLines={1}>
-              {artist}
-            </Text>
+            // The download mark sits before the artist, so a downloaded song shows at a glance.
+            <View style={s.subRow}>
+              <DownloadGlyph id={item.Id} size={12} status={download} />
+              <Text style={[s.trackSub, s.flex, scriptStyle(artist, s.trackSub)]} numberOfLines={1}>
+                {artist}
+              </Text>
+            </View>
           ) : null}
         </View>
-        <DownloadGlyph id={item.Id} status={download} />
+        {download.state === 'none' && !isTV && canDownload(item) ? (
+          <RowDownloadButton item={item} name={name} />
+        ) : artist && showArt ? null : (
+          <DownloadGlyph id={item.Id} status={download} />
+        )}
         {time ? <Text style={s.trackTime}>{time}</Text> : null}
         {trailing}
       </View>
@@ -141,6 +170,27 @@ export const TrackRow = memo(function TrackRow({
     </View>
   );
 });
+
+/**
+ * Downloads the song without playing it. Shows only while the song is not on the
+ * device; once it starts, the download mark (a ring, then the orange arrow) takes over.
+ */
+function RowDownloadButton({ item, name }: { item: BaseItemDto; name: string | null | undefined }) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  return (
+    <Touchable
+      kind="icon"
+      radius={radius.pill}
+      onPress={() => void downloads.download(item)}
+      hitSlop={spacing.sm}
+      style={s.rowDownload}
+      accessibilityRole="button"
+      accessibilityLabel={`Download ${name ?? 'this song'}`}>
+      <Icon name="arrow.down.circle" size={scaled(iconSize.sm)} color={c.text3} />
+    </Touchable>
+  );
+}
 
 /** An artist row for the Music pager: a circle, the name and the counts. */
 export const ArtistRow = memo(function ArtistRow({
@@ -282,6 +332,19 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
     textAlign: 'center' as const,
   },
   trackNoBox: { width: scaled(sizes.trackNumber) - 8, alignItems: 'center' as const },
+  artMark: {
+    position: 'absolute' as const,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 6,
+    backgroundColor: mediaColors.badgeFill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  rowDownload: { width: scaled(32), height: scaled(32), alignItems: 'center' as const, justifyContent: 'center' as const },
+  subRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.xs, marginTop: 1 },
   trackTitle: { ...font(type.callout), color: c.text },
   trackSub: { ...font(type.footnote), color: c.text2, marginTop: 1 },
   trackTime: { ...font(type.footnote, { tabular: true }), color: c.text3, minWidth: scaled(38), textAlign: 'right' as const },

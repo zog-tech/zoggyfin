@@ -67,6 +67,7 @@ import {
   upcomingIndex,
 } from './queue';
 import { isCatalogSong } from './catalog';
+import { linkCatalogSong } from './catalog-links';
 import { fadeBetween, fadeGain, type FadePoint, inFadeWindow } from './crossfade';
 import { pickRadio, RADIO_BATCH, type RadioConditions, radioPluginSeeds, radioSeeds, radioWanted, rememberPlayed } from './radio';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
@@ -517,6 +518,7 @@ class AudioSession {
     await this.finishReporter(this.engine.loaded ? this.engine.position : playerState().position);
     this.bitrate = bitrateFor(usePlaybackSettings.getState(), await onCellular());
     if (id !== this.loadId) return;
+    entry = this.savedDownloadEntry(entry);
     if (this.needsCatalogFetch(entry)) {
       const saved = await this.fetchCatalogSong(entry, id, opts.startSeconds ?? 0);
       if (id !== this.loadId) return;
@@ -713,6 +715,22 @@ class AudioSession {
     }
   }
 
+  /**
+   * A catalog song whose saved song is downloaded: the queue entry takes the
+   * saved song, so the player shows its clean name and plays the file.
+   */
+  private savedDownloadEntry(entry: QueueEntry<AudioItem>): QueueEntry<AudioItem> {
+    if (!isCatalogSong(entry.item)) return entry;
+    const rec = findDownload(entry.item.Id);
+    if (rec?.state !== 'completed' || rec.itemId === entry.item.Id || !rec.item.Id) return entry;
+    const q = audioState().queue;
+    const nq = replaceItem(q, entry.key, slimItem(rec.item));
+    const saved = currentEntry(nq);
+    if (nq === q || saved?.key !== entry.key) return entry;
+    setAudioState({ queue: nq });
+    return saved;
+  }
+
   /** A catalog song that would stream from the active server (not a download, not a listen-together guest). */
   private needsCatalogFetch(entry: QueueEntry<AudioItem>): boolean {
     if (!isCatalogSong(entry.item) || this.shared || isOffline()) return false;
@@ -750,6 +768,8 @@ class AudioSession {
       if (id !== this.loadId) return null;
       const full = await jf.getItem(ctx.api, ctx.userId, entry.item.Id);
       if (id !== this.loadId || !full.Id) return null;
+      // Rows that still list the catalog id show the saved song as playing through the link.
+      linkCatalogSong(entry.item.Id, full.Id);
       const q = audioState().queue;
       const nq = replaceItem(q, entry.key, slimItem(full));
       const saved = currentEntry(nq);

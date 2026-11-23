@@ -7,7 +7,7 @@ describe('downloadButtonView', () => {
 
   it('shows a downloaded item in the success colour, and the press removes it', () => {
     const v = downloadButtonView({ state: 'completed' }, null);
-    expect(v).toMatchObject({ icon: 'arrow.down.circle.fill', label: 'Downloaded', tint: 'success' });
+    expect(v).toMatchObject({ icon: 'arrow.down.circle.fill', label: 'Downloaded', tint: 'accent' });
     expect(v.a11y).toContain('Remove the download');
     expect(v.ring).toBeUndefined();
   });
