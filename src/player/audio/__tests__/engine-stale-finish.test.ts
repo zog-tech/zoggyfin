@@ -100,3 +100,20 @@ describe('staleStatus', () => {
     expect(staleStatus({ currentTime: 61 }, 60, true)).toBe(false);
   });
 });
+
+describe('audio engine: the old track after an unload', () => {
+  it('does not end the queue while a catalog song is fetched', async () => {
+    const engine = new AudioEngine();
+    const events: AudioEngineEvent[] = [];
+    engine.subscribe((e) => events.push(e));
+    await engine.load({ key: 'old', uri: 'old.m4a' }, null, 0, true);
+    status({ currentTime: 0, duration: 213, playing: true });
+    status({ currentTime: 100, duration: 213, playing: true });
+    // A catalog song is selected: the engine stops while the server fetches it.
+    engine.unload();
+    // The old track's last statuses, after the list was emptied.
+    status({ currentTime: 213, duration: 213, playing: false });
+    status({ currentTime: 213, duration: 213, didJustFinish: true });
+    expect(events.some((e) => e.type === 'ended')).toBe(false);
+  });
+});
