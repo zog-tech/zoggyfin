@@ -285,6 +285,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- TV: select the song that plays (a song row or a song tile) and the full player opens. Before,
+  the song started again.
+
 - The downloaded mark on songs, tiles and the Downloads tab is orange (the accent colour), not
   green. In a song list with art, the mark sits before the artist name.
 
