@@ -16,6 +16,10 @@ first commit to today. All of it was built in the first weeks of the project.
 - **Download a song from its row.** A song that is not on the device has a download button at the
   end of its row (search, albums, playlists, artists), so it downloads without playing. Then the
   row shows the progress ring and the orange downloaded mark. Not on TV, which has no downloads.
+- **Top songs from the catalog.** On a server with the catalog plugin, an artist page's Top songs
+  shows the artist's most popular songs from the plugin (`/OnDemand/Artist/Top`), songs the artist
+  is featured on included, then the library's most played songs. Before, only the songs on the
+  server's disk showed, so an artist from the catalog had one or two.
 - **Appears on.** An artist page shows the albums of other artists that have a song by this
   artist (a feature), under "Appears on". Top songs already counted songs with features.
 

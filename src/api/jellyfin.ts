@@ -953,6 +953,26 @@ export async function getOnDemandRadio(api: Api, ids: readonly string[], limit: 
   }
 }
 
+/**
+ * An artist's most popular songs from the catalog plugin, songs the artist is
+ * featured on included, or null when the server has no such plugin. Library
+ * songs come back as library items, the others as catalog songs. Same shape
+ * as the radio answer.
+ */
+export async function getOnDemandArtistTop(api: Api, artistId: string, limit: number): Promise<BaseItemDto[] | null> {
+  if (devOffline() || !artistId) return null;
+  try {
+    const res = await axios.get<unknown>(`${api.basePath}/OnDemand/Artist/Top`, {
+      params: { id: artistId, limit },
+      timeout: ONDEMAND_TIMEOUT_MS,
+      headers: { Authorization: buildAuthHeader(clientIdentity(), api.accessToken) },
+    });
+    return parseOnDemandRadio(res.data, limit);
+  } catch {
+    return null;
+  }
+}
+
 // ---- Remote control ---------------------------------------------------------------
 
 /** How recently a session must have been active to count (s). Matches the Jellyfin web client. */
