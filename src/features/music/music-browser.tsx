@@ -14,13 +14,17 @@ import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
 import { EmptyState, ErrorState, GridSkeleton, LoadingState } from '@/components/states';
 import { TabPager } from '@/components/tab-pager';
 import type { PagerTab } from '@/components/tab-pager-types';
+import { TV_TOOLBAR_GAP, TvPageTitle, TvToolbarRow } from '@/components/tv-page-header';
 import { ArtistRow, TrackRow } from '@/features/detail/rows';
 import { flashScroll, useTvPageScroll } from '@/features/tv/page-scroll';
+import { TvToolbarItem } from '@/features/tv/tv-button';
 import { DownloadedSongs } from '@/features/music/downloaded-songs';
 import { MusicHome } from '@/features/music/music-home';
 import { SongListHeader } from '@/features/music/song-list-header';
 import { musicGenreHref, useOpenItem, useTabGroup } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { usePlayer } from '@/player';
 import { readJson, writeJson } from '@/storage/json';
 import { storage } from '@/storage/kv';
@@ -28,6 +32,9 @@ import { spacing, useLayout, useTheme } from '@/theme';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 export type AudioLibraryKind = 'music' | 'books';
+
+/** TV Modern (design system §7.22): a page title over text tabs, and the sort filters as a text toolbar (no chips). */
+const MODERN = isTV && isTvModern;
 
 /** A pager tab: a music tab, the music Home page, or the songs on the device. */
 type BrowserTab = MusicTab | 'home' | 'downloaded';
@@ -92,7 +99,7 @@ export const MusicBrowser = memo(function MusicBrowser({ libraryId, kind = 'musi
   const tabs = kind === 'books' ? BOOK_TABS : MUSIC_TABS;
   const lastKey = `music.tab.${libraryId}`;
   const initial = Math.max(0, tabs.findIndex((t) => t.key === storage.getString(lastKey)));
-  return (
+  const pager = (
     <TabPager
       tabs={tabs}
       initialIndex={initial}
@@ -108,7 +115,24 @@ export const MusicBrowser = memo(function MusicBrowser({ libraryId, kind = 'musi
       }
     />
   );
+  if (!MODERN) return pager;
+  return (
+    <View style={styles.flex}>
+      <ModernTitle title={kind === 'books' ? 'Audiobooks' : 'Music'} />
+      {pager}
+    </View>
+  );
 });
+
+/** TV Modern: the page title at the page edge, over the tabs. */
+function ModernTitle({ title }: { title: string }) {
+  const l = useLayout();
+  return (
+    <View style={{ paddingHorizontal: l.gutter }}>
+      <TvPageTitle title={title} />
+    </View>
+  );
+}
 
 /**
  * Liked Songs opens with the newest songs first, like the liked list of other
@@ -136,6 +160,36 @@ function SortBar({ tab, options, onChange }: { tab: MusicTab; options: MusicOpti
   const [open, setOpen] = useState(false);
   const sorts = SORTS[tab];
   const label = sorts.find((s) => s.value === options.sortBy)?.label ?? 'Name';
+  const sheet = (
+    <OptionSheet
+      visible={open}
+      title="Sort by"
+      options={sorts}
+      selected={[options.sortBy]}
+      onSelect={(v) => onChange({ sortBy: v, sortOrder: v === 'DateCreated' || v === 'DatePlayed' || v === 'PlayCount' ? 'Descending' : 'Ascending' })}
+      onClose={() => setOpen(false)}
+    />
+  );
+  if (MODERN) {
+    return (
+      <>
+        <View style={[styles.toolbar, { paddingHorizontal: l.gutter }]}>
+          <TvToolbarRow inset={l.gutter}>
+            {sorts.length > 1 ? <TvToolbarItem label="Sort" value={label} onPress={() => setOpen(true)} /> : null}
+            {options.sortBy !== 'Random' ? (
+              <TvToolbarItem
+                label="Order"
+                value={options.sortOrder === 'Ascending' ? 'Ascending' : 'Descending'}
+                onPress={() => onChange({ sortOrder: options.sortOrder === 'Ascending' ? 'Descending' : 'Ascending' })}
+              />
+            ) : null}
+            {tab !== 'genres' && tab !== 'liked' && tab !== 'songs' ? <TvToolbarItem value="Liked" on={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
+          </TvToolbarRow>
+        </View>
+        {sheet}
+      </>
+    );
+  }
   return (
     <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.bar, { paddingHorizontal: l.gutter }, chipRowTV()]}>
@@ -151,14 +205,7 @@ function SortBar({ tab, options, onChange }: { tab: MusicTab; options: MusicOpti
         {/* Songs leave it out: the Liked Songs tab is that list. */}
         {tab !== 'genres' && tab !== 'liked' && tab !== 'songs' ? <Chip label="Liked" icon="heart" selected={options.favorites} onPress={() => onChange({ favorites: !options.favorites })} /> : null}
       </ScrollView>
-      <OptionSheet
-        visible={open}
-        title="Sort by"
-        options={sorts}
-        selected={[options.sortBy]}
-        onSelect={(v) => onChange({ sortBy: v, sortOrder: v === 'DateCreated' || v === 'DatePlayed' || v === 'PlayCount' ? 'Descending' : 'Ascending' })}
-        onClose={() => setOpen(false)}
-      />
+      {sheet}
     </>
   );
 }
@@ -286,4 +333,5 @@ async function allPages(q: ReturnType<typeof useMusicTab>): Promise<BaseItemDto[
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   bar: { gap: spacing.sm, paddingVertical: spacing.sm },
+  toolbar: { marginTop: TV_TOOLBAR_GAP / 4, marginBottom: TV_TOOLBAR_GAP },
 });

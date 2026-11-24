@@ -12,7 +12,11 @@ import type { BaseItemDto } from '@/api/types';
 import { Button } from '@/components/button';
 import { usePlayer } from '@/player';
 import { isTV } from '@/platform/tv';
-import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles } from '@/theme';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, font, spacing, tvFont, tvm, type, u, useLayout, useStyles } from '@/theme';
+
+/** TV Modern (design system §7.22): Play is the primary action and Shuffle a text action, in one row at their own width. */
+const MODERN = isTV && isTvModern;
 
 export function songCountLabel(count: number): string {
   return `${count} ${count === 1 ? 'song' : 'songs'}`;
@@ -54,11 +58,18 @@ export function SongListHeader({
 
   return (
     <View style={[s.root, { paddingHorizontal: l.gutter }]}>
-      <Text style={s.count}>{songCountLabel(count)}</Text>
-      <View style={[styles.row, l.fontScale >= 1.5 && styles.stack]}>
-        <Button title="Play" icon="play.fill" variant="tonalAccent" disabled={busy || count === 0} onPress={() => start(false)} containerStyle={styles.flex} preferredFocus={isTV} />
-        <Button title="Shuffle" icon="shuffle" variant="tonalAccent" disabled={busy || count === 0} onPress={() => start(true)} containerStyle={styles.flex} />
-      </View>
+      <Text style={[s.count, MODERN && s.countModern]}>{songCountLabel(count)}</Text>
+      {MODERN ? (
+        <View style={styles.rowModern}>
+          <Button title="Play" icon="play.fill" variant="primary" disabled={busy || count === 0} onPress={() => start(false)} preferredFocus />
+          <Button title="Shuffle" icon="shuffle" variant="text" disabled={busy || count === 0} onPress={() => start(true)} />
+        </View>
+      ) : (
+        <View style={[styles.row, l.fontScale >= 1.5 && styles.stack]}>
+          <Button title="Play" icon="play.fill" variant="tonalAccent" disabled={busy || count === 0} onPress={() => start(false)} containerStyle={styles.flex} preferredFocus={isTV} />
+          <Button title="Shuffle" icon="shuffle" variant="tonalAccent" disabled={busy || count === 0} onPress={() => start(true)} containerStyle={styles.flex} />
+        </View>
+      )}
     </View>
   );
 }
@@ -67,9 +78,12 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   row: { flexDirection: 'row', gap: spacing.md },
   stack: { flexDirection: 'column' },
+  // The first action's edge is on the page edge; then 24 u to the text actions (redesign §2.3).
+  rowModern: { flexDirection: 'row', alignItems: 'center', gap: u(24), marginTop: u(12) },
 });
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
   root: { gap: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   count: { ...font(type.subheadline), color: c.text2 },
+  countModern: { ...tvFont(tvm.type.meta), color: c.text2 },
 }));
