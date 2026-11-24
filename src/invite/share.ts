@@ -1,5 +1,5 @@
 /**
- * Sends the invite message through the system share sheet. iOS and Android:
+ * Sends a text (an invite, a playlist) through the system share sheet. iOS and Android:
  * the native sheet (Messages, WhatsApp, Mail, Copy). Web and the desktop
  * app: `navigator.share` when the browser has it, else the clipboard.
  */
@@ -30,7 +30,7 @@ export async function copyText(text: string): Promise<boolean> {
 /** True when this platform can copy without the share sheet (web and desktop). */
 export const canCopy = Platform.OS === 'web';
 
-export async function shareInvite(message: string, title: string): Promise<ShareResult> {
+export async function shareText(message: string, title: string): Promise<ShareResult> {
   if (Platform.OS !== 'web') {
     try {
       const r = await Share.share({ message, title }, { subject: title, dialogTitle: title });
@@ -50,3 +50,6 @@ export async function shareInvite(message: string, title: string): Promise<Share
   }
   return (await copyText(message)) ? 'copied' : 'failed';
 }
+
+/** The older name, for the invite screens. */
+export const shareInvite = shareText;

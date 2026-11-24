@@ -16,13 +16,16 @@ import { downloadsState, statusOf, useDownloadsStore } from '@/downloads/store';
 import { setFavouriteOverride, useIsFavourite } from '@/features/actions/favourite-overrides';
 import { openAddToPlaylist, openRenamePlaylist } from '@/features/playlists/add-to-playlist';
 import * as playlistOps from '@/features/playlists/ops';
+import { playlistShareText } from '@/features/playlists/share-text';
 import { openPlayOn } from '@/features/remote/play-on-sheet';
 import { remoteSupported } from '@/features/remote/use-remote';
+import { shareText } from '@/invite/share';
 import { confirmDestructive } from '@/lib/confirm';
 import { formatBytes } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { toast } from '@/lib/toast';
 import { usePlayer } from '@/player';
+import { isTV } from '@/platform/tv';
 import { actionsFor, actionTitle, type AppActionApi, type ItemAction, itemActions } from '@/registry/item-actions';
 import { openTabRoot } from '@/features/extensions/tab-nav';
 
@@ -83,6 +86,25 @@ export function useItemActions(given: BaseItemDto | undefined) {
       addToPlaylist: (it) => openAddToPlaylist(it),
       ...(remoteSupported ? { playOn: (it: BaseItemDto) => openPlayOn(it) } : null),
       renamePlaylist: (it) => openRenamePlaylist(it),
+      // TV has no share sheet.
+      ...(isTV
+        ? null
+        : {
+            sharePlaylist: async (it: BaseItemDto) => {
+              try {
+                const entries = await jf.getPlaylistEntries(api, userId, it.Id ?? '');
+                if (!entries.length) {
+                  toast('This playlist is empty', { icon: 'exclamationmark.triangle' });
+                  return;
+                }
+                const result = await shareText(playlistShareText(it.Name, entries), it.Name ?? 'Playlist');
+                if (result === 'copied') toast('Copied the list', { icon: 'checkmark' });
+                else if (result === 'failed') toast('Could not share the list', { icon: 'exclamationmark.triangle' });
+              } catch (e) {
+                toast(describeError(e).title, { icon: 'exclamationmark.triangle' });
+              }
+            },
+          }),
       deletePlaylist: async (it) => {
         const ok = await confirmDestructive(`Delete ${it.Name ?? 'this playlist'}?`, 'The playlist is removed from the server for this account. The songs and videos in it stay in the library.', 'Delete');
         if (ok && (await playlistOps.remove(it)) && router.canGoBack()) router.back();

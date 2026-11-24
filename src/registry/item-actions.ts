@@ -20,6 +20,8 @@ export interface AppActionApi {
   /** Playlists. */
   addToPlaylist?(item: BaseItemDto): void;
   renamePlaylist?(item: BaseItemDto): void;
+  /** Sends the playlist's entries as a text list through the share sheet. */
+  sharePlaylist?(item: BaseItemDto): void | Promise<void>;
   deletePlaylist?(item: BaseItemDto): void | Promise<void>;
   /** Deletes the item and its files from the server. */
   deleteItem?(item: BaseItemDto): void | Promise<void>;

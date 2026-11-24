@@ -125,6 +125,15 @@ export function registerBuiltinItemActions(): void {
     run: ({ item, app }) => app.removeDownload?.(item),
   });
   itemActions.register({
+    id: 'builtin.sharePlaylist',
+    title: 'Share as a text list',
+    icon: 'square.and.arrow.up',
+    order: 53,
+    group: 'more',
+    when: ({ item, app }) => item.Type === 'Playlist' && !!app.sharePlaylist,
+    run: ({ item, app }) => app.sharePlaylist?.(item),
+  });
+  itemActions.register({
     id: 'builtin.renamePlaylist',
     title: 'Rename playlist',
     icon: 'pencil',
