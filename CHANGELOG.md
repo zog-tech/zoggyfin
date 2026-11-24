@@ -29,10 +29,15 @@ first commit to today. All of it was built in the first weeks of the project.
   (`/OnDemand/Radio`) when the library has nothing similar, so catalog songs can play next.
   The ∞ button in the queue, or Settings, Playback, turns it off. Autoplay is off
   for audiobooks and podcasts, with Repeat, and in a listen-together session.
-- **Fade between songs.** Settings, Playback has "Fade between songs" (Off, or 2 to 12 seconds). The
-  song fades out over its last seconds and the next one fades in. Two songs that follow each other
-  on one album stay seamless. The two songs do not overlap: the music player plays one track at a
-  time.
+- **Crossfade songs.** Settings, Playback has "Crossfade songs" (Off, or 2 to 12 seconds). The
+  next song starts over the last seconds of the current one: the two play together while one
+  volume falls and the other rises. Two songs that follow each other on one album stay seamless.
+  In Lite mode, and when the next song is not ready, the song fades out and the next one fades in
+  with no overlap. (The setting was "Fade between songs" and never overlapped before.)
+- **Share a playlist as a text list.** A playlist's menu has "Share as a text list". It opens the
+  share sheet with the playlist's name and one "Artist - Title" line per song, a form that
+  playlist import tools for other music services read. The web and the Mac app copy the list
+  when the browser has no share sheet. Not on TV.
 - **Lite mode for small devices.** Settings, Playback has Lite mode: Auto (on for Android devices
   with about 1 GB of memory, such as a Fire TV Stick), On or Off. In Lite mode Home plays no
   previews and a TV tab that you leave is closed, so the app uses about a third less memory.
@@ -285,6 +290,13 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- **Sheets have a new look.** A sheet is now a rounded panel that floats above the bottom edge.
+  It rises with a spring and the dark layer behind it fades; before, the player's sheets moved
+  that dark layer up from the bottom with the panel. A sheet has a round close button, the item
+  menu shows the item's picture with a second line, and the music player's More menu shows the
+  song with an icon on each row. A sheet also leaves with an animation and keeps its content
+  while it goes.
+
 - TV: the remote's rewind and fast forward keys go to the previous and the next song while music
   plays, on every screen. In an audiobook or a podcast they jump back 15 seconds and forward 30.
   Before, they did nothing in music.
@@ -335,6 +347,11 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **"Add to playlist" in the music player froze the app (iOS).** The sheet belongs to the app
+  root, and iOS does not let the root show a sheet over the music player. The sheet stayed
+  hidden and took every touch, so nothing answered until the app was closed. The music player
+  now has its own host for the sheet, and a sheet waits until the sheet before it has gone.
 
 - TV: the song menu (⋯) on an artist, album or playlist page no longer scrolls the page to its
   top. When the menu closed, the focus was lost, so the next presses did nothing or went to the
