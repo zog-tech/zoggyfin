@@ -20,6 +20,7 @@ import { SwipeRow } from '@/components/swipe-row';
 import { Touchable } from '@/components/touchable';
 import { canQueue, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { openRenamePlaylist } from '@/features/playlists/add-to-playlist';
+import { entryKeys } from '@/features/playlists/logic';
 import { moveItem, removeItems } from '@/features/playlists/ops';
 import { episodeLabel, formatClock, formatDuration } from '@/lib/format';
 import { rowSwipeScreenOptions } from '@/lib/stack-options';
@@ -54,6 +55,7 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
   const [editing, setEditing] = useState(false);
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
   const list = entries.data ?? [];
+  const keys = entryKeys(list);
   const audio = list.length ? list.every(isAudioItem) : item.MediaType !== 'Video';
   const totalTicks = list.reduce((sum, t) => sum + (t.RunTimeTicks ?? 0), 0);
   const playlistId = item.Id ?? '';
@@ -71,7 +73,7 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
   // Swipe left removes the entry; a song also gets "Add to queue" on a swipe right.
   const row = (t: BaseItemDto, i: number) => (
     <SwipeRow
-      key={t.PlaylistItemId ?? `${t.Id}-${i}`}
+      key={keys[i]}
       onSwipe={() => remove(t)}
       label="Remove"
       leading={canQueue(t) ? queueSwipe.addToQueue(t) : undefined}
@@ -116,7 +118,7 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
                 </Text>
                 <ReorderList
                   rows={list}
-                  rowKey={(t, i) => t.PlaylistItemId ?? `${t.Id}-${i}`}
+                  rowKey={(_, i) => keys[i] ?? String(i)}
                   rowHeight={EDIT_ROW}
                   label={(t) => t.Name ?? 'item'}
                   onMove={(from, to) => void moveItem(playlistId, from, to)}
@@ -127,7 +129,7 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
           </View>
         }
         rows={editing ? [] : list}
-        rowKey={(t, i) => t.PlaylistItemId ?? t.Id ?? String(i)}
+        rowKey={(_, i) => keys[i] ?? String(i)}
         renderRow={row}
       />
     </>

@@ -62,6 +62,23 @@ export function touchRecent(recentIds: readonly string[], id: string, max = 20):
 }
 
 /** Moves one entry; the same rule as the server's Move/{newIndex} (the final index). */
+/**
+ * React keys for the entries of a playlist. The same item can be in a
+ * playlist more than once, and some servers send each entry's
+ * `PlaylistItemId` equal to the item's Id, so neither id is unique. The key is
+ * the entry id plus its occurrence number ("id#0", "id#1"): unique, and
+ * stable when another entry moves.
+ */
+export function entryKeys(list: readonly Pick<BaseItemDto, 'Id' | 'PlaylistItemId'>[]): string[] {
+  const seen = new Map<string, number>();
+  return list.map((t, i) => {
+    const id = t.PlaylistItemId ?? t.Id ?? `index-${i}`;
+    const n = seen.get(id) ?? 0;
+    seen.set(id, n + 1);
+    return `${id}#${n}`;
+  });
+}
+
 export function moveEntry<T>(list: readonly T[], from: number, to: number): T[] {
   if (from < 0 || from >= list.length) return [...list];
   const out = [...list];
