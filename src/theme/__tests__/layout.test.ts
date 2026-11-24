@@ -1,4 +1,4 @@
-import { gridLayout, layoutFor, tv, tvPageEndPadding, tvRowInset, tvSafeInset } from '../layout';
+import { gridLayout, layoutFor, tv, tvFocusBleed, tvPageEndPadding, tvRowInset, tvSafeInset } from '../layout';
 import { fallbackArt, textDirection } from '../theme';
 
 describe('grid layout (design system §2.3)', () => {
@@ -71,5 +71,52 @@ describe('TV Home end padding', () => {
   });
   it('fills the list when there is one short row', () => {
     expect(tvPageEndPadding(600, 250, 0)).toBe(350);
+  });
+});
+
+describe('TV looks (design system §7.22)', () => {
+  it('keeps the Classic sizes when no look is given', () => {
+    // The values of the TV layout before the Modern look existed.
+    expect(layoutFor(1920, { tv: true })).toEqual(layoutFor(1920, { tv: true, look: 'classic' }));
+    expect(layoutFor(1920, { tv: true, look: 'classic' })).toMatchObject({
+      contentWidth: 1792,
+      gutter: 56,
+      gap: 24,
+      sectionGap: 36,
+      rowTile: { poster: 200, thumb: 340, square: 230, circle: 170 },
+    });
+    expect(layoutFor(960, { tv: true, look: 'classic' })).toMatchObject({ contentWidth: 896, gutter: 28, gap: 12, sectionGap: 18, rowTile: { poster: 100, thumb: 170, square: 115, circle: 85 } });
+    expect(gridLayout('poster', 1792, true, 1920)).toEqual(gridLayout('poster', 1792, true, 1920, 'classic'));
+    expect(gridLayout('poster', 1792, true, 1920, 'classic')).toEqual({ columns: 7, tileWidth: 219, gap: 24, gutter: 56 });
+    expect(tvFocusBleed(200)).toBe(15);
+    expect(tvFocusBleed(200, 'classic', 0.5)).toBe(15);
+  });
+  it('gives Modern its gaps and row tiles at 1920 and at 960, with the same page edge', () => {
+    expect(layoutFor(1920, { tv: true, look: 'modern' })).toMatchObject({
+      contentWidth: 1792,
+      gutter: 56,
+      gap: 28,
+      sectionGap: 44,
+      rowTile: { poster: 216, thumb: 380, square: 240, circle: 176 },
+    });
+    expect(layoutFor(960, { tv: true, look: 'modern' })).toMatchObject({
+      contentWidth: 896,
+      gutter: 28,
+      gap: 14,
+      sectionGap: 22,
+      rowTile: { poster: 108, thumb: 190, square: 120, circle: 88 },
+    });
+  });
+  it('puts seven Modern posters across a 1920 screen', () => {
+    const g = gridLayout('poster', 1792, true, 1920, 'modern');
+    expect(g).toMatchObject({ columns: 7, gap: 28, gutter: 56 });
+    expect(g.tileWidth).toBeGreaterThanOrEqual(216);
+    expect(gridLayout('poster', 896, true, 960, 'modern').columns).toBe(7);
+  });
+  it('gives a Modern tile room for the 1.08 scale and the 4 u ring with its gap', () => {
+    // 216 x 0.04 = 8.64, + 4 + 4 + 2.
+    expect(tvFocusBleed(216, 'modern', 1)).toBe(19);
+    // At 960 dp the ring and gap are 2 dp each.
+    expect(tvFocusBleed(108, 'modern', 0.5)).toBe(11);
   });
 });
