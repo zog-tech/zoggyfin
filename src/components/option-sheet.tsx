@@ -2,10 +2,18 @@ import { Text, View } from 'react-native';
 
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
-import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, useStyles, useTheme } from '@/theme';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, u, useStyles, useTheme } from '@/theme';
 
 import { Icon } from './icon';
 import { makeSheetStyles, Sheet, SheetRow } from './sheet';
+
+/**
+ * TV Modern (design system §7.22): Ember marks only a few things, so the
+ * chosen row is white and bold with a white check at the size of its text.
+ */
+const MODERN = isTV && isTvModern;
+const CHECK = MODERN ? u(30) : scaled(iconSize.sm);
 
 export interface Option<T> {
   value: T;
@@ -54,7 +62,7 @@ export function OptionSheet<T>({
                 <Text style={[s.rowText, on && s.rowOn]} numberOfLines={1}>
                   {o.label}
                 </Text>
-                {on ? <Icon name="checkmark" size={scaled(iconSize.sm)} color={c.accent} weight="semibold" /> : null}
+                {on ? <Icon name="checkmark" size={CHECK} color={MODERN ? c.text : c.accent} weight="semibold" /> : null}
               </SheetRow>
             );
           })}
@@ -69,5 +77,5 @@ const makeStyles = createStyles((t: AppTheme) => ({
   list: { flexGrow: 0 },
   content: { paddingBottom: spacing.sm },
   empty: { ...font(type.subheadline), color: t.c.text2, padding: spacing.xl, textAlign: 'center' as const },
-  rowOn: { color: t.c.accent },
+  rowOn: MODERN ? { color: t.c.text, fontWeight: '700' as const } : { color: t.c.accent },
 }));

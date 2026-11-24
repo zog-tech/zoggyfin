@@ -4,13 +4,21 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 
 import { describeError } from '@/api/errors';
 import { Icon, type IconName } from '@/components/icon';
-import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, type, useLayout, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, dark, font, gridLayout, iconSize, scaled, sizes, spacing, tvFont, tvm, type, u, useLayout, useStyles, useTheme } from '@/theme';
 
 import { Button } from './button';
 import { Delayed, SkeletonBlock, SkeletonShownContext, SkeletonText } from './skeleton';
 import { SHAPES, type TileShape } from './tile-shape';
-import { gridLayout } from '@/theme/layout';
+import { TvPageTitle } from './tv-page-header';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+
+/**
+ * TV Modern look (design system §7.22): a state is a bare icon (no circle),
+ * a 40 u title and one line of body text; the main button is a primary
+ * action. Classic keeps the phone layout at TV scale.
+ */
+const MODERN = isTV && isTvModern;
 
 function errorIcon(kind: string): IconName {
   return kind === 'network' || kind === 'timeout' || kind === 'offline' ? 'wifi.exclamationmark' : 'exclamationmark.triangle';
@@ -45,6 +53,16 @@ export function ErrorState({
       </View>
     );
   }
+  if (MODERN) {
+    return (
+      <View style={[s.center, style]} accessibilityRole="alert">
+        <Icon name={errorIcon(d.kind)} size={MODERN_ICON} color={c.text3} />
+        <Text style={ms.title}>{d.title}</Text>
+        <Text style={ms.message}>{d.message}</Text>
+        <Button title="Retry" icon="arrow.clockwise" onPress={onRetry} containerStyle={ms.action} preferredFocus />
+      </View>
+    );
+  }
   return (
     <View style={[s.center, style]} accessibilityRole="alert">
       <Icon name={errorIcon(d.kind)} size={scaled(sizes.stateIcon)} color={c.text3} />
@@ -71,6 +89,16 @@ export function EmptyState({
 }) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
+  if (MODERN) {
+    return (
+      <View style={[s.center, style]}>
+        <Icon name={icon} size={MODERN_ICON} color={c.text3} />
+        <Text style={ms.title}>{title}</Text>
+        {message ? <Text style={ms.message}>{message}</Text> : null}
+        {action ? <Button title={action.title} variant="primary" onPress={action.onPress} containerStyle={ms.action} /> : null}
+      </View>
+    );
+  }
   return (
     <View style={[s.center, style]}>
       <Icon name={icon} size={scaled(sizes.stateIcon)} color={c.text3} />
@@ -123,18 +151,32 @@ export function DetailSkeleton() {
   );
 }
 
-/** Loading a grid: skeleton tiles at the real grid sizes. */
-export function GridSkeleton({ shape, width }: { shape: TileShape; width?: number }) {
+/**
+ * Loading a grid: skeleton tiles at the real grid sizes. TV Modern: `title`
+ * shows the page title over the skeleton, where the loaded grid has it, so
+ * the title does not jump when the tiles arrive.
+ */
+export function GridSkeleton({ shape, width, title }: { shape: TileShape; width?: number; title?: string }) {
   const s = useStyles(makeStyles);
   const l = useLayout();
   const g = gridLayout(shape === 'thumb' ? 'thumb' : shape, width ?? l.contentWidth, l.tv, l.width);
   const h = g.tileWidth / SHAPES[shape].aspect;
+  const radius = shape === 'circle' ? g.tileWidth / 2 : MODERN ? u(tvm.size.tileRadius) : shape === 'square' ? 8 : 10;
+  const titled = MODERN && !!title;
   return (
     <Delayed>
-      <View style={[s.grid, { paddingHorizontal: g.gutter, gap: g.gap }]} accessibilityLabel="Loading" accessibilityRole="progressbar">
+      {titled ? (
+        <View style={{ paddingHorizontal: g.gutter }}>
+          <TvPageTitle title={title} />
+        </View>
+      ) : null}
+      <View
+        style={[s.grid, { paddingHorizontal: g.gutter, gap: g.gap }, MODERN && { rowGap: u(36) }, titled && ms.gridUnderTitle]}
+        accessibilityLabel="Loading"
+        accessibilityRole="progressbar">
         {Array.from({ length: g.columns * 3 }, (_, i) => (
           <View key={i} style={{ width: g.tileWidth }}>
-            <SkeletonBlock width={g.tileWidth} height={h} radius={shape === 'circle' ? g.tileWidth / 2 : shape === 'square' ? 8 : 10} />
+            <SkeletonBlock width={g.tileWidth} height={h} radius={radius} />
             <SkeletonText width={g.tileWidth} />
           </View>
         ))}
@@ -202,3 +244,14 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
 }));
 
 export const stateStyles = StyleSheet.create({ fill: { flex: 1 } });
+
+const MODERN_ICON = u(72);
+
+/** TV Modern state text (§2.7 of the redesign): title 40 u bold, body `c.text2` up to 900 u wide. */
+const ms = StyleSheet.create({
+  title: { ...tvFont(tvm.type.pageTitle), fontSize: u(40), lineHeight: u(48), color: dark.text, textAlign: 'center', marginTop: u(24) },
+  message: { ...tvFont(tvm.type.body), color: dark.text2, textAlign: 'center', maxWidth: u(900) },
+  action: { marginTop: u(32) },
+  /** The toolbar row of the loaded page sits here; the skeleton starts under where it will be. */
+  gridUnderTitle: { paddingTop: u(tvm.size.toolbarItemHeight) + u(28) },
+});

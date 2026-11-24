@@ -7,13 +7,23 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { useWindowFrame } from '@/lib/use-window-frame';
 import { isTV } from '@/platform/tv';
-import { createStyles, type AppTheme, font, motion, radius, scaled, sizes, spacing, type, useStyles } from '@/theme';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, font, motion, radius, scaled, sizes, spacing, tvFont, tvm, type, u, useStyles } from '@/theme';
 
+import { Button } from './button';
 import { shouldDismiss } from './sheet-dismiss';
 import { MODAL_ORIENTATIONS, sheetHeight } from './sheet-layout';
 import { Touchable } from './touchable';
 
 const ENTER = Easing.bezier(...motion.easing.enter);
+
+/**
+ * TV Modern (design system §7.22): the same centred panel with radius 28 u,
+ * a 36 u title, list rows (the soft focus fill, no card, no lines) and
+ * "Done" as a text action. No layout animation (`entering`, `exiting`): it
+ * costs frames on TV hardware.
+ */
+const MODERN = isTV && isTvModern;
 
 /**
  * A bottom sheet (web and phone; a centred panel on TV). The scrim fades,
@@ -100,24 +110,26 @@ function SheetPanel({
   // Android: a Modal is its own window and needs its own gesture root.
   return (
     <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-      <Animated.View entering={FadeIn.duration(motion.duration.base)} exiting={FadeOut.duration(motion.duration.fast)} style={s.scrim}>
+      <Animated.View entering={MODERN ? undefined : FadeIn.duration(motion.duration.base)} exiting={MODERN ? undefined : FadeOut.duration(motion.duration.fast)} style={s.scrim}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" focusable={false} />
       </Animated.View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[s.host, isTV && s.hostTV]} pointerEvents="box-none">
         <Animated.View
-          entering={SlideInDown.duration(motion.duration.base).easing(ENTER)}
-          exiting={SlideOutDown.duration(motion.duration.fast)}
-          style={[s.panel, isTV ? s.panelTV : { paddingBottom: insets.bottom + spacing.md, maxHeight }, fixedHeight && !isTV && { height: maxHeight }, dragStyle]}
+          entering={MODERN ? undefined : SlideInDown.duration(motion.duration.base).easing(ENTER)}
+          exiting={MODERN ? undefined : SlideOutDown.duration(motion.duration.fast)}
+          style={[s.panel, isTV ? [s.panelTV, MODERN && s.panelModern] : { paddingBottom: insets.bottom + spacing.md, maxHeight }, fixedHeight && !isTV && { height: maxHeight }, dragStyle]}
           accessibilityViewIsModal>
           <GestureDetector gesture={swipe}>
             <View>
               {isTV ? null : <View style={s.grabber} />}
               {title || doneLabel ? (
-                <View style={s.header}>
-                  <Text style={s.title} numberOfLines={1} accessibilityRole="header">
+                <View style={[s.header, MODERN && s.headerModern]}>
+                  <Text style={[s.title, MODERN && s.titleModern]} numberOfLines={1} accessibilityRole="header">
                     {title}
                   </Text>
-                  {doneLabel ? (
+                  {doneLabel && MODERN ? (
+                    <Button title={doneLabel} variant="text" onPress={onClose} />
+                  ) : doneLabel ? (
                     <Touchable onPress={onClose} hitSlop={10} radius={8} accessibilityRole="button" accessibilityLabel={doneLabel}>
                       <Text style={s.done}>{doneLabel}</Text>
                     </Touchable>
@@ -160,15 +172,20 @@ export function SheetRow({
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
       accessibilityState={checked === undefined ? undefined : { checked }}
-      style={({ pressed, hovered, focused }) => [s.row, (pressed || hovered || (focused && !isTV)) && s.rowActive]}>
-      <View style={[s.rowInner, !last && s.rowLine]}>{children}</View>
+      style={
+        MODERN ? s.rowModern : ({ pressed, hovered, focused }) => [s.row, (pressed || hovered || (focused && !isTV)) && s.rowActive]
+      }>
+      <View style={MODERN ? s.rowInnerModern : [s.rowInner, !last && s.rowLine]}>{children}</View>
     </Touchable>
   );
 }
 
 export const makeSheetStyles = createStyles(({ c }: AppTheme) => ({
-  group: { backgroundColor: c.surface, borderRadius: radius.lg, overflow: 'hidden' as const, borderCurve: 'continuous' as const },
-  rowText: { ...font(type.body), color: c.text, flex: 1 },
+  // TV Modern: rows sit on the panel, with no card; the focus is the row fill.
+  group: MODERN ? {} : { backgroundColor: c.surface, borderRadius: radius.lg, overflow: 'hidden' as const, borderCurve: 'continuous' as const },
+  rowText: MODERN
+    ? { ...tvFont(tvm.type.body), fontSize: u(30), lineHeight: u(36), fontWeight: '500' as const, color: c.text, flex: 1 }
+    : { ...font(type.body), color: c.text, flex: 1 },
 }));
 
 const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
@@ -211,5 +228,16 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   rowLine: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.separator,
+  },
+  panelModern: { width: u(880), maxWidth: u(880), borderRadius: u(28), padding: u(40) },
+  headerModern: { paddingHorizontal: 0, paddingVertical: 0, marginBottom: u(16), minHeight: u(tvm.size.actionHeight) },
+  titleModern: { ...tvFont(tvm.type.body), fontSize: u(36), lineHeight: u(44), fontWeight: '700' as const, color: c.text },
+  rowModern: { borderRadius: u(tvm.size.listRowRadius) },
+  rowInnerModern: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: u(20),
+    minHeight: u(tvm.size.listRowHeight),
+    paddingHorizontal: u(24),
   },
 }));
