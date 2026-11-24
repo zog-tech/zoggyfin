@@ -3,7 +3,7 @@ import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } 
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { SearchBarCommands } from 'react-native-screens';
 
-import { useSearch, useVideoGenres } from '@/api/queries';
+import { useBrowseRows, useSearch, useVideoGenres } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { Button } from '@/components/button';
@@ -25,7 +25,10 @@ import { useTabRootPlace } from '@/features/extensions/tab-nav';
 import { useServerNames } from '@/features/servers/use-server-names';
 import { savedName } from '@/player/audio/catalog';
 import { useSavedId } from '@/player/audio/catalog-links';
+import { browseEmptyText, browseQueries } from '@/features/search/browse';
 import {
+  BROWSE_FILTERS,
+  browseKindOf,
   filterSections,
   GENRE_SEARCH_FILTERS,
   groupSearchResults,
@@ -124,6 +127,12 @@ export default function SearchScreen() {
   useFocusEffect(useCallback(() => remember, [remember]));
 
   const active = term.length >= 2 || !!genre;
+  // No words: rows to start from (browse.ts). The chips pick their kind; Episodes and People list All.
+  const kind = browseKindOf(filter);
+  const browseRowQueries = useMemo(() => browseQueries(kind), [kind]);
+  const browse = useBrowseRows(kind, browseRowQueries, !active && !localOnly);
+  const chips = active ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS) : localOnly ? [] : BROWSE_FILTERS;
+  const chipOn = active ? filter : kind;
   const genreChip = genreChipModel({ genre, genreCount: genreList.length, localOnly });
   // Extension searches with `global: true` run beside the server search, never before it.
   const extQuery = globalSearchQuery(term, { offline: localOnly, genre, filter });
@@ -232,18 +241,16 @@ export default function SearchScreen() {
         ) : null}
 
         <OfflineBanner />
-        {active || genreChip.visible ? (
+        {chips.length || genreChip.visible ? (
           <ScrollView
             ref={chipRow}
             horizontal
             showsHorizontalScrollIndicator={false}
             style={s.chips}
             contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
-            {active
-              ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
-                  <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
-                ))
-              : null}
+            {chips.map((f) => (
+              <Chip key={f.value} label={f.label} selected={chipOn === f.value} onPress={() => setFilter(f.value)} />
+            ))}
             {genreChip.visible ? (
               <>
                 <Chip
@@ -260,40 +267,57 @@ export default function SearchScreen() {
         ) : null}
 
         {body === 'idle' ? (
-          recent.length ? (
-            <View style={s.recent}>
-              <RowHeader title="Recent searches" />
-              <View style={[s.recentList, { marginHorizontal: l.gutter }]}>
-                {recent.map((r, i) => (
-                  <Touchable
-                    key={r}
-                    kind="row"
-                    onPress={() => applyRecent(r)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Search for ${r}`}
-                    style={({ pressed, hovered, focused }) => [s.recentRow, (pressed || hovered || (focused && !isTV)) && s.rowActive]}>
-                    <Icon name="clock.arrow.circlepath" size={scaled(iconSize.sm)} color={c.text3} />
-                    <View style={[s.recentBody, i < recent.length - 1 && s.line]}>
-                      <Text style={[s.recentText, scriptStyle(r, s.recentText)]} numberOfLines={1}>
-                        {r}
-                      </Text>
-                    </View>
-                  </Touchable>
-                ))}
+          <>
+            {kind === 'all' && recent.length ? (
+              <View style={s.recent}>
+                <RowHeader title="Recent searches" />
+                <View style={[s.recentList, { marginHorizontal: l.gutter }]}>
+                  {recent.map((r, i) => (
+                    <Touchable
+                      key={r}
+                      kind="row"
+                      onPress={() => applyRecent(r)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Search for ${r}`}
+                      style={({ pressed, hovered, focused }) => [s.recentRow, (pressed || hovered || (focused && !isTV)) && s.rowActive]}>
+                      <Icon name="clock.arrow.circlepath" size={scaled(iconSize.sm)} color={c.text3} />
+                      <View style={[s.recentBody, i < recent.length - 1 && s.line]}>
+                        <Text style={[s.recentText, scriptStyle(r, s.recentText)]} numberOfLines={1}>
+                          {r}
+                        </Text>
+                      </View>
+                    </Touchable>
+                  ))}
+                </View>
+                <Button
+                  title="Clear recent searches"
+                  variant="text"
+                  onPress={() => {
+                    writeJson(RECENT_KEY, []);
+                    setRecentVersion((v) => v + 1);
+                  }}
+                  containerStyle={{ marginLeft: l.gutter - spacing.sm, alignSelf: 'flex-start' }}
+                />
               </View>
-              <Button
-                title="Clear recent searches"
-                variant="text"
-                onPress={() => {
-                  writeJson(RECENT_KEY, []);
-                  setRecentVersion((v) => v + 1);
-                }}
-                containerStyle={{ marginLeft: l.gutter - spacing.sm, alignSelf: 'flex-start' }}
+            ) : null}
+            {localOnly ? (
+              recent.length ? null : (
+                <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
+              )
+            ) : browse.isPending ? (
+              <LoadingState />
+            ) : browse.error && !browse.data ? (
+              <ErrorState error={browse.error} onRetry={browse.refetch} />
+            ) : browse.data?.length ? (
+              browse.data.map((sec) => <ItemRow key={sec.key} title={sec.title} items={sec.items} shape={sec.items[0] ? shapeFor(sec.items[0]) : 'poster'} />)
+            ) : kind === 'all' && recent.length ? null : (
+              <EmptyState
+                icon="magnifyingglass"
+                title={kind === 'all' ? 'Search your server' : 'Nothing to list'}
+                message={kind === 'all' ? 'Find movies, shows, episodes, albums, songs, artists and people.' : browseEmptyText(kind)}
               />
-            </View>
-          ) : (
-            <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
-          )
+            )}
+          </>
         ) : body === 'loading' ? (
           <LoadingState />
         ) : body === 'error' ? (

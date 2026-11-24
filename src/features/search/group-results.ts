@@ -61,24 +61,42 @@ export function pushRecentSearch(recent: readonly string[], term: string, max = 
   return [t, ...rest].slice(0, max);
 }
 
-export type SearchFilter = 'all' | 'movies' | 'shows' | 'episodes' | 'music' | 'people';
+export type SearchFilter = 'all' | 'movies' | 'shows' | 'episodes' | 'videos' | 'music' | 'people';
 
 export const SEARCH_FILTERS: readonly { value: SearchFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'movies', label: 'Movies' },
   { value: 'shows', label: 'Shows' },
   { value: 'episodes', label: 'Episodes' },
+  { value: 'videos', label: 'Videos' },
   { value: 'music', label: 'Music' },
   { value: 'people', label: 'People' },
 ];
+
+/** What the Search page lists before any words (`browse.ts`): each chip opens one kind. */
+export type BrowseKind = 'all' | 'movies' | 'shows' | 'videos' | 'music';
+
+export const BROWSE_FILTERS: readonly { value: BrowseKind; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'movies', label: 'Movies' },
+  { value: 'shows', label: 'Shows' },
+  { value: 'videos', label: 'Videos' },
+  { value: 'music', label: 'Music' },
+];
+
+/** The kind to list with no words: a filter with nothing to list on its own (Episodes, People) lists All. */
+export function browseKindOf(filter: SearchFilter): BrowseKind {
+  return BROWSE_FILTERS.some((f) => f.value === filter) ? (filter as BrowseKind) : 'all';
+}
 
 /** The filters that can match within a genre: a genre search finds only movies and shows. */
 export const GENRE_SEARCH_FILTERS = SEARCH_FILTERS.filter((f) => f.value === 'all' || f.value === 'movies' || f.value === 'shows');
 
 const FILTER_KEYS: Record<Exclude<SearchFilter, 'all'>, readonly string[]> = {
-  movies: ['movies', 'collections', 'videos'],
+  movies: ['movies', 'collections'],
   shows: ['series'],
   episodes: ['episodes'],
+  videos: ['videos'],
   music: ['artists', 'albums', 'songs', 'playlists'],
   people: ['people'],
 };
