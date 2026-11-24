@@ -1,14 +1,13 @@
-import { type ReactElement, useContext } from 'react';
+import { type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
-import { TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
+import { PlateIcon, TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
 import { isTvModern } from '@/platform/tv-look-now';
 import { createStyles, type AppTheme, dark, font, iconSize, radius, scaled, sizes, spacing, tvFocusBleed, tvFont, tvm, type, u, useStyles, useTheme } from '@/theme';
 
 import { Icon, type IconName } from './icon';
-import { TouchFocusMark, Touchable } from './touchable';
+import { Touchable } from './touchable';
 
 const MODERN = isTV && isTvModern;
 
@@ -97,7 +96,7 @@ function ModernChip({ label, icon, selected, onPress, accessibilityLabel }: Chip
       accessibilityState={{ selected: !!selected }}>
       <View style={m.item}>
         <TvFocusPlate />
-        {glyph ? <ChipGlyph name={glyph} rest={off ? C.text2 : C.text} /> : null}
+        {glyph ? <PlateIcon name={glyph} size={GLYPH} rest={off ? C.text2 : C.text} /> : null}
         <TvPlateText style={[m.label, selected && m.on, off && m.off]} rest={off ? C.text2 : C.text}>
           {label}
         </TvPlateText>
@@ -106,26 +105,8 @@ function ModernChip({ label, icon, selected, onPress, accessibilityLabel }: Chip
   );
 }
 
-/** The glyph in two colours, cross-faded on the focus mark (an icon's colour is not animatable). */
-function ChipGlyph({ name, rest }: { name: IconName; rest: string }) {
-  const mark = useContext(TouchFocusMark);
-  const lit = useAnimatedStyle(() => ({ opacity: mark ? mark.get() : 0 }));
-  const dim = useAnimatedStyle(() => ({ opacity: mark ? 1 - mark.get() : 1 }));
-  return (
-    <View style={m.glyph}>
-      <Animated.View style={[StyleSheet.absoluteFill, dim]}>
-        <Icon name={name} size={GLYPH} color={rest} weight="semibold" />
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, lit]}>
-        <Icon name={name} size={GLYPH} color={tvm.color.plateText} weight="semibold" />
-      </Animated.View>
-    </View>
-  );
-}
-
 const m = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'center', gap: u(14), height: u(tvm.size.toolbarItemHeight), paddingHorizontal: u(tvm.size.toolbarPadX) },
-  glyph: { width: GLYPH, height: GLYPH },
   label: { ...tvFont(tvm.type.toolbar) },
   on: { fontWeight: '700' },
   off: { fontWeight: '500' },

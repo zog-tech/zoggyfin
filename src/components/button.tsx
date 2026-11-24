@@ -1,8 +1,8 @@
 import { type ReactElement, type ReactNode, useContext } from 'react';
-import { ActivityIndicator, StyleSheet, Text, type StyleProp, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 
-import { TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
+import { PlateIcon, TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
 import { isTvModern } from '@/platform/tv-look-now';
 import { createStyles, type AppTheme, dark, font, iconSize, radius, scaled, sizes, spacing, tvFont, tvm, type, u, useStyles, useTheme } from '@/theme';
@@ -132,7 +132,7 @@ function ModernButton({ title, onPress, variant = 'primary', icon, loading, disa
           <ActivityIndicator color={rest} />
         ) : (
           <>
-            {icon ? <PlateGlyph name={icon} rest={rest} /> : null}
+            {icon ? <PlateIcon name={icon} size={ACTION_ICON} rest={rest} /> : null}
             <TvPlateText style={primary ? m.primaryLabel : m.label} rest={rest}>
               {title}
             </TvPlateText>
@@ -162,23 +162,6 @@ function ModernBox({ primary, style, children }: { primary: boolean; style?: Sty
   );
 }
 
-/** A glyph in two colours, cross-faded on the focus mark (an icon's colour is not animatable). */
-function PlateGlyph({ name, rest }: { name: IconName; rest: string }) {
-  const mark = useContext(TouchFocusMark);
-  const lit = useAnimatedStyle(() => ({ opacity: mark ? mark.get() : 0 }));
-  const dim = useAnimatedStyle(() => ({ opacity: mark ? 1 - mark.get() : 1 }));
-  return (
-    <View style={m.icon}>
-      <Animated.View style={[StyleSheet.absoluteFill, dim]}>
-        <Icon name={name} size={ACTION_ICON} color={rest} weight="semibold" />
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, lit]}>
-        <Icon name={name} size={ACTION_ICON} color={tvm.color.plateText} weight="semibold" />
-      </Animated.View>
-    </View>
-  );
-}
-
 const m = StyleSheet.create({
   /** An action is as wide as its label: it never stretches across its row. */
   container: { alignSelf: 'flex-start' },
@@ -192,7 +175,6 @@ const m = StyleSheet.create({
   },
   primary: { paddingHorizontal: u(tvm.size.primaryPadX) },
   text: { paddingHorizontal: u(tvm.size.actionPadX) },
-  icon: { width: ACTION_ICON, height: ACTION_ICON },
   primaryLabel: { ...tvFont(tvm.type.action), fontWeight: '700' },
   label: { ...tvFont(tvm.type.action) },
 });

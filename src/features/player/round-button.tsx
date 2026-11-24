@@ -1,16 +1,16 @@
 import * as Haptics from 'expo-haptics';
-import { type ReactNode, useContext, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { findNodeHandle, Platform, Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from 'react-native';
-import Animated, { Easing, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Icon, type IconName } from '@/components/icon';
 import { TouchFocusMark, Touchable } from '@/components/touchable';
 import { type FocusTarget } from '@/features/tv/focus';
-import { TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
+import { PlateIcon, TvActionBody, TvFocusPlate, useActionScale } from '@/features/tv/tv-button';
 import { focusFromKeyboard } from '@/lib/input-modality';
 import { isTV } from '@/platform/tv';
 import { isTvModern } from '@/platform/tv-look-now';
-import { tv, tvFont, tvm, u, webPressable } from '@/theme';
+import { tv, tvm, webPressable } from '@/theme';
 
 import { Glass } from './glass';
 import { c, motion } from './tokens';
@@ -130,30 +130,6 @@ function setMark(mark: { set: (v: number) => void }, on: boolean, reduced: boole
   else mark.set(withTiming(on ? 1 : 0, { duration: on ? tvm.motion.focus : tvm.motion.blur, easing: STANDARD }));
 }
 
-/** Modern: the box grows to `actionFocusScale` with the mark (none with Reduce Motion). */
-function useFocusGrow() {
-  const mark = useContext(TouchFocusMark);
-  const reduced = useReducedMotion();
-  return useAnimatedStyle(() => ({ transform: [{ scale: reduced ? 1 : 1 + (tvm.size.actionFocusScale - 1) * (mark ? mark.get() : 0) }] }));
-}
-
-/** A glyph in two colours, cross-faded on the focus mark (an icon's colour is not animatable). */
-function PlateGlyph({ name, size, rest, focus = tvm.color.plateText }: { name: IconName; size: number; rest: string; focus?: string }) {
-  const mark = useContext(TouchFocusMark);
-  const lit = useAnimatedStyle(() => ({ opacity: mark ? mark.get() : 0 }));
-  const dim = useAnimatedStyle(() => ({ opacity: mark ? 1 - mark.get() : 1 }));
-  return (
-    <View style={{ width: size, height: size }}>
-      <Animated.View style={[StyleSheet.absoluteFill, dim]}>
-        <Icon name={name} size={size} color={rest} weight="semibold" />
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, lit]}>
-        <Icon name={name} size={size} color={focus} weight="semibold" />
-      </Animated.View>
-    </View>
-  );
-}
-
 /**
  * Modern: the centre transport of the video player (play, skip, channel up
  * and down). A bare white glyph in a square box (`size`); with the focus the
@@ -186,7 +162,7 @@ function ModernRoundButton({ icon, label, size, glyph, onPress, haptic, style, c
       style={[webPressable, style]}>
       <TouchFocusMark value={mark}>
         <GlyphBox size={size}>
-          {icon ? <PlateGlyph name={icon} size={glyph} rest={c.textOnMedia} /> : null}
+          {icon ? <PlateIcon name={icon} size={glyph} rest={c.textOnMedia} /> : null}
           {children}
         </GlyphBox>
       </TouchFocusMark>
@@ -195,7 +171,7 @@ function ModernRoundButton({ icon, label, size, glyph, onPress, haptic, style, c
 }
 
 function GlyphBox({ size, children }: { size: number; children: ReactNode }) {
-  const grow = useFocusGrow();
+  const grow = useActionScale();
   return (
     <Animated.View style={[modern.square, { width: size, height: size }, grow]}>
       <TvFocusPlate />
@@ -219,10 +195,11 @@ export interface PlayerActionProps {
 
 /**
  * TV Modern: an action of the video player (the option row, Skip Intro, the
- * next-up card, the error card). The same shapes as `TvButton` (design
- * system §7.22: a primary Ember rectangle, or a text action with no
- * container; the plate on focus), plus a blur callback, which the player's
- * focus count needs. Only call it in the Modern look on TV.
+ * next-up card, the error card). It draws `TvActionBody`, the drawing of
+ * `TvButton` (design system §7.22), with white text over video. It keeps its
+ * own Touchable: `preferredFocus` is only `hasTVPreferredFocus` (no page
+ * focus claim, as `TvButton`'s `firstFocus` makes), and the blur callback
+ * feeds the player's focus count. Only call it in the Modern look on TV.
  */
 export function PlayerAction({ label, icon, variant = 'text', onPress, onFocusChange, preferredFocus, accessibilityLabel }: PlayerActionProps) {
   return (
@@ -235,45 +212,13 @@ export function PlayerAction({ label, icon, variant = 'text', onPress, onFocusCh
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}>
-      {variant === 'primary' ? <PrimaryBody label={label} icon={icon} /> : <TextBody label={label} icon={icon} />}
+      <TvActionBody variant={variant} label={label} icon={icon} rest={c.textOnMedia} />
     </Touchable>
-  );
-}
-
-function PrimaryBody({ label, icon }: { label: string; icon?: IconName }) {
-  const mark = useContext(TouchFocusMark);
-  const grow = useFocusGrow();
-  const fill = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(mark ? mark.get() : 0, [0, 1], [c.accent, tvm.color.plate]) }));
-  return (
-    <Animated.View style={[modern.box, modern.primary, fill, grow]}>
-      {icon ? <PlateGlyph name={icon} size={u(tvm.size.actionIcon)} rest={c.onAccent} /> : null}
-      <TvPlateText style={modern.primaryLabel} rest={c.onAccent}>
-        {label}
-      </TvPlateText>
-    </Animated.View>
-  );
-}
-
-function TextBody({ label, icon }: { label: string; icon?: IconName }) {
-  const grow = useFocusGrow();
-  return (
-    <Animated.View style={[modern.box, modern.text, grow]}>
-      <TvFocusPlate />
-      {icon ? <PlateGlyph name={icon} size={u(tvm.size.actionIcon)} rest={c.textOnMedia} /> : null}
-      <TvPlateText style={modern.textLabel} rest={c.textOnMedia}>
-        {label}
-      </TvPlateText>
-    </Animated.View>
   );
 }
 
 const modern = StyleSheet.create({
   square: { alignItems: 'center', justifyContent: 'center' },
-  box: { flexDirection: 'row', alignItems: 'center', gap: u(14), height: u(tvm.size.actionHeight), borderRadius: u(tvm.size.plateRadius) },
-  primary: { paddingHorizontal: u(tvm.size.primaryPadX) },
-  text: { paddingHorizontal: u(tvm.size.actionPadX) },
-  primaryLabel: { ...tvFont(tvm.type.action), fontWeight: '700' },
-  textLabel: { ...tvFont(tvm.type.action) },
 });
 
 const styles = StyleSheet.create({

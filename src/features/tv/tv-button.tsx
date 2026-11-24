@@ -46,6 +46,7 @@ export interface TvButtonProps {
   active?: boolean;
   accessibilityLabel?: string;
   onFocus?: () => void;
+  onBlur?: () => void;
   /**
    * Modern: 'primary' is the Ember rectangle (Play, Resume: one per row),
    * 'text' (default) a glyph and label with no container. Classic ignores it.
@@ -56,7 +57,7 @@ export interface TvButtonProps {
 /** The action button of the TV item page and billboard: the Classic pill, or the Modern primary or text action. */
 export const TvButton: (props: TvButtonProps) => ReactElement = MODERN ? ModernTvButton : ClassicTvButton;
 
-function ClassicTvButton({ label, icon, onPress, firstFocus, progress, active, accessibilityLabel, onFocus }: TvButtonProps) {
+function ClassicTvButton({ label, icon, onPress, firstFocus, progress, active, accessibilityLabel, onFocus, onBlur }: TvButtonProps) {
   const s = useStyles(makeStyles);
   return (
     <Touchable
@@ -65,6 +66,7 @@ function ClassicTvButton({ label, icon, onPress, firstFocus, progress, active, a
       firstFocus={firstFocus}
       hasTVPreferredFocus={firstFocus}
       onFocus={onFocus}
+      onBlur={onBlur}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
@@ -230,8 +232,8 @@ export function TvPlateText({ children, style, rest, focus = tvm.color.plateText
   );
 }
 
-/** A glyph in two colours, cross-faded on the focus mark (an icon's colour is not animatable). */
-function PlateIcon({ name, size, rest, focus = tvm.color.plateText }: { name: IconName; size: number; rest: string; focus?: string }) {
+/** A glyph in two colours, cross-faded on the focus mark (an icon's colour is not animatable). Every Modern control with a glyph uses it. */
+export function PlateIcon({ name, size, rest, focus = tvm.color.plateText }: { name: IconName; size: number; rest: string; focus?: string }): ReactElement {
   const mark = useContext(TouchFocusMark);
   const lit = useAnimatedStyle(() => ({ opacity: mark ? mark.get() : 0 }));
   const dim = useAnimatedStyle(() => ({ opacity: mark ? 1 - mark.get() : 1 }));
@@ -248,13 +250,13 @@ function PlateIcon({ name, size, rest, focus = tvm.color.plateText }: { name: Ic
 }
 
 /** Modern: the box of an action or a transport glyph grows to `actionFocusScale` with the mark (none with Reduce Motion). */
-function useActionScale(): ReturnType<typeof useAnimatedStyle> {
+export function useActionScale(): ReturnType<typeof useAnimatedStyle> {
   const mark = useContext(TouchFocusMark);
   const reduced = useReducedMotion();
   return useAnimatedStyle(() => ({ transform: [{ scale: reduced ? 1 : 1 + (tvm.size.actionFocusScale - 1) * (mark ? mark.get() : 0) }] }));
 }
 
-function ModernTvButton({ label, icon, onPress, firstFocus, progress, active, accessibilityLabel, onFocus, variant = 'text' }: TvButtonProps) {
+function ModernTvButton({ label, icon, onPress, firstFocus, progress, active, accessibilityLabel, onFocus, onBlur, variant = 'text' }: TvButtonProps) {
   return (
     <Touchable
       kind="plain"
@@ -262,13 +264,37 @@ function ModernTvButton({ label, icon, onPress, firstFocus, progress, active, ac
       firstFocus={firstFocus}
       hasTVPreferredFocus={firstFocus}
       onFocus={onFocus}
+      onBlur={onBlur}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={active === undefined ? undefined : { selected: active }}>
-      {variant === 'primary' ? <PrimaryAction label={label} icon={icon} progress={progress} /> : <TextAction label={label} icon={icon} progress={progress} active={!!active} />}
+      <TvActionBody variant={variant} label={label} icon={icon} progress={progress} active={!!active} />
     </Touchable>
   );
+}
+
+/**
+ * Modern: the drawing of an action, for a control that brings its own
+ * Touchable (the video player's actions). `rest` is the text colour of a text
+ * action at rest (default the theme text; white over video).
+ */
+export function TvActionBody({
+  variant = 'text',
+  label,
+  icon,
+  progress,
+  active = false,
+  rest,
+}: {
+  variant?: 'primary' | 'text';
+  label: string;
+  icon?: IconName;
+  progress?: number | null;
+  active?: boolean;
+  rest?: string;
+}): ReactElement {
+  return variant === 'primary' ? <PrimaryAction label={label} icon={icon} progress={progress} /> : <TextAction label={label} icon={icon} progress={progress} active={active} rest={rest ?? C.text} />;
 }
 
 /** The Ember rectangle at rest; the plate (white, dark text) with the focus. */
@@ -290,14 +316,14 @@ function PrimaryAction({ label, icon, progress }: { label: string; icon?: IconNa
 }
 
 /** A glyph and a label with no container; the plate behind them with the focus. */
-function TextAction({ label, icon, progress, active }: { label: string; icon?: IconName; progress?: number | null; active: boolean }) {
+function TextAction({ label, icon, progress, active, rest }: { label: string; icon?: IconName; progress?: number | null; active: boolean; rest: string }) {
   const scale = useActionScale();
   return (
     <Animated.View style={[m.box, m.text, scale]}>
       <TvFocusPlate />
-      {icon ? <PlateIcon name={icon} size={ACTION_ICON} rest={C.text} /> : null}
+      {icon ? <PlateIcon name={icon} size={ACTION_ICON} rest={rest} /> : null}
       <View>
-        <TvPlateText style={[m.textLabel, active && m.on]} rest={C.text}>
+        <TvPlateText style={[m.textLabel, active && m.on]} rest={rest}>
           {label}
         </TvPlateText>
         {progress != null ? <ResumeBar fraction={progress} /> : null}
