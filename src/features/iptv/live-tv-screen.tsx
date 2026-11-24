@@ -27,15 +27,16 @@
  */
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { OptionSheet } from '@/components/option-sheet';
 import { Chip, chipRowTV } from '@/components/chip';
 import { Icon, type IconName } from '@/components/icon';
-import { LoadingState } from '@/components/states';
+import { LoadingState, tvModernState } from '@/components/states';
 import { Touchable } from '@/components/touchable';
 import { focusView, TvFocusGuide } from '@/features/tv/focus';
+import { PlateIcon, TvFocusPlate } from '@/features/tv/tv-button';
 import { TvScrollView, useTvPageScroll } from '@/features/tv/page-scroll';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
@@ -76,8 +77,9 @@ import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { toast } from '@/lib/toast';
 import { useDebounced } from '@/lib/use-debounced';
 import { features, isNativeTV, isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { usePlayerStore } from '@/player';
-import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme, webInput } from '@/theme';
+import { createStyles, type AppTheme, dark, font, iconSize, radius, scaled, sizes, spacing, tvFocusBleed, tvm, type, u, useLayout, useStyles, useTheme, webInput } from '@/theme';
 
 import { BrowseColumn } from './browse-column';
 import { ChannelDetails } from './channel-details';
@@ -325,15 +327,13 @@ export function LiveTvScreen() {
         <TvScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={[s.emptyPage, { paddingHorizontal: l.gutter, paddingBottom: bottomPad }]}>
           {isTV ? <Text style={s.tvTitle}>Live TV</Text> : null}
           <View style={s.center}>
-            <View style={s.stateIcon}>
-              <Icon name="tv" size={scaled(iconSize.lg)} color={c.accent} />
-            </View>
-            <Text style={s.emptyTitle}>Add an IPTV provider</Text>
-            <Text style={s.emptyText}>
+            <StateGlyph name="tv" color={c.accent} />
+            <Text style={MODERN ? tvModernState.title : s.emptyTitle}>Add an IPTV provider</Text>
+            <Text style={MODERN ? tvModernState.message : s.emptyText}>
               Watch live channels from an Xtream login or an M3U playlist. Your provider gives you the details.
               {features.iptvNeedsCors ? ' In a browser, only providers that allow web pages work; the apps work with all.' : ''}
             </Text>
-            <View style={s.emptyActions}>
+            <View style={MODERN ? tvModernState.actions : s.emptyActions}>
               <Button title="Xtream login" icon="key" onPress={() => router.push(providerFormHref(group, { kind: 'xtream' }))} preferredFocus={isTV} />
               <Button title="M3U playlist" icon="list.bullet" variant="tonal" onPress={() => router.push(providerFormHref(group, { kind: 'm3u' }))} />
             </View>
@@ -345,7 +345,9 @@ export function LiveTvScreen() {
 
   const busy = data.status === 'loading' || data.refreshing;
   // "All providers" has no reload: each provider reloads on its own page or in Manage providers.
-  const refreshButton = !providerId ? null : (
+  const refreshButton = !providerId ? null : MODERN ? (
+    <HeaderGlyph icon="arrow.clockwise" busy={busy} onPress={() => void iptv.refresh(providerId)} label="Load the channel list again" />
+  ) : (
     <Touchable
       kind="icon"
       radius={radius.pill}
@@ -357,7 +359,9 @@ export function LiveTvScreen() {
       {busy ? <ActivityIndicator color={c.text2} /> : <Icon name="arrow.clockwise" size={scaled(iconSize.sm)} color={c.text} />}
     </Touchable>
   );
-  const providersButton = (
+  const providersButton = MODERN ? (
+    <HeaderGlyph icon="gearshape" onPress={openProviders} label="Providers" />
+  ) : (
     <Touchable kind="icon" radius={radius.pill} onPress={openProviders} accessibilityRole="button" accessibilityLabel="Providers" style={s.iconButton}>
       <Icon name="gearshape" size={scaled(iconSize.sm)} color={c.text} />
     </Touchable>
@@ -550,12 +554,10 @@ export function LiveTvScreen() {
     </View>
   ) : failed ? (
     <View style={[s.center, { paddingHorizontal: l.gutter }]} accessibilityRole="alert">
-      <View style={s.stateIcon}>
-        <Icon name="wifi.exclamationmark" size={scaled(iconSize.lg)} color={c.danger} />
-      </View>
-      <Text style={s.emptyTitle}>The channels did not load</Text>
-      <Text style={s.emptyText}>{data.error}</Text>
-      <View style={s.emptyActions}>
+      <StateGlyph name="wifi.exclamationmark" color={c.danger} />
+      <Text style={MODERN ? tvModernState.title : s.emptyTitle}>The channels did not load</Text>
+      <Text style={MODERN ? tvModernState.message : s.emptyText}>{data.error}</Text>
+      <View style={MODERN ? tvModernState.actions : s.emptyActions}>
         <Button title="Try again" icon="arrow.clockwise" onPress={() => providerId && void iptv.refresh(providerId)} preferredFocus={isTV} />
         <Button title="Edit provider" variant="tonal" onPress={() => providerId && router.push(providerFormHref(group, { id: providerId }))} />
       </View>
@@ -695,6 +697,46 @@ function FocusedDetails({
     />
   );
 }
+
+/** TV Modern look (design system §7.22): no circle behind a state icon, action rows on one line. */
+const MODERN = isTV && isTvModern;
+
+/**
+ * The icon of an empty or failed state. Classic: the glyph in a tinted
+ * circle. Modern: the bare glyph of the shared state style, in `text3`.
+ */
+function StateGlyph({ name, color }: { name: IconName; color: string }) {
+  const s = useStyles(makeStyles);
+  const { c } = useTheme();
+  if (MODERN) return <Icon name={name} size={tvModernState.iconSize} color={c.text3} />;
+  return (
+    <View style={s.stateIcon}>
+      <Icon name={name} size={scaled(iconSize.lg)} color={color} />
+    </View>
+  );
+}
+
+/**
+ * Modern: a glyph button of the TV header (reload, Providers). A bare glyph
+ * in a square box as tall as the actions next to it; the plate fills the box
+ * with the focus. No circle. It sits at the top of the header, as the
+ * actions do (`Button` keeps `alignSelf: 'flex-start'`).
+ */
+function HeaderGlyph({ icon, label, onPress, busy }: { icon: IconName; label: string; onPress: () => void; busy?: boolean }) {
+  return (
+    <Touchable kind="plain" ring={false} disabled={busy} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} containerStyle={ms.headerGlyphSlot}>
+      <View style={ms.headerGlyph}>
+        <TvFocusPlate />
+        {busy ? <ActivityIndicator color={dark.text2} /> : <PlateIcon name={icon} size={u(tvm.size.actionIcon)} rest={dark.text} />}
+      </View>
+    </Touchable>
+  );
+}
+
+const ms = StyleSheet.create({
+  headerGlyphSlot: { alignSelf: 'flex-start' },
+  headerGlyph: { width: u(tvm.size.actionHeight), height: u(tvm.size.actionHeight), alignItems: 'center', justifyContent: 'center' },
+});
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
   flex: { flex: 1 },

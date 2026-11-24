@@ -254,4 +254,13 @@ const ms = StyleSheet.create({
   action: { marginTop: u(32) },
   /** The toolbar row of the loaded page sits here; the skeleton starts under where it will be. */
   gridUnderTitle: { paddingTop: u(tvm.size.toolbarItemHeight) + u(28) },
+  /** A row of state actions: one line, never wrapped (owner rule for Modern action rows). */
+  actions: { flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'center', alignItems: 'center', gap: u(tvm.size.actionGap), marginTop: u(32) },
 });
+
+/**
+ * TV Modern: the parts of the state style, for a screen that draws its own
+ * state (Live TV, Films and Series): a bare icon of `iconSize` in `c.text3`
+ * (no circle), the title and body text, and a one-line action row.
+ */
+export const tvModernState = { iconSize: MODERN_ICON, title: ms.title, message: ms.message, actions: ms.actions } as const;
