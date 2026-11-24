@@ -24,9 +24,9 @@
     "@react-native-community/netinfo": "12.0.1",
     "@react-native-tvos/config-tv": "0.1.7",
     "@shopify/flash-list": "2.3.2",
-    "@tanstack/query-sync-storage-persister": "^5.108.0",
-    "@tanstack/react-query": "^5.108.0",
-    "@tanstack/react-query-persist-client": "^5.108.0",
+    "@tanstack/query-sync-storage-persister": "^5.108.2",
+    "@tanstack/react-query": "^5.108.2",
+    "@tanstack/react-query-persist-client": "^5.108.2",
     "axios": "^1.21.1",
     "expo": "~58.0.21",
     "expo-application": "~58.1.2",
@@ -75,7 +75,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.5",
+    "@tauri-apps/cli": "2.12.6",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.3.0",
     "eslint": "^9.39.5",
