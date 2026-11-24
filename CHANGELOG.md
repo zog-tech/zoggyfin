@@ -358,6 +358,16 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- Android and TV: a film whose default audio track the device cannot play (Dolby TrueHD, DTS-HD)
+  now plays with a playable track in the same language, such as the Dolby Digital "compatibility"
+  track of a Blu-ray remux, and the file plays as it is. Before, the server made a stream for the
+  default track and, for a 4K HDR film, converted the whole picture on its CPU, slower than real
+  time on a NAS: the film stopped to buffer, then failed. A commentary or a track in another
+  language is never picked, and a track you choose in the player stays. The player's audio menu
+  names the track that plays.
+- Android and TV: choosing another audio track in a file that plays as it is now switches inside
+  the file. Before, the server made a new stream for the track, which for a 4K film meant
+  converting the whole picture.
 - A playlist that holds the same song twice shows each entry as its own row. The rows shared one
   key, so a row could show the wrong entry after a change.
 - TV (Android): on a show's page, Up after scrolling down to the episodes, the cast or More like
