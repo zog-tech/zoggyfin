@@ -15,7 +15,8 @@ import Animated, { Easing, type SharedValue, useAnimatedStyle, useDerivedValue, 
 import { forgetContentFocus, noteControlFocus, noteControlMounted, notePreferredControl, rememberContentFocus, TvPageContext, tvPageFocus } from '@/features/tv/focus';
 import { focusFromKeyboard } from '@/lib/input-modality';
 import { isTV } from '@/platform/tv';
-import { mediaColors, motion, tv, useTheme, webPressable } from '@/theme';
+import { isTvModern } from '@/platform/tv-look-now';
+import { mediaColors, motion, tv, tvm, u, useTheme, webPressable } from '@/theme';
 
 import { type MenuEvent, takesContextMenu } from './context-menu';
 
@@ -54,6 +55,11 @@ export interface TouchableProps extends Omit<PressableProps, 'style' | 'children
    * repeats (skip, next).
    */
   single?: boolean;
+  /**
+   * TV Modern: the scale of this control with the focus (default `tvm.size.focusScale` for a tile).
+   * A Modern button or icon control grows only when it passes it. Classic ignores it.
+   */
+  focusScale?: number;
   ref?: Ref<ComponentRef<typeof View>>;
 }
 
@@ -74,6 +80,27 @@ const useContentMark: (mark: SharedValue<number> | null, disabled: boolean) => S
   ? (mark, disabled) => useDerivedValue(() => (disabled || !mark ? 0 : mark.get()))
   : () => null;
 const useFocusMark: () => SharedValue<number> | null = isTV ? () => useSharedValue(0) : () => null;
+
+/**
+ * TV Modern (design system §7.22): the focus mark fades in 180 ms and out in
+ * 140 ms, the focus scale is 1.08, and the ring is 4 u wide with a 4 u gap.
+ * Classic keeps the mark at once, 1.06 and 3 pt.
+ */
+const MODERN = isTV && isTvModern;
+const TV_RING_WIDTH = MODERN ? u(tvm.size.ringWidth) : tv.focusRingWidth;
+const TV_RING_GAP = MODERN ? u(tvm.size.ringGap) : tv.focusRingGap;
+const TV_RING_COLOR = MODERN ? tvm.color.ring : mediaColors.white;
+const TV_ROW_RADIUS = u(tvm.size.listRowRadius);
+
+/** Sets the focus mark: at once in Classic and with Reduce Motion, a short fade in Modern. */
+function setMark(mark: SharedValue<number> | null, on: boolean, reduced: boolean): void {
+  if (!mark) return;
+  if (!MODERN || reduced) {
+    mark.set(on ? 1 : 0);
+    return;
+  }
+  mark.set(withTiming(on ? 1 : 0, { duration: on ? tvm.motion.focus : tvm.motion.blur, easing: STANDARD }));
+}
 
 /** A tile or row ignores a second press this soon after the first. */
 const REPEAT_PRESS_MS = 600;
@@ -127,6 +154,7 @@ export function Touchable({
   onLongPress,
   onPress,
   disabled,
+  focusScale,
   ref,
   ...rest
 }: TouchableProps) {
@@ -178,17 +206,18 @@ export function Touchable({
     return () => notePreferredControl(page, view, false);
   }, [page, pageFirst]);
 
-  const lifts = kind === 'tile' || (isTV && kind !== 'row' && kind !== 'plain');
+  // Modern: a button or icon control shows the focus plate and does not grow, unless it asks (`focusScale`).
+  const lifts = kind === 'tile' || (isTV && kind !== 'row' && kind !== 'plain' && (!MODERN || focusScale !== undefined));
   const restScale = (h: boolean, f: boolean) => {
     if (reduced || !lifts) return 1;
-    if (f && isTV) return tv.focusScale;
+    if (f && isTV) return MODERN ? (focusScale ?? tvm.size.focusScale) : tv.focusScale;
     return h || f ? motion.press.hoverScale : 1;
   };
 
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
-  const ringWidth = isTV ? tv.focusRingWidth : 2;
-  const ringGap = isTV ? tv.focusRingGap : 2;
+  const ringWidth = isTV ? TV_RING_WIDTH : 2;
+  const ringGap = isTV ? TV_RING_GAP : 2;
   // TV rows: the fill is the only focus mark (a ring on top of a fill read as two).
   const tvRow = isTV && kind === 'row';
   const showRing = ring && !tvRow && focused && !disabled;
@@ -255,20 +284,20 @@ export function Touchable({
         focusedNow.current = visible;
         if (!isTV || readsState) setFocused(visible);
         if (isTV) {
-          mark?.set(visible ? 1 : 0);
+          setMark(mark, visible, reduced);
           rememberContentFocus(own.current);
         }
-        if (visible) scale.set(withTiming(restScale(hovered, true), { duration: motion.duration.fast, easing: STANDARD }));
+        if (visible) scale.set(withTiming(restScale(hovered, true), { duration: MODERN ? tvm.motion.focus : motion.duration.fast, easing: STANDARD }));
         onFocus?.(e);
       }}
       onBlur={(e) => {
         if (isTV) {
           noteControlFocus(page, false);
-          mark?.set(0);
+          setMark(mark, false, reduced);
         }
         focusedNow.current = false;
         if (!isTV || readsState) setFocused(false);
-        scale.set(withTiming(restScale(hovered, false), { duration: motion.duration.fast, easing: STANDARD }));
+        scale.set(withTiming(restScale(hovered, false), { duration: MODERN ? tvm.motion.blur : motion.duration.fast, easing: STANDARD }));
         onBlur?.(e);
       }}
       accessibilityState={{ disabled: !!disabled, ...rest.accessibilityState }}
@@ -278,7 +307,7 @@ export function Touchable({
       {/* TV: no shadow; an elevation shadow under a scaling tile is slow on a TV stick. */}
       <Animated.View style={[inner, animated, lifted && !isTV && t.shadow('raised')]}>
         {/* Under the content, over the row's own background. */}
-        {mark && tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[StyleSheet.absoluteFill, styles.tvRowFill, { borderRadius: radius }]} /> : null}
+        {mark && tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[StyleSheet.absoluteFill, styles.tvRowFill, { borderRadius: MODERN ? TV_ROW_RADIUS : radius }]} /> : null}
         {mark ? (
           <TouchFocusMark value={contentMark}>{typeof children === 'function' ? children(state) : children}</TouchFocusMark>
         ) : typeof children === 'function' ? (
@@ -297,7 +326,7 @@ export function Touchable({
           />
         ) : null}
         {mark ? (
-          ring && !tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[styles.ring, ringBox(radius, ringGap, ringWidth), { borderColor: mediaColors.white }]} /> : null
+          ring && !tvRow ? <TvMark mark={mark} disabled={!!disabled} style={[styles.ring, ringBox(radius, ringGap, ringWidth), { borderColor: TV_RING_COLOR }]} /> : null
         ) : showRing ? (
           <View pointerEvents="none" style={[styles.ring, ringBox(radius, ringGap, ringWidth), { borderColor: t.c.focusRing }]} />
         ) : null}
@@ -326,5 +355,5 @@ const styles = StyleSheet.create({
   pressOverlay: { backgroundColor: mediaColors.pressOverlay },
   hoverOverlay: { backgroundColor: mediaColors.hoverOverlay },
   ring: { position: 'absolute' },
-  tvRowFill: { backgroundColor: mediaColors.tvRowFocus },
+  tvRowFill: { backgroundColor: MODERN ? tvm.color.rowFocus : mediaColors.tvRowFocus },
 });

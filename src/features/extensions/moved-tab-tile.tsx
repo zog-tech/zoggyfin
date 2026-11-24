@@ -17,7 +17,7 @@ import { Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
-import { TileCaption, TileFocusFill } from '@/components/tile-caption';
+import { TileCaption, TileFocusFill, TvArtRing, tvTileRadius } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { useDownloadsBadge } from '@/downloads/use-badge';
 import { destinationOf, type ReplaceableTab, TAB_INFO, tabRootHref } from '@/lib/tab-destination';
@@ -55,6 +55,7 @@ function MovedTabTile({ tab, by, width, preferredFocus }: { tab: ReplaceableTab;
   const { c } = useTheme();
   const info = TAB_INFO[tab];
   const height = (width * 9) / 16;
+  const r = tvTileRadius(radius.md);
   const sub = by ? `Tab bar shows ${by}` : undefined;
   const downloads = useDownloadsBadge();
   const badge = tab === '(saved)' && !isTV ? downloads : null;
@@ -62,7 +63,7 @@ function MovedTabTile({ tab, by, width, preferredFocus }: { tab: ReplaceableTab;
   return (
     <Touchable
       kind="tile"
-      radius={radius.md}
+      radius={r}
       ring={!isTV}
       firstFocus={preferredFocus}
       onPress={() => router.push(tabRootHref(destinationOf(tab), tab) as Href)}
@@ -70,7 +71,8 @@ function MovedTabTile({ tab, by, width, preferredFocus }: { tab: ReplaceableTab;
       accessibilityLabel={label}
       containerStyle={{ width }}>
       <TileFocusFill artHeight={height} radius={radius.md} />
-      <View style={[s.art, { width, height }]} accessibilityIgnoresInvertColors>
+      <TvArtRing radius={r} artHeight={height} />
+      <View style={[s.art, { width, height, borderRadius: r }]} accessibilityIgnoresInvertColors>
         {/* In a View: on the web a bare svg can paint under a sibling. */}
         <View>
           <Icon name={info.icon} size={Math.round(width * 0.2)} color={c.text2} />

@@ -12,7 +12,7 @@ import { memo } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 
 import { LengthPill } from '@/components/length-pill';
-import { TileCaption, TileFocusFill } from '@/components/tile-caption';
+import { TileCaption, TileFocusFill, TvArtRing, tvTileRadius } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { tvFocusRest } from '@/features/tv/focus-settle';
 import { lengthLabel } from '@/lib/format';
@@ -66,12 +66,14 @@ export const PlainTile = memo(function PlainTile({
   const s = useStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const progress = data.progress ?? null;
+  const r = tvTileRadius(radius.md);
   const label = [data.title, data.subtitle, data.badge, lengthLabel(data.duration), progress !== null ? `${Math.round(progress * 100)} percent watched` : null].filter(Boolean).join(', ');
   const body = (
     <>
       <TileFocusFill artHeight={width / aspectRatio} radius={radius.md} />
+      <TvArtRing radius={r} artHeight={width / aspectRatio} />
       <View>
-        <PlainArt uri={data.poster} name={data.title} id={data.id} kind={data.kind} width={width} aspectRatio={aspectRatio} showTitle={progress === null} />
+        <PlainArt uri={data.poster} name={data.title} id={data.id} kind={data.kind} width={width} aspectRatio={aspectRatio} showTitle={progress === null} rounded={r} />
         {data.badge ? (
           <View style={s.badge}>
             <Text style={s.badgeText} numberOfLines={1}>
@@ -99,7 +101,7 @@ export const PlainTile = memo(function PlainTile({
   return (
     <Touchable
       kind="tile"
-      radius={radius.md}
+      radius={r}
       // TV: the lit caption strip is the focus mark (design system §7.19).
       ring={!isTV}
       onPress={() => onPress(data)}
