@@ -1,11 +1,14 @@
 /**
- * "Fade between songs": the volume falls over the last seconds of a song and
- * rises over the first seconds of the next one.
+ * "Crossfade songs": the end of a song and the start of the next one play
+ * together. The old song's volume falls while the new one's rises.
  *
- * The music engine (one expo-audio playlist) plays one track at a time, so
- * two songs cannot overlap. A true crossfade needs a second player. This
- * fade gives a soft change between songs with the engine as it is, and it
- * keeps gapless play.
+ * The engine has two decks (`mixer.ts`). The next song waits on the second
+ * deck and starts when the current song has `seconds` left: a true overlap.
+ *
+ * Where the overlap cannot run (Lite mode, a next song that is not ready),
+ * the older fade applies: one player, the volume falls over the last seconds
+ * of a song and rises over the first seconds of the next one, with no
+ * overlap.
  *
  * - No fade between two songs that follow each other on the same album
  *   (a live album or a DJ mix must stay seamless).
@@ -61,10 +64,32 @@ export interface FadePoint {
   fadeOut: boolean;
 }
 
+/** The length of a fade or an overlap for a song: the setting, but at most a quarter of the song. */
+export function fadeLength(seconds: number, duration: number): number {
+  if (seconds <= 0) return 0;
+  return duration > 0 ? Math.min(seconds, duration / 4) : seconds;
+}
+
+/** True when the song has reached the point where the next one starts over it. */
+export function overlapDue(position: number, duration: number, seconds: number): boolean {
+  const len = fadeLength(seconds, duration);
+  return len > 0 && duration > 0 && position >= 0 && duration - position <= len;
+}
+
+/**
+ * The volumes of an overlap at `x` (0 at its start, 1 at its end): `out` for
+ * the song that leaves, `into` for the song that comes. Equal power: the two
+ * squares add up to 1, so the loudness stays even through the change.
+ */
+export function overlapGains(x: number): { out: number; into: number } {
+  const t = Math.min(1, Math.max(0, x));
+  return { out: Math.cos((t * Math.PI) / 2), into: Math.sin((t * Math.PI) / 2) };
+}
+
 /** The fade's share of the volume now, 0–1. */
 export function fadeGain(p: FadePoint): number {
   if (p.seconds <= 0) return 1;
-  const len = p.duration > 0 ? Math.min(p.seconds, p.duration / 4) : p.seconds;
+  const len = fadeLength(p.seconds, p.duration);
   if (len <= 0) return 1;
   let x = 1;
   if (p.fadeIn) x = Math.min(x, Math.max(0, p.position) / len);

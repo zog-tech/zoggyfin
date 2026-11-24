@@ -284,7 +284,7 @@ function PlaybackSection() {
           : picker === 'forward'
             ? { title: 'Skip forward', options: skips, selected: st.skipForwardSeconds, set: (v: number) => st.update({ skipForwardSeconds: v }) }
             : picker === 'fade'
-              ? { title: 'Fade between songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
+              ? { title: 'Crossfade songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
               : null;
   const cellular = Platform.OS !== 'web' && !isTV;
   const lite = useLite();
@@ -336,7 +336,7 @@ function PlaybackSection() {
           />
         }
       />
-      <SettingsRow icon="speaker.wave.2.fill" label="Fade between songs" value={fadeLabel(st.fadeSeconds)} onPress={() => setPicker('fade')} />
+      <SettingsRow icon="speaker.wave.2.fill" label="Crossfade songs" value={fadeLabel(st.fadeSeconds)} onPress={() => setPicker('fade')} />
       {liteRow ? <SettingsRow icon="gauge" label="Lite mode" value={liteLabel(st.liteMode, lite)} onPress={() => setLiteOpen(true)} /> : null}
       {isTV ? (
         <SettingsRow

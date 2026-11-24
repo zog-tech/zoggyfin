@@ -68,7 +68,8 @@ import {
 } from './queue';
 import { isCatalogSong } from './catalog';
 import { linkCatalogSong } from './catalog-links';
-import { fadeBetween, fadeGain, type FadePoint, inFadeWindow } from './crossfade';
+import { liteNow } from '@/platform/lite-now';
+import { fadeBetween, fadeGain, fadeLength, type FadePoint, inFadeWindow, overlapDue } from './crossfade';
 import { pickRadio, RADIO_BATCH, type RadioConditions, radioPluginSeeds, radioSeeds, radioWanted, rememberPlayed } from './radio';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
 import { audioState, initialAudioState, setAudioState } from './store';
@@ -184,13 +185,15 @@ class AudioSession {
   private radioRun: { tail: string; done: Promise<boolean> } | null = null;
   private radioTried: string | null = null;
   private recent: string[] = [];
-  /** "Fade between songs" (`crossfade.ts`): the fade's share of the volume, and its fine-step timer. */
+  /** "Crossfade songs" (`crossfade.ts`): the fade's share of the volume, and its fine-step timer. */
   private fadeVolume = 1;
   /** The current track fades in: it came after a fade-out. */
   private fadeIn = false;
   /** The entry that fades out at its end (from the last check). */
   private fadeOutKey: string | null = null;
   private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  /** Whether the engine was last told to cue the next song for a crossfade (`nextOverlaps`). */
+  private sentOverlap = false;
   /** When the current track began by itself (ms), for the fade-in before its first status. */
   private trackStartedAt = 0;
 
@@ -221,7 +224,7 @@ class AudioSession {
         break;
       }
       case 'track':
-        this.onTrack(e.key);
+        this.onTrack(e.key, e.overlap === true);
         break;
       case 'ended':
         void this.onQueueEnd();
@@ -302,7 +305,7 @@ class AudioSession {
   }
 
   /** The playlist moved by itself: the end of a track (gapless), or the lock screen / headset. */
-  private onTrack(key: string) {
+  private onTrack(key: string, overlap = false) {
     const q = audioState().queue;
     const up = upcomingIndex(q);
     const prev = currentEntry(q);
@@ -312,7 +315,8 @@ class AudioSession {
     if (index < 0) return;
     const natural = index === up;
     const last = this.lastStatus;
-    if (natural && last && prev && last.key === prev.key) {
+    // An overlap has no gap to measure: the old song still plays.
+    if (natural && !overlap && last && prev && last.key === prev.key) {
       const rate = playerState().rate || 1;
       this.pendingGap = { from: prev.key, endsAt: last.at + ((last.duration - last.position) * 1000) / rate };
     }
@@ -552,6 +556,8 @@ class AudioSession {
     }
     // A track that starts by a press (or a new queue) does not fade in.
     this.fadeIn = false;
+    // A load puts the next song in the playlist; the next fade check cues it when a crossfade applies.
+    this.sentOverlap = false;
     await this.engine.load(current, next, start, opts.autoplay);
     if (id !== this.loadId) return;
     this.recent = rememberPlayed(this.recent, entry.item.Id);
@@ -661,9 +667,10 @@ class AudioSession {
     return radio ? add(radio) : false;
   }
 
-  // ---- Fade between songs -----------------------------------------------------------
+  // ---- Crossfade songs -----------------------------------------------------------
 
-  private fadePoint(position: number, duration: number): FadePoint | null {
+  /** The fade conditions now, and whether the change to the next song fades at all. */
+  private fadePlan(): { seconds: number; fadeOut: boolean; plain: boolean; nextKey: string | null } | null {
     const seconds = usePlaybackSettings.getState().fadeSeconds;
     if (seconds <= 0) return null;
     const a = audioState();
@@ -673,8 +680,36 @@ class AudioSession {
     const conditions = { seconds, longForm: a.longForm, repeatOne: a.queue.repeat === 'one', together: !!this.shared || controlGate.active || this.groupMuted };
     // A catalog song is not preloaded: it starts after its fetch, with no fade-in, so the song before it does not fade out.
     const nextItem = next && next.key !== entry.key && !isCatalogSong(next.item) ? next.item : null;
-    const fadeOut = fadeBetween(entry.item, nextItem, conditions);
-    const fadeIn = this.fadeIn && !conditions.longForm && !conditions.together;
+    return { seconds, fadeOut: fadeBetween(entry.item, nextItem, conditions), plain: !conditions.longForm && !conditions.together, nextKey: nextItem && next ? next.key : null };
+  }
+
+  /**
+   * True when the next song must wait on the second deck for a true
+   * crossfade (`mixer.ts`). Not in Lite mode (a second player costs memory),
+   * not at another speed, and not when the sleep timer stops at the end of
+   * this song: then the older fade on one player applies.
+   */
+  private nextOverlaps(): boolean {
+    const plan = this.fadePlan();
+    if (!plan?.fadeOut || !plan.nextKey) return false;
+    return !liteNow() && (playerState().rate || 1) === 1 && audioState().sleep.kind !== 'end';
+  }
+
+  private fadePoint(position: number, duration: number): FadePoint | null {
+    const plan = this.fadePlan();
+    if (!plan) return null;
+    const entry = currentEntry(audioState().queue);
+    if (!entry) return null;
+    const { seconds } = plan;
+    // The next song is cued on the second deck: it starts over the end of this one, at full
+    // volume on its side of the mix, so this player's own volume does not fade.
+    if (plan.fadeOut && plan.nextKey && this.engine.cuedKey === plan.nextKey) {
+      this.fadeOutKey = null;
+      if (playerState().playing && overlapDue(position, duration, seconds)) this.engine.startOverlap(fadeLength(seconds, duration));
+      return { position, duration, seconds, fadeIn: this.fadeIn && plan.plain, fadeOut: false };
+    }
+    const fadeOut = plan.fadeOut;
+    const fadeIn = this.fadeIn && plan.plain;
     const point = { position, duration, seconds, fadeIn, fadeOut };
     // Marked only once the fade-out has begun: a Next press earlier also moves the native
     // playlist on by itself (gapless), and that song must not fade in.
@@ -700,6 +735,8 @@ class AudioSession {
   }
 
   private updateFade(position: number, duration: number): void {
+    // The setting, the queue or the speed changed what the next change is: move the next song to its place.
+    if (this.engine.loaded && this.nextOverlaps() !== this.sentOverlap) this.syncNext();
     const p = this.fadePoint(position, duration);
     const gain = p ? fadeGain(p) : 1;
     if (gain !== this.fadeVolume) {
@@ -932,10 +969,12 @@ class AudioSession {
     if (!this.engine.loaded) return;
     const q = audioState().queue;
     const next = upcomingEntry(q);
+    const overlap = this.nextOverlaps();
+    this.sentOverlap = overlap;
     if (next && this.engine.nextKey === next.key && this.tracks.has(next.key)) {
-      this.engine.setNext({ key: next.key, uri: this.tracks.get(next.key)?.url ?? '' });
+      this.engine.setNext({ key: next.key, uri: this.tracks.get(next.key)?.url ?? '' }, overlap);
     } else {
-      this.engine.setNext(this.nextTrackFor(next));
+      this.engine.setNext(this.nextTrackFor(next), overlap);
     }
     const entry = currentEntry(q);
     if (entry) {
@@ -1189,6 +1228,7 @@ class AudioSession {
     const next = nextKey && nextInfo ? { key: nextKey, uri: nextInfo.url } : null;
     const autoplay = playerState().playing;
     const id = ++this.loadId;
+    this.sentOverlap = false;
     void this.engine.load(current, next, target, autoplay).then(() => {
       if (id !== this.loadId) return;
       this.reporter?.tick('Seek');

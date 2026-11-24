@@ -25,6 +25,7 @@
 import { type AudioPlaylist, createAudioPlaylist, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { Platform } from 'react-native';
 
+import { AudioMixer } from './mixer';
 import { type SessionPhase, resumedByItself, transition } from './session-phase';
 import { START_KICK_DELAY_MS, type StartStatus, type StartWatch, startVerdict } from './start-watch';
 
@@ -53,8 +54,11 @@ export type LockScreenControls = 'tracks' | 'seek';
 
 export type AudioEngineEvent =
   | { type: 'status'; position: number; duration: number; playing: boolean; buffering: boolean; loaded: boolean }
-  /** The playlist moved to another track by itself (end of a track, lock screen, headset). */
-  | { type: 'track'; key: string; previousKey: string | null; at: number }
+  /**
+   * The engine moved to another track by itself (end of a track, lock screen, headset).
+   * `overlap`: the new track began over the end of the old one (`mixer.ts`), which still plays.
+   */
+  | { type: 'track'; key: string; previousKey: string | null; at: number; overlap?: boolean }
   /** The last track ended and nothing follows. */
   | { type: 'ended' }
   /** The lock screen (or a headset) asked for the next or previous track. */
@@ -88,6 +92,11 @@ export function staleStatus(s: { didJustFinish?: boolean; currentIndex?: number;
   return byPosition && s.currentTime > STALE_SLACK_S && Math.abs(s.currentTime - start) > STALE_SLACK_S;
 }
 
+/**
+ * One deck: one native playlist. The app's engine is two of these behind
+ * `AudioMixer` (`audioEngine()`); the second one exists only once a crossfade
+ * needs it.
+ */
 export class AudioEngine {
   private playlist: AudioPlaylist | null = null;
   private keys: string[] = [];
@@ -512,6 +521,17 @@ export class AudioEngine {
     }
   }
 
+  /** The other deck took the lock screen: this one must ask for it again when it plays next. */
+  dropLockScreen(): void {
+    this.lockControls = null;
+  }
+
+  /** Empties the deck and leaves the lock screen alone (the other deck owns it). */
+  release(): void {
+    this.lockControls = null;
+    this.unload();
+  }
+
   unload(): void {
     const p = this.playlist;
     this.loadToken += 1;
@@ -539,9 +559,10 @@ function nowMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
-let engine: AudioEngine | null = null;
+let engine: AudioMixer | null = null;
 
-export function audioEngine(): AudioEngine {
-  engine ??= new AudioEngine();
+/** The app's one audio engine: two decks behind a mixer. */
+export function audioEngine(): AudioMixer {
+  engine ??= new AudioMixer(() => new AudioEngine());
   return engine;
 }

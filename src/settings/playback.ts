@@ -60,7 +60,7 @@ export interface PlaybackSettings {
   liteMode: LiteChoice;
   /** Music: similar songs play when the queue ends (`player/audio/radio.ts`). */
   autoplaySimilar: boolean;
-  /** Music: "Fade between songs", in seconds; 0 is off (`player/audio/crossfade.ts`). */
+  /** Music: "Crossfade songs", in seconds; 0 is off (`player/audio/crossfade.ts`). */
   fadeSeconds: number;
 }
 
