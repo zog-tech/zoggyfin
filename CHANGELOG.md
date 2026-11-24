@@ -13,6 +13,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **A new TV look (Modern).** TVs get a second design: tiles with a white ring and no caption
+  strip, flat actions with a white focus rectangle instead of grey pills, an Ember primary action
+  and a soft fill on focused rows. Settings, Appearance, "TV look" chooses Auto, Modern or Classic
+  (the design of before); the change applies after a restart. Auto keeps Classic on Fire TV and
+  in Lite mode. The pages get their full Modern layout in the next steps.
 - **Download a song from its row.** A song that is not on the device has a download button at the
   end of its row (search, albums, playlists, artists), so it downloads without playing. Then the
   row shows the progress ring and the orange downloaded mark. Not on TV, which has no downloads.
