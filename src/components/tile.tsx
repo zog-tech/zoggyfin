@@ -51,8 +51,6 @@ export interface TileProps {
   titleOnArt?: boolean;
   /** TV: take the first focus on the screen. */
   preferredFocus?: boolean;
-  /** Only the artwork, no title under it (TV Home: the billboard shows the focused title). */
-  artOnly?: boolean;
   /**
    * The tile took the focus (TV). Pass a stable function: the tile is a memo.
    * Work for `tvFocusRest` must use the item Id (or the item when it has none) as its key: the tile drops it on blur.
@@ -84,7 +82,6 @@ export const Tile = memo(function Tile({
   showProgress = true,
   titleOnArt = false,
   preferredFocus,
-  artOnly = false,
   onFocusItem,
   index = 0,
 }: TileProps) {
@@ -111,7 +108,7 @@ export const Tile = memo(function Tile({
   const download = useDownloadStatus(item.Id);
 
   // TV: a tile with a caption shows the focus as the lit caption strip, not a ring (design system §7.19).
-  const captioned = !titleOnArt && !artOnly;
+  const captioned = !titleOnArt;
   const label = [titleText, sub, mark === 'loading' ? 'loading' : mark === 'playing' ? 'playing' : null, progress !== null ? left : null, played ? 'played' : null, downloadLabel(download)].filter(Boolean).join(', ');
 
   return (
