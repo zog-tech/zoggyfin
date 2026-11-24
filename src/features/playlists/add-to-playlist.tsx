@@ -20,6 +20,7 @@ import { ItemImage } from '@/components/item-image';
 import { makeSheetStyles, Sheet, SheetRow } from '@/components/sheet';
 import { ErrorState } from '@/components/states';
 import { TvScrollView } from '@/features/tv/page-scroll';
+import { useTopHost } from '@/lib/top-host';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, useStyles, useTheme, webInput } from '@/theme';
 
 import { fits, playlistMediaFor, sheetOrder } from './logic';
@@ -32,7 +33,14 @@ function success() {
   if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 }
 
+/**
+ * The host of both sheets. One is at the app root. A modal screen (Now
+ * Playing) mounts its own, because on iOS the root cannot present a sheet
+ * over a modal screen (`lib/top-host.ts`). Only the top host renders.
+ */
 export function AddToPlaylistHost() {
+  const top = useTopHost('playlists');
+  if (!top) return null;
   return (
     <>
       <AddSheet />
@@ -85,7 +93,7 @@ function AddSheet() {
     <SheetRow key={p.Id} last={last} accessibilityLabel={`Add to ${p.Name}`} onPress={() => void add(p)}>
       <ItemImage item={p} variant="square" width={scaled(40)} aspectRatio={1} rounded={radius.sm} hideArtTitle />
       <View style={s.flex}>
-        <Text style={s.rowText} numberOfLines={1}>
+        <Text style={s.name} numberOfLines={1}>
           {p.Name}
         </Text>
         {p.ChildCount ? <Text style={s.meta}>{`${p.ChildCount} ${p.ChildCount === 1 ? 'item' : 'items'}`}</Text> : null}
@@ -95,7 +103,7 @@ function AddSheet() {
   );
 
   return (
-    <Sheet visible={!!items} title={what ? `Add “${what}” to a playlist` : 'Add to playlist'} onClose={closeAddSheet} doneLabel="Cancel">
+    <Sheet visible={!!items} title="Add to playlist" subtitle={what || null} onClose={closeAddSheet}>
       <TvScrollView style={s.list} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.group}>
           {naming ? (
@@ -165,7 +173,7 @@ function RenameSheet() {
     endRename(run.token, ok);
   };
   return (
-    <Sheet visible={!!playlist} title="Rename playlist" onClose={closeRenameSheet} doneLabel="Cancel">
+    <Sheet visible={!!playlist} title="Rename playlist" onClose={closeRenameSheet}>
       <View style={[s.group, s.newRow]}>
         <TextInput
           value={name}
@@ -182,16 +190,17 @@ function RenameSheet() {
         />
         <Button title="Save" variant="small" loading={phase.name === 'saving'} onPress={() => void save()} />
       </View>
-      <View style={s.bottom} />
     </Sheet>
   );
 }
 
 const makeStyles = createStyles((t: AppTheme) => ({
   ...makeSheetStyles(t),
-  flex: { flex: 1, minWidth: 0 },
+  flex: { flex: 1, minWidth: 0, gap: spacing.xxs },
+  // Not `rowText`: its flex would stretch the name down the column, away from the count.
+  name: { ...font(type.body), color: t.c.text },
   list: { flexGrow: 0 },
-  content: { paddingBottom: spacing.md, gap: spacing.sm },
+  content: { gap: spacing.sm },
   header: { ...font(type.footnote), letterSpacing: 0.4, color: t.c.text2, marginTop: spacing.md, marginLeft: spacing.lg },
   meta: { ...font(type.footnote), color: t.c.text2 },
   plus: { width: scaled(40), height: scaled(40), borderRadius: radius.sm, backgroundColor: t.c.accentSoft, alignItems: 'center' as const, justifyContent: 'center' as const },
@@ -199,5 +208,4 @@ const makeStyles = createStyles((t: AppTheme) => ({
   input: { ...font(type.body), ...webInput, color: t.c.text, flex: 1, minHeight: scaled(44) },
   loading: { marginTop: spacing.lg },
   empty: { ...font(type.subheadline), color: t.c.text2, textAlign: 'center' as const, padding: spacing.lg },
-  bottom: { height: spacing.md },
 }));

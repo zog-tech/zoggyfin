@@ -34,7 +34,7 @@ export function OptionSheet<T>({
   const { c } = useTheme();
   return (
     <Sheet visible={visible} title={title} onClose={onClose} doneLabel="Done">
-      <TvScrollView style={s.list} contentContainerStyle={s.content}>
+      <TvScrollView style={s.list}>
         {options.length === 0 ? <Text style={s.empty}>No options</Text> : null}
         <View style={s.group}>
           {options.map((o, i) => {
@@ -67,7 +67,6 @@ export function OptionSheet<T>({
 const makeStyles = createStyles((t: AppTheme) => ({
   ...makeSheetStyles(t),
   list: { flexGrow: 0 },
-  content: { paddingBottom: spacing.sm },
   empty: { ...font(type.subheadline), color: t.c.text2, padding: spacing.xl, textAlign: 'center' as const },
   rowOn: { color: t.c.accent },
 }));

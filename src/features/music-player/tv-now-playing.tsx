@@ -100,13 +100,14 @@ export function TvNowPlaying() {
   const side = Math.round(l.height * 0.6);
   const sections: SheetSection[] = [
     {
-      title: item.Name ?? 'Now playing',
+      // No heading: the sheet's header names the song.
+      title: '',
       rows: [
-        ...(item.AlbumId ? [{ key: 'album', label: 'Go to album', selected: false, onPress: () => go({ Id: item.AlbumId ?? '', Name: item.Album, Type: 'MusicAlbum' }) }] : []),
-        ...(artistItem?.Id ? [{ key: 'artist', label: 'Go to artist', selected: false, onPress: () => go({ Id: artistItem.Id ?? '', Name: artistItem.Name, Type: 'MusicArtist' }) }] : []),
-        { key: 'playlist', label: 'Add to playlist…', selected: false, onPress: () => openAddToPlaylist(item) },
-        { key: 'mix', label: 'Instant mix from this song', selected: false, onPress: () => void session.instantMix(item) },
-        { key: 'stop', label: 'Stop playback', selected: false, onPress: () => void session.stop() },
+        ...(item.AlbumId ? [{ key: 'album', label: 'Go to album', icon: 'square.stack' as const, selected: false, onPress: () => go({ Id: item.AlbumId ?? '', Name: item.Album, Type: 'MusicAlbum' }) }] : []),
+        ...(artistItem?.Id ? [{ key: 'artist', label: 'Go to artist', icon: 'person' as const, selected: false, onPress: () => go({ Id: artistItem.Id ?? '', Name: artistItem.Name, Type: 'MusicArtist' }) }] : []),
+        { key: 'playlist', label: 'Add to playlist…', icon: 'text.badge.plus' as const, selected: false, onPress: () => openAddToPlaylist(item) },
+        { key: 'mix', label: 'Instant mix from this song', icon: 'wand.and.stars' as const, selected: false, onPress: () => void session.instantMix(item) },
+        { key: 'stop', label: 'Stop playback', icon: 'stop.fill' as const, destructive: true, selected: false, onPress: () => void session.stop() },
       ],
     },
   ];
@@ -179,7 +180,7 @@ export function TvNowPlaying() {
           </View>
         </View>
       </View>
-      <PlayerSheet visible={more} title="More" sections={sections} onClose={() => setMore(false)} />
+      <PlayerSheet visible={more} title={item.Name ?? 'Now playing'} subtitle={artistLine(item)} sections={sections} onClose={() => setMore(false)} />
       <ToastHost overlay />
     </View>
   );
