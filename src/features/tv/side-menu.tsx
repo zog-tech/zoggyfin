@@ -35,6 +35,7 @@ import { pageHref, pagePathname } from '@/features/extensions/nav';
 import { usePagePlacement } from '@/features/extensions/use-placement';
 import { tvKeyFromEvent } from '@/player/tv-keys';
 import { isNativeTV, isTVPreview } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { type AppTheme, createStyles, font, motion, radius, spacing, tv, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
 
 import { focusActivePage, type FocusTarget, focusView, isMenuFocused, noteRemoteKey, restoreContentFocus, setContentGuide, setMenuFocused, TvFocusGuide, tvPages } from './focus';
@@ -145,7 +146,8 @@ export function TvTabsLayout() {
 /** The tab content after the rail. It follows the page (its top inset, the visible page for the focus). */
 function TvContent({ content }: { content: RefObject<ComponentRef<typeof View> | null> }) {
   const l = useLayout();
-  const rail = Math.round(tv.railWidth * tvScale(l.width));
+  // Modern: each page pads itself by the rail (features/tv/screen-inset.tsx), so art can run under it.
+  const rail = isTvModern ? 0 : Math.round(tv.railWidth * tvScale(l.width));
   const pathname = usePathname();
   const lite = useLite();
   // Lite mode: a page change empties the image memory cache. The images on screen stay; the next page

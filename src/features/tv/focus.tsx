@@ -9,8 +9,10 @@ import { Platform, StyleSheet, TextInput, TVFocusGuideView, View, type ViewProps
 
 import type { TvKey } from '@/player/tv-keys';
 import { isNativeTV, isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 
 import { claimTarget, type ClaimReason, createPageRegistry, type KeyMemory, NO_KEY, pageShouldTakeFocus } from './page-focus';
+import { TvScreenInset } from './screen-inset';
 
 /** A host view. react-native-tvos adds `requestTVFocus`; on web it is a DOM element with `focus`. */
 export type FocusTarget = ComponentRef<typeof View>;
@@ -239,12 +241,25 @@ function TvPage({ navigation, children }: { navigation: PageNavigation; children
   );
 }
 
-/** `screenLayout` for the tab stacks: on Android TV every page is its own focus scope. */
-export const tvScreenLayout = pageFocus
-  ? ({ navigation, children }: { navigation: unknown; children: ReactElement }) => (
-      <TvPage navigation={navigation as PageNavigation}>{children}</TvPage>
-    )
-  : undefined;
+/**
+ * `screenLayout` for the tab stacks: on Android TV every page is its own focus
+ * scope. In the TV Modern look every page also sits in the rail inset
+ * (screen-inset.tsx), inside its focus scope; Classic keeps the old layout.
+ */
+export const tvScreenLayout =
+  isTV && isTvModern
+    ? pageFocus
+      ? ({ navigation, children }: { navigation: unknown; children: ReactElement }) => (
+          <TvPage navigation={navigation as PageNavigation}>
+            <TvScreenInset>{children}</TvScreenInset>
+          </TvPage>
+        )
+      : ({ children }: { navigation: unknown; children: ReactElement }) => <TvScreenInset>{children}</TvScreenInset>
+    : pageFocus
+      ? ({ navigation, children }: { navigation: unknown; children: ReactElement }) => (
+          <TvPage navigation={navigation as PageNavigation}>{children}</TvPage>
+        )
+      : undefined;
 
 type GuideOwnProps = 'destinations' | 'autoFocus' | 'safePadding' | 'trapFocusUp' | 'trapFocusDown' | 'trapFocusLeft' | 'trapFocusRight' | 'onFocusEnter' | 'onFocusLeave';
 
