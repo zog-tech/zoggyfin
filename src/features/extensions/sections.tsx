@@ -17,7 +17,7 @@ import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { LengthPill } from '@/components/length-pill';
 import { ItemImage } from '@/components/item-image';
-import { RowHeader } from '@/components/item-row';
+import { homeRowGap, RowHeader } from '@/components/item-row';
 import { PlainArt } from '@/components/plain-art';
 import { PlainGrid } from '@/components/plain-grid';
 import { PlainTile, type PlainTileData } from '@/components/plain-tile';
@@ -35,7 +35,8 @@ import { TvShelf } from '@/features/tv/shelf';
 import { lengthLabel } from '@/lib/format';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { features, isTV } from '@/platform/tv';
-import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, font, iconSize, mediaColors, radius, scaled, sizes, spacing, tvFocusBleed, tvm, type, u, useLayout, useStyles, useTheme } from '@/theme';
 
 import { entryHasMenu, useEntryMenu } from './entry-menu';
 import { entryIsPressable, useOpenEntry } from './open-entry';
@@ -130,8 +131,9 @@ export function EntryRow({ extId, title, rows, shape, onSeeAll, firstFocus }: { 
   const width = l.rowTile[shape];
   const padV = l.tv ? tvFocusBleed(tileHeight(shape, width)) : spacing.xs;
   return (
-    <View ref={section} style={{ marginTop: l.sectionGap }}>
-      <RowHeader title={title} onSeeAll={onSeeAll} />
+    <View ref={section} style={billboard && isTvModern ? homeRowGap(l.sectionGap) : { marginTop: l.sectionGap }}>
+      {/* TV Modern: 24 u from the header to the tiles, the shelf's room for the focus ring included (as ItemRow). */}
+      <RowHeader title={title} onSeeAll={onSeeAll} gapBelow={isTV && isTvModern ? Math.max(0, u(tvm.size.rowTitleGap) - padV) : undefined} />
       {isTV ? (
         <TvShelf
           items={tiles}

@@ -7,6 +7,8 @@
  * It reads the guide only. It never opens a stream to preview a channel:
  * providers often allow one connection, so a preview would stop the channel
  * that plays.
+ *
+ * TV Modern look (§7.22): no boxed badge, so LIVE is Ember text.
  */
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
@@ -16,12 +18,14 @@ import { initials } from '@/features/iptv/channel-logo';
 import { progressOf } from '@/iptv';
 import { clock, timeLeft, timeRange } from '@/lib/programme-time';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import type { LiveChannelRef, LiveNowNext, LiveSource } from '@/player';
 import { font, mediaColors, scaled, sizes, tv, withAlpha } from '@/theme';
 
 import { c, radius, spacing, type } from './tokens';
 
 const NONE: LiveNowNext = { now: null, next: null };
+const MODERN = isTV && isTvModern;
 
 /** Now and next on a channel, read again from time to time (the guide can arrive later). */
 function useLiveNowNext(source: LiveSource, channelId: string): { nn: LiveNowNext; at: number } {
@@ -92,7 +96,9 @@ export function LiveChannelCard({
             </Text>
           ) : null}
         </View>
-        {live ? (
+        {live && MODERN ? (
+          <Text style={styles.liveWord}>LIVE</Text>
+        ) : live ? (
           <View style={styles.liveBadge}>
             <Text style={styles.liveText}>LIVE</Text>
           </View>
@@ -148,6 +154,7 @@ const styles = StyleSheet.create({
   group: { ...font(type.footnote), color: c.text2 },
   liveBadge: { backgroundColor: c.accent, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs },
   liveText: { ...font(type.caption1), fontWeight: '700', color: c.onAccent, letterSpacing: 0.6 },
+  liveWord: { ...font(type.caption1), fontWeight: '700', color: c.accent, letterSpacing: 0.6 },
   tag: { ...font(type.caption1), color: c.text2 },
   block: { gap: spacing.xs },
   line: { ...font(type.subheadline), color: c.text },

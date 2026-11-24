@@ -8,11 +8,14 @@ import { tvFocusRest } from '@/features/tv/focus-settle';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { useOpenItem } from '@/lib/navigation';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
-import { gridLayout, spacing, tvFocusBleed, useLayout, useTheme } from '@/theme';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+import { gridLayout, spacing, tvFocusBleed, u, useLayout, useTheme } from '@/theme';
 
 import { useItemMenu } from './action-sheet';
 import { refreshTint, useRefreshSpinner } from './refresh-spinner';
 import { Tile, tileHeight, type TileShape } from './tile';
+import { TvPageTitle } from './tv-page-header';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 interface ItemGridProps {
@@ -36,7 +39,15 @@ interface ItemGridProps {
   renderTile?: (item: BaseItemDto, tile: { width: number; preferredFocus: boolean }) => ReactElement | null;
   /** Long press (right click on the web and the Mac app) opens the item actions. Not on TV. Default true. */
   itemMenu?: boolean;
+  /** TV Modern: the page title over the header (design system §7.22). Other looks have a header bar or none. */
+  title?: string;
+  /** TV Modern: tiles show only their art (the library root, where the art carries the name). */
+  artOnly?: boolean;
 }
+
+/** TV Modern: a page title and caption rows with 36 u between a caption and the next row. */
+const MODERN = isTV && isTvModern;
+const MODERN_ROW_GAP = u(36);
 
 /**
  * A virtualized grid of tiles (FlashList). Columns come from the width the
@@ -66,6 +77,8 @@ export function ItemGrid({
   headerless = false,
   renderTile,
   itemMenu = true,
+  title,
+  artOnly = false,
 }: ItemGridProps) {
   const l = useLayout();
   const tabBottomPad = useTabBottomPadding(spacing.huge * 2, { autoInset });
@@ -82,8 +95,10 @@ export function ItemGrid({
   const g = gridLayout(shape, width, l.tv, l.width);
   const { columns, tileWidth, gap, gutter } = g;
   // TV: room above the first row and below the last for the focus scale and ring.
-  const focusRoom = tvFocusBleed(tileHeight(shape, tileWidth)) + spacing.lg;
-  const topPad = l.tv ? focusRoom : autoInset ? spacing.xs : spacing.lg;
+  const focusRoom = tvFocusBleed(tileHeight(shape, tileWidth, !artOnly)) + spacing.lg;
+  // Modern with a title: the title line sets the top (its own margin), and the header's gap is the focus room.
+  const titled = MODERN && !!title;
+  const topPad = titled ? 0 : l.tv ? focusRoom : autoInset ? spacing.xs : spacing.lg;
   const bottomPad = l.tv ? focusRoom : tabBottomPad;
 
   const list = useRef<FlashListRef<BaseItemDto>>(null);
@@ -120,7 +135,15 @@ export function ItemGrid({
     focusedRow.current = -1;
     list.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
-  const header = l.tv && ListHeaderComponent ? <View onFocusCapture={showHeader}>{ListHeaderComponent}</View> : ListHeaderComponent;
+  const headerContent = titled ? (
+    <>
+      <TvPageTitle title={title} />
+      {ListHeaderComponent}
+    </>
+  ) : (
+    ListHeaderComponent
+  );
+  const header = l.tv && headerContent ? <View onFocusCapture={showHeader}>{headerContent}</View> : headerContent;
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = Math.round(e.nativeEvent.layout.width);
@@ -132,7 +155,7 @@ export function ItemGrid({
       // Equal gaps: each cell gives up the same share of the gaps.
       <View
         style={{
-          marginBottom: gap + spacing.sm,
+          marginBottom: MODERN ? (artOnly ? gap : MODERN_ROW_GAP) : gap + spacing.sm,
           paddingLeft: ((index % columns) * gap) / columns,
           paddingRight: ((columns - 1 - (index % columns)) * gap) / columns,
         }}>
@@ -146,11 +169,12 @@ export function ItemGrid({
             preferredFocus={l.tv && focusFirstTile && index === 0}
             index={index}
             onFocusItem={l.tv ? onTileFocus : undefined}
+            artOnly={artOnly || undefined}
           />
         )}
       </View>
     ),
-    [columns, gap, tileWidth, shape, open, longPress, l.tv, onTileFocus, focusFirstTile, renderTile],
+    [columns, gap, tileWidth, shape, open, longPress, l.tv, onTileFocus, focusFirstTile, renderTile, artOnly],
   );
 
   return (

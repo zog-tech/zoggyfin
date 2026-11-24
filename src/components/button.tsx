@@ -1,28 +1,18 @@
-import { ActivityIndicator, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { type ReactElement, type ReactNode, useContext } from 'react';
+import { ActivityIndicator, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 
-import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
+import { PlateIcon, TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, dark, font, iconSize, radius, scaled, sizes, spacing, tvFont, tvm, type, u, useStyles, useTheme } from '@/theme';
 
 import { Icon, type IconName } from './icon';
-import { Touchable } from './touchable';
+import { TouchFocusMark, Touchable } from './touchable';
 
 export type ButtonVariant = 'primary' | 'tonal' | 'tonalAccent' | 'small' | 'smallTonal' | 'text';
 
-/**
- * Buttons (design system §7.17). Primary: 50 pt, `accent` fill, `onAccent`
- * text. Tonal: `surface2` fill. Small: 32 pt pill. Text: no fill, `accent`.
- */
-export function Button({
-  title,
-  onPress,
-  variant = 'primary',
-  icon,
-  loading,
-  disabled,
-  style,
-  containerStyle,
-  accessibilityLabel,
-  preferredFocus,
-}: {
+export interface ButtonProps {
   title: string;
   onPress: () => void;
   variant?: ButtonVariant;
@@ -33,7 +23,29 @@ export function Button({
   containerStyle?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
   preferredFocus?: boolean;
-}) {
+}
+
+/**
+ * Buttons (design system §7.17). Primary: 50 pt, `accent` fill, `onAccent`
+ * text. Tonal: `surface2` fill. Small: 32 pt pill. Text: no fill, `accent`.
+ * TV Modern (§7.22) has no pill and no grey container: `primary` and
+ * `small` draw the primary action (an Ember rectangle), every other variant
+ * a text action (glyph and label, no container); both show the focus plate.
+ */
+export const Button: (props: ButtonProps) => ReactElement = isTV && isTvModern ? ModernButton : ClassicButton;
+
+function ClassicButton({
+  title,
+  onPress,
+  variant = 'primary',
+  icon,
+  loading,
+  disabled,
+  style,
+  containerStyle,
+  accessibilityLabel,
+  preferredFocus,
+}: ButtonProps) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const small = variant === 'small' || variant === 'smallTonal';
@@ -93,3 +105,76 @@ const makeStyles = createStyles((_: AppTheme) => ({
   labelSmall: { ...font(type.subheadline), fontWeight: '600' as const },
   labelText: font(type.body),
 }));
+
+// ---------------------------------------------------------------------------
+// TV Modern look: the primary action and the text action of §2.3 of the redesign.
+// ---------------------------------------------------------------------------
+
+const C = dark;
+const ACTION_ICON = u(tvm.size.actionIcon);
+
+function ModernButton({ title, onPress, variant = 'primary', icon, loading, disabled, style, containerStyle, accessibilityLabel, preferredFocus }: ButtonProps) {
+  const primary = variant === 'primary' || variant === 'small';
+  const rest = primary ? C.onAccent : C.text;
+  return (
+    <Touchable
+      kind="plain"
+      ring={false}
+      onPress={onPress}
+      disabled={disabled || loading}
+      hasTVPreferredFocus={preferredFocus}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
+      containerStyle={[m.container, containerStyle]}>
+      <ModernBox primary={primary} style={style}>
+        {loading ? (
+          <ActivityIndicator color={rest} />
+        ) : (
+          <>
+            {icon ? <PlateIcon name={icon} size={ACTION_ICON} rest={rest} /> : null}
+            <TvPlateText style={primary ? m.primaryLabel : m.label} rest={rest}>
+              {title}
+            </TvPlateText>
+          </>
+        )}
+      </ModernBox>
+    </Touchable>
+  );
+}
+
+/** The box of an action: an Ember fill at rest (primary) or nothing (text), the white plate with the focus, scale 1.04. */
+function ModernBox({ primary, style, children }: { primary: boolean; style?: StyleProp<ViewStyle>; children: ReactNode }) {
+  const mark = useContext(TouchFocusMark);
+  const reduced = useReducedMotion();
+  const box = useAnimatedStyle(() => {
+    const f = mark ? mark.get() : 0;
+    return {
+      transform: [{ scale: reduced ? 1 : 1 + (tvm.size.actionFocusScale - 1) * f }],
+      ...(primary ? { backgroundColor: interpolateColor(f, [0, 1], [C.accent, tvm.color.plate]) } : null),
+    };
+  });
+  return (
+    <Animated.View style={[m.box, primary ? m.primary : m.text, style, box]}>
+      {primary ? null : <TvFocusPlate />}
+      {children}
+    </Animated.View>
+  );
+}
+
+const m = StyleSheet.create({
+  /** An action is as wide as its label: it never stretches across its row. */
+  container: { alignSelf: 'flex-start' },
+  box: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: u(14),
+    height: u(tvm.size.actionHeight),
+    borderRadius: u(tvm.size.plateRadius),
+  },
+  primary: { paddingHorizontal: u(tvm.size.primaryPadX) },
+  text: { paddingHorizontal: u(tvm.size.actionPadX) },
+  primaryLabel: { ...tvFont(tvm.type.action), fontWeight: '700' },
+  label: { ...tvFont(tvm.type.action) },
+});

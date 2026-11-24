@@ -1,4 +1,4 @@
-import { canAddToPlaylist, fits, moveEntry, playlistMediaFor, playlistName, removeEntries, rollbackTo, sheetOrder, touchRecent } from '../logic';
+import { canAddToPlaylist, entryKeys, fits, moveEntry, playlistMediaFor, playlistName, removeEntries, rollbackTo, sheetOrder, touchRecent } from '../logic';
 
 describe('playlist media', () => {
   it('sends audio to audio playlists and video to video playlists', () => {
@@ -77,5 +77,21 @@ describe('rollbackTo', () => {
     const first = moveEntry(before, 0, 2);
     const second = moveEntry(first, 0, 1);
     expect(rollbackTo(second, first, before)).toBeNull();
+  });
+});
+
+describe('entryKeys', () => {
+  it('keeps the keys apart when the same song is in the playlist twice', () => {
+    const keys = entryKeys([
+      { Id: 'a', PlaylistItemId: 'a' },
+      { Id: 'b', PlaylistItemId: 'b' },
+      { Id: 'a', PlaylistItemId: 'a' },
+    ]);
+    expect(new Set(keys).size).toBe(3);
+    expect(keys).toEqual(['a#0', 'b#0', 'a#1']);
+  });
+
+  it('falls back to the item id and then the index', () => {
+    expect(entryKeys([{ Id: 'x' }, {}])).toEqual(['x#0', 'index-1#0']);
   });
 });

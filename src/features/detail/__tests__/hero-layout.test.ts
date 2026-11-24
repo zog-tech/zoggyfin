@@ -1,4 +1,4 @@
-import { fitRoundActions, heroHeight, heroLayout, solidHeaderAfter } from '../hero-layout';
+import { fitRoundActions, fitTvActions, heroHeight, heroLayout, solidHeaderAfter } from '../hero-layout';
 
 describe('heroLayout', () => {
   it('uses the wide hero for a video with only a wide primary image', () => {
@@ -58,5 +58,24 @@ describe('solidHeaderAfter', () => {
   });
   it('gives a page with no hero the solid bar once content moves under it', () => {
     expect(solidHeaderAfter(false, 0, 60)).toBe(1);
+  });
+});
+
+describe('fitTvActions', () => {
+  it('keeps every action while they fit', () => {
+    expect(fitTvActions([100, 100, 100], [false, true, true], 330, 10)).toEqual({ shown: [0, 1, 2], hidden: [] });
+  });
+  it('keeps every action until each width is measured', () => {
+    expect(fitTvActions([100, null, 100], [false, true, true], 50, 10)).toEqual({ shown: [0, 1, 2], hidden: [] });
+    expect(fitTvActions([100, 100], [false, false], 0, 10)).toEqual({ shown: [0, 1], hidden: [] });
+  });
+  it('moves the spare actions out first, last first', () => {
+    // Shuffle, Favourite (spare), Reorder, Rename (spare): Rename goes, then Favourite.
+    expect(fitTvActions([200, 240, 220, 210], [false, true, false, true], 700, 8)).toEqual({ shown: [0, 1, 2], hidden: [3] });
+    expect(fitTvActions([200, 240, 220, 210], [false, true, false, true], 460, 8)).toEqual({ shown: [0, 2], hidden: [1, 3] });
+  });
+  it('then moves the other actions out, last first', () => {
+    expect(fitTvActions([200, 240, 220, 210], [false, true, false, true], 250, 8)).toEqual({ shown: [0], hidden: [1, 2, 3] });
+    expect(fitTvActions([200, 240], [false, false], 100, 8)).toEqual({ shown: [], hidden: [0, 1] });
   });
 });

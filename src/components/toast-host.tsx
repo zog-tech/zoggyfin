@@ -1,12 +1,12 @@
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Platform, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeOut, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { Glass } from '@/features/player/glass';
-import { focusActivePage, focusView } from '@/features/tv/focus';
+import { focusActivePage, focusView, textFieldFocused } from '@/features/tv/focus';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { isNativeTV, isTV } from '@/platform/tv';
 import { toastDuration, toastLook, toastTakesFocus, useToastStore } from '@/lib/toast';
@@ -69,7 +69,7 @@ export function ToastHost({ overlay = false, offset = 0 }: { overlay?: boolean; 
 
   // TV: the action takes the focus when the toast shows.
   useEffect(() => {
-    if (!current || !tvFocus || !toastTakesFocus(current, isNativeTV, !!TextInput.State.currentlyFocusedInput())) return;
+    if (!current || !tvFocus || !toastTakesFocus(current, isNativeTV, textFieldFocused())) return;
     const t = setTimeout(() => focusView(actionRef.current), 50);
     return () => clearTimeout(t);
   }, [current, tvFocus]);

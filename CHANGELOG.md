@@ -13,6 +13,14 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **A new TV look (Modern).** TVs get a second design: tiles with a white ring and no caption
+  strip, flat text actions with one white focus rectangle instead of grey pills, an Ember primary
+  action and a soft fill on focused rows. Home and the movie and show pages run their art full
+  screen under a bare side menu; library grids, Search, Music and Settings get a page title and a
+  one-line text toolbar. Action rows and toolbars never wrap: extra actions go behind More, and a
+  long toolbar scrolls. The video and music players have flat controls. Settings, Appearance,
+  "TV look" chooses Auto, Modern or Classic (the design of before); the change applies after a
+  restart. Auto keeps Classic on Fire TV and in Lite mode.
 - **TV: hold to seek.** In the video player, hold Left or Right (or rewind or fast forward) on the
   remote to rewind or fast forward. The longer you hold, the faster it goes: 10×, then 30×, 60×,
   120× and 240× (4 minutes of video a second), one step a second, up to the top speed in Settings,
@@ -350,6 +358,8 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- A playlist that holds the same song twice shows each entry as its own row. The rows shared one
+  key, so a row could show the wrong entry after a change.
 - TV (Android): on a show's page, Up after scrolling down to the episodes, the cast or More like
   this did not come back to the season chips and the show's banner with Play, and on a season page
   not to the rows above. The page list took the parts that scrolled out of view off the screen,

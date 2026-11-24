@@ -8,8 +8,9 @@ import { Dimensions, type ImageStyle, Platform, StyleSheet, type TextStyle, type
 
 import { useLayoutSize } from '@/lib/use-window-frame';
 import { isTV } from '@/platform/tv';
+import { tvLook } from '@/platform/tv-look-now';
 
-import { layoutFor, type LayoutInfo, tv, tvScale } from './layout';
+import { gridLayout as gridLayoutFor, layoutFor, type LayoutInfo, tv, tvFocusBleed as focusBleedFor, tvScale } from './layout';
 import { useSidebarInset } from './sidebar-inset';
 import {
   arabicLineHeightFactor,
@@ -22,11 +23,30 @@ import {
   light as lightTokens,
   type Shadow,
   textDirection,
+  type TileKind,
   type TypeToken,
+  type GridResult,
 } from './theme';
 
 export * from './theme';
-export { gridLayout, layoutFor, type LayoutInfo, type SafeInset, tv, tvFocusBleed, tvPageEndPadding, tvRowInset, tvSafeInset, tvScale } from './layout';
+export { layoutFor, type LayoutInfo, type LayoutLook, type SafeInset, tv, tvPageEndPadding, tvRowInset, tvSafeInset, tvScale } from './layout';
+export { tvFont, type TvTypeToken, tvm, u } from './tv-modern';
+
+/** The TV screen scale, read once (the TV window never changes size). */
+const SCREEN_SCALE = tvScale(Dimensions.get('window').width);
+
+/**
+ * Grid columns and tile width (layout.ts `gridLayout`) in the running TV look
+ * (platform/tv-look-now.ts). Off TV the look is always Classic.
+ */
+export function gridLayout(kind: TileKind, contentWidth: number, isTv = false, screenWidth = contentWidth): GridResult {
+  return gridLayoutFor(kind, contentWidth, isTv, screenWidth, tvLook);
+}
+
+/** The room a focused TV tile needs on each side (layout.ts `tvFocusBleed`), in the running TV look. */
+export function tvFocusBleed(size: number): number {
+  return focusBleedFor(size, tvLook, SCREEN_SCALE);
+}
 
 // ---------------------------------------------------------------------------
 // Active scheme
@@ -127,7 +147,8 @@ export function scriptStyle(text: string | null | undefined, base: TextStyle, st
 // ---------------------------------------------------------------------------
 
 /**
- * Window layout: breakpoint, gutter, tile sizes. TV gets the 10-foot sizes.
+ * Window layout: breakpoint, gutter, tile sizes. TV gets the 10-foot sizes of
+ * its look (Modern: the gaps and row tiles of `tvModern.size`).
  * The size changes in the same render as the safe-area insets on a rotation
  * (`useLayoutSize`), so a page turns once instead of jumping twice.
  */
@@ -135,7 +156,7 @@ export function useLayout(): LayoutInfo & { width: number; height: number; fontS
   const { width, height, fontScale } = useLayoutSize();
   const sidebar = useSidebarInset();
   return useMemo(
-    () => ({ ...layoutFor(width, isTV ? { tv: true } : { sidebar }), width, height, fontScale }),
+    () => ({ ...layoutFor(width, isTV ? { tv: true, look: tvLook } : { sidebar }), width, height, fontScale }),
     [width, height, fontScale, sidebar],
   );
 }

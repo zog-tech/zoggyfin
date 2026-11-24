@@ -15,10 +15,25 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { type FocusTarget, TvFocusGuide } from '@/features/tv/focus';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { usePlayerStore } from '@/player/store';
+import { tvFont, tvm, u, webPressable } from '@/theme';
 import { type Chapter, chapterAt, chapterMarks, formatTime, spokenTime, type Trickplay, trickplaySheetUrl, trickplayTile } from '@/player/timeline';
 
-import { c, motion, player, spacing, textStyle, type } from './tokens';
+import { c, motion, player, playerTvModern, spacing, textStyle, type } from './tokens';
+
+/**
+ * TV Modern look (spec 2.8): track 8 u (12 u with the focus); the thumb is a
+ * white bar 8 x 28 u that shows only with the focus; played white, buffered
+ * white 40 %, the rest white 22 %. Classic keeps the 6 pt track and the knob.
+ */
+const MODERN = isTV && isTvModern;
+const M = playerTvModern;
+const TRACK = MODERN ? u(M.track) : player.track;
+const TRACK_ACTIVE = MODERN ? u(M.trackActive) : player.trackActive;
+const THUMB_W = MODERN ? u(M.thumbWidth) : player.thumb;
+const HIT = MODERN ? u(M.hitHeight) : player.scrubberHitHeight;
+const PREVIEW_W = MODERN ? u(M.preview.width) : player.preview.width;
 
 interface Props {
   position: number;
@@ -176,13 +191,16 @@ export function Scrubber({
   );
 
   const trackStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleY: 1 + dragging.get() * (player.trackActive / player.track - 1) }],
+    transform: [{ scaleY: 1 + dragging.get() * (TRACK_ACTIVE / TRACK - 1) }],
   }));
   const playedStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.get() - 1) * w.get() }] }));
   const bufferedStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (bufferedP.get() - 1) * w.get() }] }));
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.get() * w.get() - player.thumb / 2 }, { scale: 1 + dragging.get() * 0.15 }],
-  }));
+  const thumbStyle = useAnimatedStyle(() =>
+    MODERN
+      ? // Modern: the bar thumb shows with the focus only, and does not grow.
+        { opacity: dragging.get(), transform: [{ translateX: progress.get() * w.get() - THUMB_W / 2 }] }
+      : { transform: [{ translateX: progress.get() * w.get() - player.thumb / 2 }, { scale: 1 + dragging.get() * 0.15 }] },
+  );
 
   const value = `${spokenTime(position)} of ${spokenTime(duration)}`;
   const shownPreview = preview ?? tvTarget;
@@ -196,7 +214,7 @@ export function Scrubber({
           <View key={m} style={[styles.mark, { left: m * width - player.chapterGap / 2 }]} />
         ))}
       </Animated.View>
-      <Animated.View style={[styles.thumb, tvFocused && styles.thumbFocused, thumbStyle]} />
+      <Animated.View style={[styles.thumb, !MODERN && tvFocused && styles.thumbFocused, thumbStyle]} />
     </>
   );
 
@@ -222,7 +240,7 @@ export function Scrubber({
           ref={tvRef}
           focusable
           hasTVPreferredFocus={tvPreferredFocus}
-          style={styles.hit}
+          style={MODERN ? [styles.hit, webPressable] : styles.hit}
           onLayout={onLayout}
           accessibilityRole="adjustable"
           accessibilityLabel="Playback position"
@@ -281,9 +299,9 @@ function Preview({
   itemId: string;
   mediaSourceId: string;
 }) {
-  const pw = player.preview.width;
+  const pw = PREVIEW_W;
   const ph = trickplay ? Math.round((pw * trickplay.height) / trickplay.width) : 0;
-  const boxWidth = trickplay ? pw : 96;
+  const boxWidth = trickplay ? pw : MODERN ? u(160) : 96;
   // The track is inset by the gutter already; keep the box inside the window gutters.
   const left = Math.min(Math.max(fraction * trackWidth - boxWidth / 2, -gutter + spacing.sm), trackWidth - boxWidth + gutter - spacing.sm);
   const tile = trickplay ? trickplayTile(trickplay, seconds) : null;
@@ -318,7 +336,7 @@ function Preview({
   );
 }
 
-const styles = StyleSheet.create({
+const classicStyles = StyleSheet.create({
   wrap: { width: '100%' },
   hit: { height: player.scrubberHitHeight, justifyContent: 'center' },
   track: {
@@ -361,3 +379,18 @@ const styles = StyleSheet.create({
   timeBubble: { backgroundColor: c.glassFallback, borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs },
   previewTime: { ...textStyle(type.mono), color: c.textOnMedia, fontVariant: ['tabular-nums'] },
 });
+
+/** Modern TV: the keys that differ from Classic (no shadow on TV, no pill bubble). */
+const modernStyles = StyleSheet.create({
+  hit: { height: HIT, justifyContent: 'center' },
+  track: { height: TRACK, borderRadius: TRACK / 2, backgroundColor: M.trackColor, overflow: 'hidden' },
+  buffered: { backgroundColor: M.bufferedColor },
+  thumb: { position: 'absolute', left: 0, width: THUMB_W, height: u(M.thumbHeight), borderRadius: u(M.thumbRadius), backgroundColor: player.playedColor },
+  preview: { position: 'absolute', bottom: HIT + u(8), alignItems: 'center', gap: u(8) },
+  thumbBox: { borderRadius: u(M.preview.radius), borderWidth: u(M.preview.border), borderColor: c.textOnMedia, overflow: 'hidden', backgroundColor: c.surface },
+  previewChapter: { ...tvFont(tvm.type.tileMeta), color: c.textOnMediaSecondary, maxWidth: PREVIEW_W },
+  timeBubble: { backgroundColor: c.glassFallback, borderRadius: u(M.boxRadius), paddingHorizontal: u(12), paddingVertical: u(4) },
+  previewTime: { ...tvFont(tvm.type.meta, { tabular: true }), color: c.textOnMedia },
+});
+
+const styles = MODERN ? { ...classicStyles, ...modernStyles } : classicStyles;

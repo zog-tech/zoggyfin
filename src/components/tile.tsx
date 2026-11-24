@@ -10,6 +10,7 @@ import { useDownloadStatus } from '@/downloads';
 import { tvFocusRest } from '@/features/tv/focus-settle';
 import { playedFraction, remainingLabel, subtitleFor } from '@/lib/format';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { savedName } from '@/player/audio/catalog';
 import { useSavedId } from '@/player/audio/catalog-links';
 import { useSongMark } from '@/player/use-song-mark';
@@ -27,11 +28,15 @@ import { createStyles,
   useStyles,
   tv,
   tvFocusBleed,
+  tvFont,
+  tvm,
+  u,
   useTheme,
+  withAlpha,
 } from '@/theme';
 
 import { ItemImage } from './item-image';
-import { TileCaption, TileFocusFill, TV_CAPTION_PAD } from './tile-caption';
+import { TileCaption, TileFocusFill, TV_CAPTION_PAD, TvArtRing, tvModernCaptionHeight } from './tile-caption';
 import { SHAPES, shapeFor, type TileShape } from './tile-shape';
 import { Touchable, type TouchState } from './touchable';
 
@@ -51,6 +56,8 @@ export interface TileProps {
   titleOnArt?: boolean;
   /** TV: take the first focus on the screen. */
   preferredFocus?: boolean;
+  /** Only the artwork, no title under it (TV Modern: the library root, where the server art carries the name). */
+  artOnly?: boolean;
   /**
    * The tile took the focus (TV). Pass a stable function: the tile is a memo.
    * Work for `tvFocusRest` must use the item Id (or the item when it has none) as its key: the tile drops it on blur.
@@ -60,7 +67,11 @@ export interface TileProps {
   index?: number;
 }
 
+/** TV Modern (design system §7.22): one tile radius, a ring of 4 u with a 4 u gap, scale 1.08. */
+const MODERN = isTV && isTvModern;
+
 function radiusFor(shape: TileShape): number {
+  if (MODERN) return u(tvm.size.tileRadius);
   return shape === 'square' ? radius.sm : radius.md;
 }
 
@@ -69,7 +80,8 @@ function radiusFor(shape: TileShape): number {
  * metadata, a white progress bar on the art, at most one badge. Flat at rest;
  * it lifts with the `raised` shadow only on hover and focus. On TV a focused
  * tile with a caption lights its caption strip instead of the ring
- * (`tile-caption.tsx`).
+ * (`tile-caption.tsx`); in the TV Modern look it gets the ring on its art
+ * (`TvArtRing`) and its caption turns white.
  */
 export const Tile = memo(function Tile({
   item,
@@ -82,6 +94,7 @@ export const Tile = memo(function Tile({
   showProgress = true,
   titleOnArt = false,
   preferredFocus,
+  artOnly = false,
   onFocusItem,
   index = 0,
 }: TileProps) {
@@ -108,7 +121,7 @@ export const Tile = memo(function Tile({
   const download = useDownloadStatus(item.Id);
 
   // TV: a tile with a caption shows the focus as the lit caption strip, not a ring (design system §7.19).
-  const captioned = !titleOnArt;
+  const captioned = !titleOnArt && !artOnly;
   const label = [titleText, sub, mark === 'loading' ? 'loading' : mark === 'playing' ? 'playing' : null, progress !== null ? left : null, played ? 'played' : null, downloadLabel(download)].filter(Boolean).join(', ');
 
   return (
@@ -171,7 +184,9 @@ export const Tile = memo(function Tile({
           ) : progress !== null ? (
             <Progress fraction={progress} />
           ) : null}
-          {mark !== 'none' ? (
+          {MODERN && (mark !== 'none' || (download.state === 'none' && (played || unplayed > 0))) ? (
+            <BareMark glyph={mark === 'none' ? (played ? 'checkmark' : null) : mark === 'loading' ? null : 'waveform'} count={mark === 'none' && !played ? unplayed : 0} busy={mark === 'loading'} radius={r} />
+          ) : mark !== 'none' ? (
             // One badge per tile: the playing song first, then the download state.
             <View style={s.badge}>
               {mark === 'loading' ? (
@@ -191,19 +206,25 @@ export const Tile = memo(function Tile({
               <Text style={s.count}>{unplayed}</Text>
             </View>
           ) : null}
-          {circle ? <CircleFocus radius={r} pressed={pressed} hovered={hovered} focused={focused} /> : null}
+          {circle ? <CircleFocus radius={r} pressed={pressed} hovered={hovered} focused={focused} /> : captioned ? <TvArtRing radius={r} /> : null}
         </View>
         {captioned && !circle ? (
           <TileCaption title={titleText} sub={sub} lines={lines} />
         ) : captioned ? (
           <>
             <Text
-              style={[s.title, s.center, isTV && { marginTop: tvFocusBleed(width) }, isTV && !focused && s.dim, scriptStyle(titleText, s.center)]}
+              style={[
+                MODERN ? [s.modernTitle, focused && s.modernLit] : s.title,
+                s.center,
+                isTV && { marginTop: tvFocusBleed(width) },
+                isTV && !focused && !MODERN && s.dim,
+                scriptStyle(titleText, s.center),
+              ]}
               numberOfLines={lines}>
               {titleText}
             </Text>
             {sub ? (
-              <Text style={[s.meta, s.center, focused && s.metaFocused, scriptStyle(sub, s.center)]} numberOfLines={1}>
+              <Text style={[MODERN ? [s.modernMeta, focused && s.modernMetaLit] : [s.meta, focused && s.metaFocused], s.center, scriptStyle(sub, s.center)]} numberOfLines={1}>
                 {sub}
               </Text>
             ) : null}
@@ -219,7 +240,7 @@ const REST: TouchState = { pressed: false, hovered: false, focused: false };
 
 /** A round tile's art: TV grows it on focus; elsewhere it lifts a little on hover and focus. */
 function circleArt(focused: boolean, hovered: boolean) {
-  if (focused && isTV) return { transform: [{ scale: tv.focusScale }] };
+  if (focused && isTV) return { transform: [{ scale: MODERN ? tvm.size.focusScale : tv.focusScale }] };
   if (focused || hovered) return { transform: [{ scale: motion.press.hoverScale }] };
   return undefined;
 }
@@ -227,8 +248,8 @@ function circleArt(focused: boolean, hovered: boolean) {
 /** The press and hover overlay and the focus ring of a round tile, on the circle only. */
 function CircleFocus({ radius: r, pressed, hovered, focused }: { radius: number; pressed: boolean; hovered: boolean; focused: boolean }) {
   const { c } = useTheme();
-  const ringW = isTV ? tv.focusRingWidth : 2;
-  const gap = isTV ? tv.focusRingGap : 2;
+  const ringW = MODERN ? u(tvm.size.ringWidth) : isTV ? tv.focusRingWidth : 2;
+  const gap = MODERN ? u(tvm.size.ringGap) : isTV ? tv.focusRingGap : 2;
   return (
     <>
       <View
@@ -258,6 +279,38 @@ function CircleFocus({ radius: r, pressed, hovered, focused }: { radius: number;
   );
 }
 
+/**
+ * TV Modern: the one mark of a tile (playing, played, unplayed count) with
+ * no box (the owner's rule: no boxed badges): a white glyph or number on a
+ * soft dark fade from the top-right corner of the art, so it reads on bright
+ * art too. The fade reaches zero before the box's left and bottom edges, so
+ * it has no hard edge; the corner follows the tile's radius.
+ */
+function BareMark({ glyph, count, busy, radius: r }: { glyph: 'checkmark' | 'waveform' | null; count: number; busy: boolean; radius: number }) {
+  return (
+    <View pointerEvents="none" style={[bare.corner, { borderTopRightRadius: r }]}>
+      <LinearGradient colors={BARE_FADE} locations={[0, 0.55, 1]} start={{ x: 1, y: 0 }} end={{ x: 0.5, y: 0.5 }} style={StyleSheet.absoluteFill} />
+      <View style={bare.slot}>
+        {busy ? (
+          <ActivityIndicator size="small" color={mediaColors.white} />
+        ) : glyph ? (
+          <Icon name={glyph} size={BARE_GLYPH} color={mediaColors.white} weight="bold" />
+        ) : count > 0 ? (
+          <Text style={bare.count}>{count}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const BARE_GLYPH = u(30);
+const BARE_FADE = [withAlpha(mediaColors.black, 0.6), withAlpha(mediaColors.black, 0.28), withAlpha(mediaColors.black, 0)] as const;
+const bare = StyleSheet.create({
+  corner: { position: 'absolute', top: 0, right: 0, width: u(132), height: u(132), overflow: 'hidden' },
+  slot: { position: 'absolute', top: u(16), right: u(16), minWidth: BARE_GLYPH, height: BARE_GLYPH, alignItems: 'center', justifyContent: 'center' },
+  count: { ...tvFont(tvm.type.toolbar, { tabular: true }), fontWeight: '700', color: mediaColors.white },
+});
+
 function Progress({ fraction, inline }: { fraction: number; inline?: boolean }) {
   const s = useStyles(makeStyles);
   return (
@@ -275,6 +328,7 @@ export function tileAspect(shape: TileShape): number {
 export function tileHeight(shape: TileShape, width: number, withText = true): number {
   const art = width / SHAPES[shape].aspect;
   if (!withText) return art;
+  if (MODERN) return art + tvModernCaptionHeight();
   return art + sizes.tileTitleGap + scaled(type.tileTitle.lineHeight) + sizes.tileMetaGap + scaled(type.caption1.lineHeight) + TV_CAPTION_PAD;
 }
 
@@ -284,6 +338,10 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   center: { textAlign: 'center' as const },
   dim: { color: c.text2 },
   metaFocused: { color: c.text },
+  modernTitle: { ...tvFont(tvm.type.tileTitle), color: tvm.color.captionRest },
+  modernLit: { color: c.text },
+  modernMeta: { ...tvFont(tvm.type.tileMeta), color: c.text3, marginTop: u(2) },
+  modernMetaLit: { color: c.text2 },
   artText: { overflow: 'hidden' as const, justifyContent: 'flex-end' as const, padding: scaled(sizes.progressInset) },
   onArtTitle: { ...font(type.tileTitle), fontSize: scaled(15), color: c.textOnMedia },
   onArtMeta: { ...font(type.caption1), color: c.textOnMediaSecondary, marginTop: sizes.tileMetaGap },

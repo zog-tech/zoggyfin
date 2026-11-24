@@ -142,6 +142,99 @@ export const tvCaption = {
   focusText2: '#62626B', // 6.04:1 on focusFill
 } as const;
 
+/**
+ * TV, Modern look (design system §7.22). Sizes are TV design units on a
+ * 1920-wide screen: scale them with tvScale() (`u()` in src/theme/tv-modern.ts).
+ * TV is always dark. The Classic look keeps `tvCaption` and the `tv` sizes.
+ */
+export const tvModern = {
+  color: {
+    /** The focus plate: the fill behind a focused action, toolbar item, tab, rail entry or transport glyph. */
+    plate: '#FFFFFF',
+    /** Text and icons on the plate. About 19.6:1. */
+    plateText: '#0B0B0E',
+    /** The quiet label of a toolbar item on the plate ("Sort" in "Sort  Name"). About 6:1 on the plate. */
+    plateText2: 'rgba(11,11,14,0.62)',
+    /** The fill of a focused list row. */
+    rowFocus: 'rgba(255,255,255,0.14)',
+    /** The focus ring of art. */
+    ring: '#FFFFFF',
+    /** Facts and overview on a faded backdrop. */
+    onArt: 'rgba(255,255,255,0.86)',
+    /** A tile title at rest; it turns to `text` on focus. About 12:1 on bg. */
+    captionRest: 'rgba(245,245,247,0.82)',
+  },
+  /** fontSize, lineHeight, fontWeight, letterSpacing. No type scale on top: these are final sizes at 1920. */
+  type: {
+    hero: { fontSize: 76, lineHeight: 84, fontWeight: '800', letterSpacing: -1 },
+    pageTitle: { fontSize: 56, lineHeight: 64, fontWeight: '700', letterSpacing: -0.5 },
+    playerTitle: { fontSize: 44, lineHeight: 52, fontWeight: '700', letterSpacing: -0.4 },
+    menu: { fontSize: 34, lineHeight: 40, fontWeight: '500', letterSpacing: -0.3 },
+    rowTitle: { fontSize: 32, lineHeight: 40, fontWeight: '600', letterSpacing: -0.3 },
+    /** Actions and tabs. The primary action uses weight 700. */
+    action: { fontSize: 30, lineHeight: 36, fontWeight: '600', letterSpacing: -0.3 },
+    /** Toolbar items: the label in weight 500, the value in weight 600. */
+    toolbar: { fontSize: 26, lineHeight: 32, fontWeight: '600', letterSpacing: 0 },
+    body: { fontSize: 28, lineHeight: 40, fontWeight: '400', letterSpacing: 0 },
+    meta: { fontSize: 26, lineHeight: 34, fontWeight: '500', letterSpacing: 0 },
+    tileTitle: { fontSize: 26, lineHeight: 32, fontWeight: '600', letterSpacing: 0 },
+    tileMeta: { fontSize: 22, lineHeight: 28, fontWeight: '400', letterSpacing: 0 },
+    /** Upper case. */
+    eyebrow: { fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: 2 },
+  },
+  size: {
+    /** The rail keeps the Classic width, so the content edge does not move. */
+    rail: 128,
+    railX: 34,
+    railItem: 60,
+    railItemGap: 16,
+    railIcon: 34,
+    railScrimWidth: 240,
+    menuWidth: 460,
+    menuScrimWidth: 1100,
+    menuItemHeight: 68,
+    menuItemGap: 8,
+    gutter: 56,
+    tileGap: 28,
+    sectionGap: 44,
+    rowTitleGap: 24,
+    rowTileWidth: { poster: 216, thumb: 380, square: 240, circle: 176 },
+    gridMinTile: { poster: 216, thumb: 380, square: 240, circle: 176 },
+    episodeTile: 400,
+    tileRadius: 16,
+    focusScale: 1.08,
+    ringWidth: 4,
+    ringGap: 4,
+    /** The focus plate and the primary action. */
+    plateRadius: 8,
+    actionHeight: 68,
+    /** Side padding of a text action; the primary action uses primaryPadX. */
+    actionPadX: 24,
+    primaryPadX: 32,
+    actionIcon: 28,
+    /** Between two actions. With the paddings, the labels are 56 u apart. */
+    actionGap: 8,
+    actionFocusScale: 1.04,
+    toolbarItemHeight: 56,
+    toolbarPadX: 20,
+    toolbarGap: 8,
+    /** The underline of the selected tab, and its distance under the text box. */
+    underline: 4,
+    underlineGap: 10,
+    /** The Ember mark of the current rail entry (width x height). */
+    railMark: { width: 4, height: 28 },
+    heroTextWidth: 880,
+    /** Home: the billboard box takes this share of the screen height. */
+    billboardFactor: 0.52,
+    /** Home: the backdrop takes this share of the screen height, from the top. */
+    billboardArtFactor: 0.75,
+    listRowHeight: 88,
+    listRowRadius: 16,
+  },
+  /** Durations in ms. Easing: motion.easing.standard. */
+  motion: { focus: 180, blur: 140, menuOpen: 220, menuClose: 180, backdrop: 400, text: 240 },
+} as const;
+
 // ---------------------------------------------------------------------------
 // Spacing, radius, layout
 // ---------------------------------------------------------------------------

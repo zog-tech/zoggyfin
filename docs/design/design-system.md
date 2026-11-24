@@ -580,13 +580,15 @@ Disabled: 40 % opacity, `accessibilityState={{ disabled: true }}`, no press feed
 
 ### 7.19 TV focus
 
+This section is the **Classic** TV look. The Modern look is in §7.22.
+
 A focused control on TV shows **one** focus mark, never two (a ring around a fill reads as two
 things in focus). `Touchable` applies the mark from its `kind`, so screens do not draw their own.
 
 | Control | `kind` | TV focus mark |
 |---|---|---|
-| Tile with no caption (art only, title on the art) | `tile` | White 3-pt ring with a 3-pt gap, and the focus scale (1.1). No shadow |
-| Tile with a caption under the art (grids, detail rows, Live TV and film tiles) | `tile`, no ring | The caption strip turns light at once (`tvCaption.focusFill`, text `focusText` and `focusText2`), joined to the art, and the focus scale (1.1). No ring, no fade. Unfocused captions keep `text` and `text2` |
+| Tile with no caption (art only, title on the art) | `tile` | White 3-pt ring with a 3-pt gap, and the focus scale (1.06). No shadow |
+| Tile with a caption under the art (grids, detail rows, Live TV and film tiles) | `tile`, no ring | The caption strip turns light at once (`tvCaption.focusFill`, text `focusText` and `focusText2`), joined to the art, and the focus scale (1.06). No ring, no fade. Unfocused captions keep `text` and `text2` |
 | Round tile (person, artist) | `plain`, ring on the circle | The same ring and scale, on the circle only |
 | Button, chip, icon button, round detail button | `button`, `icon` | White ring and the focus scale |
 | Row and list item (Settings, sheets, Live TV groups and channels, search results, admin) | `row` | `tvRowFocus` fill (white 22 %) under the content. No ring, no scale. The text keeps its colours |
@@ -674,6 +676,82 @@ TV first (TiviMate style), then the same parts in other windows.
   - **Channel list:** the focused row's channel shows in the same card above the list, from the
     guide. No preview opens a second stream (providers often allow one connection). "Search
     channels" at the top stops the stream and opens the Live TV search.
+
+### 7.22 TV Modern look
+
+TV has two looks. **Classic** is §7.19 to §7.21. **Modern** is the redesign: cinematic, content
+first, calm. The art fills the screen, the interface is white type on dark fades, one accent
+(Ember), and one focus language. Its tokens are `tvModern` in `theme.ts`; sizes are TV units on a
+1920-wide screen (`u()` in `src/theme/tv-modern.ts`; 1 u is 0.5 dp on a 960 dp Android TV).
+
+**The switch** (`src/platform/tv-look.ts`, pure; `tv-look-now.ts` reads it once at start):
+
+- Settings, Appearance, "TV look" on TV: Auto, Modern or Classic. Saved on the device
+  (`settings.tvLook`).
+- Auto gives Classic on an Amazon Fire TV (Android with the manufacturer or brand "Amazon", or a
+  model name that starts with "AFT") and in Lite mode, and Modern on every other TV.
+- The look is fixed for a run: TV sizes are module constants. A change asks for a restart
+  ("Restart Zoggyfin to change the look?", Restart or Later).
+- Web preview: `?tv=1&tvlook=modern` or `&tvlook=classic` forces a look for the browser tab;
+  `&tvlook=auto` ends it. Off TV the look is always Classic.
+- Code guards every Modern difference with `isTvModern`. Classic renders as before.
+
+**Principles**
+
+- Full-bleed art on Home and item pages, under the rail; other pages start after the rail
+  (`TV_RAIL_INSET`, `useTvFullBleed()` in `features/tv/screen-inset.tsx`). One left edge for text,
+  actions and rows: 184 u (rail 128 + gutter 56).
+- Flat, text-led controls. No capsule, no chip, no circle and no boxed badge. Round *art* (a person,
+  an artist) stays.
+- One focus shape for text controls: the **focus plate**, a white rectangle (radius 8 u) behind
+  the control, with `plateText` text and icon.
+- One accent: the primary action at rest, a progress fill on an action, the billboard eyebrow,
+  the underline of the selected tab, the mark of the current rail entry.
+- No text under 22 u; body text is 28 u. Short fades and one scale; no slide, no bounce.
+- No shadow, no blur and no layout animation on TV.
+
+**Focus and controls**
+
+| Control | Rest | Focus |
+|---|---|---|
+| Art-only tile | radius 16 u | scale 1.08; white ring 4 u with a 4 u gap (ring radius 24 u) |
+| Tile with a caption | title `captionRest`, metadata `text3`; caption 12 u under the art, `tileTitle` and `tileMeta` | the tile scales 1.08; the ring is on the art only (`TvArtRing`); title `text`, metadata `text2`. No caption strip |
+| Round tile (person, artist) | circle | scale 1.08, ring on the circle |
+| Primary action (`TvButton variant="primary"`) | Ember rectangle: height 68 u, radius 8 u, side padding 32 u; icon 28 u and label `action` weight 700 in `onAccent` | the plate, `plateText`, scale 1.04 |
+| Text action (`TvButton`, default) | no container: icon 28 u, 14 u gap, label `action` weight 600, white; box 68 u high, side padding 24 u | the plate, `plateText`, scale 1.04 |
+| A text action that is on (Played, Favourite, Like) | the filled glyph, weight 700 | the plate |
+| Toolbar item (`TvToolbarItem`) | "label value": label `toolbar` weight 500 `text3`, value weight 600 `text`; a switch item is one word, with a check and weight 700 when on | the plate; label `plateText2`, value `plateText`. No scale |
+| Tab (`TvTab`), season control | `action` in `text2`; selected `text` with an Ember underline 4 u, 10 u under the box | the plate; the underline stays. No scale |
+| Transport glyph (`TvIconButton`) | a bare white glyph; a toggle that is on has a short Ember line under it, off is `text2` | the plate as a square (radius 8 u), scale 1.04 |
+| List row (`kind="row"`) | no fill | `rowFocus` (white 14 %), radius 16 u, no scale |
+| Text field | `surface2`, radius 8 u, 2 u `controlBorder` | 4 u white border |
+
+- The focus mark fades in 180 ms and out in 140 ms (standard easing). With Reduce Motion it
+  changes at once and nothing scales.
+- A Modern `button` or `icon` Touchable does not grow and draws no ring of its own when it shows
+  the plate.
+- A row of actions starts with the primary action on the page edge, then 24 u, then text actions
+  8 u apart. A row that starts with a text control shifts left by its side padding, so the text is
+  on the page edge. Labels are always visible.
+- **An action row or a toolbar row never wraps.** It stays one line: the actions that do not fit
+  go behind More (`fitTvActions` in `detail/tv-hero-modern.tsx`); a toolbar that does not fit
+  scrolls sideways with the focus (`components/tv-page-header.tsx`).
+- A resume bar under an action's label hangs under it and takes no room, so the label stays
+  centred on the glyph.
+- Tile marks (played, playing, unplayed count) have no badge: a white glyph or number on a soft
+  dark fade from the art's top-right corner.
+- Empty and error states: a bare 72 u icon in `text3` (no circle), a 40 u title, body text and
+  one line of actions (`tvModernState` for screens that draw their own).
+
+**Where it is built**
+
+| Part | File |
+|---|---|
+| Actions, transport glyphs, toolbar items, tabs, the plate | `features/tv/tv-button.tsx` |
+| The bare rail and the open menu | `features/tv/side-menu-modern.tsx` |
+| The full-bleed Home billboard | `features/tv/billboard-modern.tsx` |
+| The full-bleed item hero and the one-line action row | `features/detail/tv-hero-modern.tsx` |
+| The page title and the text toolbar of browse and system pages | `components/tv-page-header.tsx` |
 
 ---
 

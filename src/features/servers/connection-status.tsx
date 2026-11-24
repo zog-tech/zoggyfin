@@ -1,11 +1,17 @@
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { useSessionStore } from '@/auth/session-store';
 import { Touchable } from '@/components/touchable';
+import { TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
 import { checkServer } from '@/lib/online';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { checkConnection, useConnection } from '@/servers/connection';
 import { connectionLine } from '@/servers/status';
-import { createStyles, type AppTheme, font, spacing, type, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, dark, font, spacing, tvm, type, u, useStyles, useTheme } from '@/theme';
+
+/** TV Modern look (design system §7.22): "Check again" is a text action with the focus plate, not a ring. */
+const MODERN = isTV && isTvModern;
 
 /** Checks again: the active server through the reachability check (it also updates the offline banner). */
 export function checkAgain(serverId: string): void {
@@ -33,6 +39,15 @@ export function ConnectionStatus({ serverId, inset }: { serverId: string; inset?
         </Text>
         {info.checking ? (
           <ActivityIndicator size="small" color={c.text2} accessibilityLabel="Checking" />
+        ) : MODERN ? (
+          <Touchable kind="plain" ring={false} onPress={() => checkAgain(serverId)} accessibilityRole="button" accessibilityLabel="Check again">
+            <View style={ms.action}>
+              <TvFocusPlate />
+              <TvPlateText style={s.link} rest={dark.accent}>
+                Check again
+              </TvPlateText>
+            </View>
+          </Touchable>
         ) : (
           <Touchable onPress={() => checkAgain(serverId)} hitSlop={10} radius={8} accessibilityRole="button" accessibilityLabel="Check again">
             <Text style={s.link}>Check again</Text>
@@ -56,3 +71,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   detail: { ...font(type.footnote), color: c.text2, marginLeft: 8 + spacing.sm },
   link: { ...font(type.subheadline), color: c.accent },
 }));
+
+const ms = StyleSheet.create({
+  action: { justifyContent: 'center', height: u(tvm.size.toolbarItemHeight), paddingHorizontal: u(tvm.size.toolbarPadX) },
+});

@@ -23,12 +23,13 @@ export default function LibraryGridScreen() {
   const lib = useLibrary({ parentId: id, includeItemTypes: itemTypes, ...filters }, kindKnown);
   const items = useMemo(() => lib.data?.pages.flatMap((p) => p.items) ?? [], [lib.data]);
 
+  const title = view?.Name ?? name ?? 'Library';
   return (
     <>
-      <Stack.Screen options={{ title: view?.Name ?? name ?? 'Library' }} />
+      <Stack.Screen options={{ title }} />
       <FadeInAfterLoad loading={lib.isPending}>
         {lib.isPending ? (
-          <GridSkeleton shape={kind === 'music' ? 'square' : 'poster'} />
+          <GridSkeleton shape={kind === 'music' ? 'square' : 'poster'} title={title} />
         ) : lib.error && !lib.data ? (
           <ErrorState error={lib.error} onRetry={lib.refetch} />
         ) : (
@@ -40,6 +41,7 @@ export default function LibraryGridScreen() {
             }}
             isFetchingMore={lib.isFetchingNextPage}
             onRefresh={lib.refetch}
+            title={title}
             ListHeaderComponent={<FilterBar libraryId={id} itemTypes={itemTypes} />}
             ListEmptyComponent={
               <EmptyState

@@ -10,7 +10,7 @@ import { Platform, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { RowHeader } from '@/components/item-row';
-import { TileCaption, TileFocusFill } from '@/components/tile-caption';
+import { TileCaption, TileFocusFill, TvArtRing, tvTileRadius } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { type ProviderChannel, useMergedLists, usePlayMerged, useProviders } from '@/iptv';
 import { isTV } from '@/platform/tv';
@@ -64,11 +64,12 @@ export function LiveTvHomeRow() {
 function ChannelTile({ channel, width, subtitle, onPress }: { channel: ProviderChannel; width: number; subtitle?: string; onPress: () => void }) {
   const s = useStyles(makeStyles);
   const height = (width * 9) / 16;
+  const r = tvTileRadius(radius.md);
   const name = channel.channel.name;
   return (
     <Touchable
       kind="tile"
-      radius={radius.md}
+      radius={r}
       // TV: the lit caption strip is the focus mark (design system §7.19).
       ring={!isTV}
       onPress={onPress}
@@ -77,7 +78,8 @@ function ChannelTile({ channel, width, subtitle, onPress }: { channel: ProviderC
       accessibilityHint="Plays the channel"
       containerStyle={{ width }}>
       <TileFocusFill artHeight={height} radius={radius.md} />
-      <View style={[s.art, { width, height }]}>
+      <TvArtRing radius={r} artHeight={height} />
+      <View style={[s.art, { width, height, borderRadius: r }]}>
         <ChannelLogo uri={channel.channel.logo} name={name} size={Math.round(height * 0.55)} />
       </View>
       <TileCaption title={name} sub={subtitle} keepSubLine />
