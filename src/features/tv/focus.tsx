@@ -32,6 +32,17 @@ export function forgetContentFocus(view: FocusTarget | null): void {
 }
 
 /** Moves the focus to a view. False when the view cannot take it. */
+/**
+ * Whether a text field has the focus. React Native has
+ * `TextInput.State.currentlyFocusedInput`; react-native-web has only
+ * `currentlyFocusedField`, and calling the missing one threw in the web TV
+ * preview (a toast with an action over the player took the app down).
+ */
+export function textFieldFocused(): boolean {
+  const state = TextInput.State as { currentlyFocusedInput?: () => unknown; currentlyFocusedField?: () => unknown };
+  return !!(state.currentlyFocusedInput?.() ?? state.currentlyFocusedField?.());
+}
+
 export function focusView(view: FocusTarget | null | undefined): boolean {
   const v = view as (FocusTarget & FocusMethods) | null | undefined;
   if (!v) return false;
@@ -123,7 +134,7 @@ const SETTLE_MS = 60;
 function claimFocus(page: TvPageHandle, reason: ClaimReason, delay: number): ReturnType<typeof setTimeout> {
   return setTimeout(() => {
     if (tvPages.active() !== page) return;
-    const textFocused = !!TextInput.State.currentlyFocusedInput();
+    const textFocused = textFieldFocused();
     const take = pageShouldTakeFocus({
       reason,
       focusOnPage: controlFocused && focusPage === page,
