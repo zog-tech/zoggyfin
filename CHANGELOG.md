@@ -14,10 +14,13 @@ first commit to today. All of it was built in the first weeks of the project.
 ### Added
 
 - **A new TV look (Modern).** TVs get a second design: tiles with a white ring and no caption
-  strip, flat actions with a white focus rectangle instead of grey pills, an Ember primary action
-  and a soft fill on focused rows. Settings, Appearance, "TV look" chooses Auto, Modern or Classic
-  (the design of before); the change applies after a restart. Auto keeps Classic on Fire TV and
-  in Lite mode. The pages get their full Modern layout in the next steps.
+  strip, flat text actions with one white focus rectangle instead of grey pills, an Ember primary
+  action and a soft fill on focused rows. Home and the movie and show pages run their art full
+  screen under a bare side menu; library grids, Search, Music and Settings get a page title and a
+  one-line text toolbar. Action rows and toolbars never wrap: extra actions go behind More, and a
+  long toolbar scrolls. The video and music players have flat controls. Settings, Appearance,
+  "TV look" chooses Auto, Modern or Classic (the design of before); the change applies after a
+  restart. Auto keeps Classic on Fire TV and in Lite mode.
 - **Download a song from its row.** A song that is not on the device has a download button at the
   end of its row (search, albums, playlists, artists), so it downloads without playing. Then the
   row shows the progress ring and the orange downloaded mark. Not on TV, which has no downloads.
@@ -341,6 +344,8 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Fixed
 
+- A playlist that holds the same song twice shows each entry as its own row. The rows shared one
+  key, so a row could show the wrong entry after a change.
 - TV: the song menu (⋯) on an artist, album or playlist page no longer scrolls the page to its
   top. When the menu closed, the focus was lost, so the next presses did nothing or went to the
   wrong place. The menu now sits outside the page list, and the focus goes back to ⋯.

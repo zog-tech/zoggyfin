@@ -733,6 +733,25 @@ first, calm. The art fills the screen, the interface is white type on dark fades
 - A row of actions starts with the primary action on the page edge, then 24 u, then text actions
   8 u apart. A row that starts with a text control shifts left by its side padding, so the text is
   on the page edge. Labels are always visible.
+- **An action row or a toolbar row never wraps.** It stays one line: the actions that do not fit
+  go behind More (`fitTvActions` in `detail/tv-hero-modern.tsx`); a toolbar that does not fit
+  scrolls sideways with the focus (`components/tv-page-header.tsx`).
+- A resume bar under an action's label hangs under it and takes no room, so the label stays
+  centred on the glyph.
+- Tile marks (played, playing, unplayed count) have no badge: a white glyph or number on a soft
+  dark fade from the art's top-right corner.
+- Empty and error states: a bare 72 u icon in `text3` (no circle), a 40 u title, body text and
+  one line of actions (`tvModernState` for screens that draw their own).
+
+**Where it is built**
+
+| Part | File |
+|---|---|
+| Actions, transport glyphs, toolbar items, tabs, the plate | `features/tv/tv-button.tsx` |
+| The bare rail and the open menu | `features/tv/side-menu-modern.tsx` |
+| The full-bleed Home billboard | `features/tv/billboard-modern.tsx` |
+| The full-bleed item hero and the one-line action row | `features/detail/tv-hero-modern.tsx` |
+| The page title and the text toolbar of browse and system pages | `components/tv-page-header.tsx` |
 
 ---
 
