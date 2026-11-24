@@ -1102,9 +1102,9 @@ export function PlayerScreen() {
             accessibilityLiveRegion="polite"
             style={[styles.ripple, holdShown.dir < 0 ? { left: sideInset + spacing.xl } : { right: sideInset + spacing.xl }]}>
             <Glass style={[styles.rippleInner, styles.rippleRow]}>
-              {holdShown.dir < 0 ? <Icon name="backward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+              {holdShown.dir < 0 ? <Icon name="backward.fill" size={MODERN ? u(24) : iconSize.sm} color={c.textOnMedia} /> : null}
               <Text style={styles.rippleText} accessibilityLabel={`${holdShown.dir < 0 ? 'Rewind' : 'Fast forward'} ${holdShown.speed} times`}>{`${holdShown.speed}×`}</Text>
-              {holdShown.dir > 0 ? <Icon name="forward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+              {holdShown.dir > 0 ? <Icon name="forward.fill" size={MODERN ? u(24) : iconSize.sm} color={c.textOnMedia} /> : null}
             </Glass>
           </View>
         ) : null}
