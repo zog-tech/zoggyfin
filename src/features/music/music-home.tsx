@@ -6,6 +6,11 @@
  * (`TV_FIRST_SECTIONS`, then `TV_STEP` every `TV_STEP_MS`): mounting all of
  * them at once (the catalog section alone can hold 12 rows) held the first
  * open of the Music tab for seconds. Mounted sections stay mounted.
+ *
+ * TV: Up stays in the page except from the first row. A focused row scrolls to
+ * the top of the page, so the row above it is just out of view, and the tab
+ * strip right above the page was nearer to Android's focus search than that
+ * row: Up jumped to the tabs (Home, Liked Songs, Albums…) instead.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -16,6 +21,7 @@ import type { BaseItemDto } from '@/api/types';
 import { useApi } from '@/api/use-api';
 import { ItemActionSheet } from '@/components/action-sheet';
 import { refreshTint, useRefreshSpinner } from '@/components/refresh-spinner';
+import { TvFocusGuide } from '@/features/tv/focus';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 import { usePullRefresh } from '@/lib/use-pull-refresh';
@@ -74,9 +80,13 @@ export function MusicHome({ libraryId }: { libraryId: string }) {
     filled,
   );
   const rows = useMemo<MusicHomeRows>(() => ({ report, first, openMenu: setMenu }), [report, first]);
+  // TV: the section that has the focus. Up leaves the page (for the tabs) only from the first row.
+  const [focusSection, setFocusSection] = useState<string | null>(null);
+  const trapUp = isTV && focusSection !== null && focusSection !== first;
 
   return (
     <>
+      <TvFocusGuide trapUp={trapUp} style={styles.flex}>
       <TvScrollView
         style={styles.flex}
         contentContainerStyle={{ paddingBottom: bottomPad }}
@@ -84,13 +94,14 @@ export function MusicHome({ libraryId }: { libraryId: string }) {
         <MusicHomeRowsContext.Provider value={rows}>
           {sections.slice(0, mountCount).map((sec) => (
             <MusicHomeSectionId.Provider key={sec.id} value={sec.id}>
-              <View>
+              <View onFocusCapture={isTV ? () => setFocusSection(sec.id) : undefined}>
                 <sec.component libraryId={libraryId} />
               </View>
             </MusicHomeSectionId.Provider>
           ))}
         </MusicHomeRowsContext.Provider>
       </TvScrollView>
+      </TvFocusGuide>
       <ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />
     </>
   );
