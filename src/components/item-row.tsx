@@ -11,7 +11,9 @@ import { tvFocusRest } from '@/features/tv/focus-settle';
 import { TvShelf, useRowFade } from '@/features/tv/shelf';
 import Animated from 'react-native-reanimated';
 import { useOpenItem } from '@/lib/navigation';
-import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, tvFocusBleed, type, useLayout, useStyles, useTheme } from '@/theme';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, font, iconSize, scaled, sizes, spacing, tvFocusBleed, tvFont, tvm, type, u, useLayout, useStyles, useTheme } from '@/theme';
 
 import { useItemMenu } from './action-sheet';
 import { Delayed, SkeletonBlock, SkeletonText } from './skeleton';
@@ -40,6 +42,19 @@ interface ItemRowProps {
   onPress?: (item: BaseItemDto) => void;
   /** Long press (the item action sheet). Pass a stable function: the tile is a memo. */
   onLongPress?: (item: BaseItemDto) => void;
+}
+
+/** TV Modern look (design system §7.22): the row header and the skeletons follow the Modern tokens. */
+const MODERN = isTV && isTvModern;
+
+/**
+ * TV Modern Home: the gap above a row, partly inside the row. A focused row scrolls its top to the
+ * billboard's lower edge; the part inside keeps its header 20 u under the billboard text there,
+ * while the rows at rest keep the full `sectionGap` between them.
+ */
+export function homeRowGap(sectionGap: number): { marginTop: number; paddingTop: number } {
+  const inside = Math.min(u(20), sectionGap);
+  return { marginTop: sectionGap - inside, paddingTop: inside };
 }
 
 /**
@@ -126,14 +141,15 @@ export function ItemRow({
   // TV: room above and below for the focus scale and ring; a horizontal list clips at its edges.
   const padV = l.tv ? tvFocusBleed(tileHeight(shape, width, !titleOnArt && !artOnly)) : spacing.xs;
   return (
-    <Animated.View ref={section} style={[s.section, { marginTop: l.sectionGap }, billboard ? fade.style : null]}>
-      <RowHeader title={title} onSeeAll={onSeeAll} />
+    <Animated.View ref={section} style={[s.section, billboard && MODERN ? homeRowGap(l.sectionGap) : { marginTop: l.sectionGap }, billboard ? fade.style : null]}>
+      {/* Modern: 24 u from the header to the tiles; the shelf's room for the focus ring counts towards it. */}
+      <RowHeader title={title} onSeeAll={onSeeAll} gapBelow={MODERN ? Math.max(0, u(tvm.size.rowTitleGap) - (isLoading && !items ? 0 : padV)) : undefined} />
       {isLoading && !items ? (
         <Delayed>
           <View style={[s.skeletonRow, { paddingHorizontal: l.gutter, gap: l.gap }]}>
             {[0, 1, 2, 3, 4].map((i) => (
               <View key={i} style={{ width }}>
-                <SkeletonBlock width={width} height={artHeight} radius={shape === 'circle' ? width / 2 : shape === 'square' ? 8 : 10} />
+                <SkeletonBlock width={width} height={artHeight} radius={shape === 'circle' ? width / 2 : MODERN ? u(tvm.size.tileRadius) : shape === 'square' ? 8 : 10} />
                 {titleOnArt ? null : <SkeletonText width={width} />}
               </View>
             ))}
@@ -186,19 +202,29 @@ export function ItemRow({
 }
 
 /** Section header: `title3` and a chevron. The whole header is the button; no "See all" text. */
-export function RowHeader({ title, onSeeAll }: { title: string; onSeeAll?: () => void }) {
+export function RowHeader({
+  title,
+  onSeeAll,
+  gapBelow,
+}: {
+  title: string;
+  onSeeAll?: () => void;
+  /** TV Modern: the space under the header (default `rowTitleGap`). */
+  gapBelow?: number;
+}) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();
   const text = (
     <>
-      <Text style={[s.title, l.tv && s.titleTV]} accessibilityRole="header" numberOfLines={1}>
+      <Text style={[s.title, l.tv && (MODERN ? s.titleModern : s.titleTV)]} accessibilityRole="header" numberOfLines={1}>
         {title}
       </Text>
       {onSeeAll ? <Icon name="chevron.right" size={scaled(iconSize.sm)} color={c.text3} weight="semibold" /> : null}
     </>
   );
   // TV: the header is not a focus stop; the D-pad goes from row to row (the side menu has Library).
+  if (MODERN) return <View style={[s.header, { paddingHorizontal: l.gutter, marginBottom: gapBelow ?? u(tvm.size.rowTitleGap) }]}>{text}</View>;
   if (!onSeeAll || l.tv) return <View style={[s.header, { paddingHorizontal: l.gutter }]}>{text}</View>;
   return (
     <View style={[s.headerWrap, { paddingHorizontal: l.gutter }]}>
@@ -224,5 +250,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   title: { ...font(type.title3), color: c.text, flexShrink: 1 },
   // TV: a row title one step smaller and bold, as in the streaming apps; the tiles carry the page.
   titleTV: { ...font(type.headline), fontWeight: '700' as const },
+  // TV Modern: `rowTitle` (32 u, semibold).
+  titleModern: { ...tvFont(tvm.type.rowTitle) },
   skeletonRow: { flexDirection: 'row' as const, overflow: 'hidden' as const },
 }));
