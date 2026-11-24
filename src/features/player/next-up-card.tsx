@@ -8,12 +8,23 @@ import { Touchable } from '@/components/touchable';
 import { episodeLabel } from '@/lib/format';
 import { type CountdownClock, countdownClock, countdownLeft, endCountdownLeft, NEXT_UP_COUNTDOWN_SECONDS, setCountdownRunning } from '@/player/segments';
 import { usePlayerStore } from '@/player/store';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+import { tvFont, tvm, u } from '@/theme';
 
 import { Glass } from './glass';
-import { c, motion, radius, spacing, textStyle, type } from './tokens';
+import { PlayerAction } from './round-button';
+import { c, motion, playerTvModern, radius, spacing, textStyle, type } from './tokens';
 
-const RING = 36;
-const STROKE = 3;
+/**
+ * TV Modern look (spec 2.8): "Play now" is the primary action and "Cancel" a
+ * text action (no pill); sizes in TV units; no layout animation on TV.
+ */
+const MODERN = isTV && isTvModern;
+const CARD = playerTvModern.card;
+
+const RING = MODERN ? u(CARD.ring) : 36;
+const STROKE = MODERN ? u(CARD.stroke) : 3;
 
 /** How often the countdown updates (ms). The ring moves linearly between updates. */
 const TICK_MS = 250;
@@ -103,6 +114,36 @@ export function NextUpCard({
   const left = Math.ceil(remaining);
 
   const label = [episodeLabel(next), next.Name].filter(Boolean).join(' · ');
+  const ring = autoplay ? (
+    <View style={styles.ringWrap} accessible={false}>
+      <CountdownRing progress={1 - remaining / NEXT_UP_COUNTDOWN_SECONDS} />
+      <Text style={styles.ringText}>{left}</Text>
+    </View>
+  ) : null;
+  if (MODERN)
+    return (
+      <Glass variant="regular" style={styles.card}>
+        <ItemImage item={next} variant="landscape" width={u(CARD.image)} aspectRatio={16 / 9} rounded={u(tvm.size.plateRadius)} hideArtTitle />
+        <View style={styles.body}>
+          <Text style={styles.eyebrow}>Up Next</Text>
+          <Text style={styles.title} numberOfLines={2}>
+            {label || 'Next episode'}
+          </Text>
+          <View style={styles.actions}>
+            <PlayerAction
+              variant="primary"
+              label="Play Now"
+              accessibilityLabel={autoplay ? `Play now. Starts in ${left} seconds` : 'Play now'}
+              onPress={onPlay}
+              preferredFocus={preferredFocus}
+              onFocusChange={onFocusChange}
+            />
+            <PlayerAction label="Cancel" onPress={onCancel} onFocusChange={onFocusChange} />
+          </View>
+        </View>
+        {ring}
+      </Glass>
+    );
   return (
     <Animated.View entering={FadeIn.duration(motion.duration.base)} exiting={FadeOut.duration(motion.duration.fast)}>
       <Glass variant="regular" style={styles.card}>
@@ -150,7 +191,7 @@ export function NextUpCard({
   );
 }
 
-const styles = StyleSheet.create({
+const classicStyles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -187,3 +228,16 @@ const styles = StyleSheet.create({
   arcRight: { borderColor: 'transparent', borderTopColor: c.accent, borderRightColor: c.accent },
   arcLeft: { borderColor: 'transparent', borderBottomColor: c.accent, borderLeftColor: c.accent },
 });
+
+/** Modern TV: the keys that differ from Classic. */
+const modernStyles = StyleSheet.create({
+  card: { flexDirection: 'row', alignItems: 'center', gap: u(CARD.gap), padding: u(CARD.pad), borderRadius: u(CARD.radius), overflow: 'hidden', maxWidth: u(CARD.width) },
+  body: { flexShrink: 1, gap: u(8) },
+  eyebrow: { ...tvFont(tvm.type.eyebrow), color: tvm.color.onArt, textTransform: 'uppercase' },
+  title: { ...tvFont(tvm.type.rowTitle), color: c.textOnMedia },
+  // The text of "Play Now" starts on the body's edge; 24 u to "Cancel" (spec 2.3).
+  actions: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: u(24), marginTop: u(8) },
+  ringText: { ...tvFont(tvm.type.meta, { tabular: true }), color: c.textOnMedia, position: 'absolute' },
+});
+
+const styles = MODERN ? { ...classicStyles, ...modernStyles } : classicStyles;
