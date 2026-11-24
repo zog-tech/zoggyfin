@@ -32,6 +32,7 @@ import { createStyles,
   tvm,
   u,
   useTheme,
+  withAlpha,
 } from '@/theme';
 
 import { ItemImage } from './item-image';
@@ -183,7 +184,9 @@ export const Tile = memo(function Tile({
           ) : progress !== null ? (
             <Progress fraction={progress} />
           ) : null}
-          {mark !== 'none' ? (
+          {MODERN && (mark !== 'none' || (download.state === 'none' && (played || unplayed > 0))) ? (
+            <BareMark glyph={mark === 'none' ? (played ? 'checkmark' : null) : mark === 'loading' ? null : 'waveform'} count={mark === 'none' && !played ? unplayed : 0} busy={mark === 'loading'} radius={r} />
+          ) : mark !== 'none' ? (
             // One badge per tile: the playing song first, then the download state.
             <View style={s.badge}>
               {mark === 'loading' ? (
@@ -275,6 +278,38 @@ function CircleFocus({ radius: r, pressed, hovered, focused }: { radius: number;
     </>
   );
 }
+
+/**
+ * TV Modern: the one mark of a tile (playing, played, unplayed count) with
+ * no box (the owner's rule: no boxed badges): a white glyph or number on a
+ * soft dark fade from the top-right corner of the art, so it reads on bright
+ * art too. The fade reaches zero before the box's left and bottom edges, so
+ * it has no hard edge; the corner follows the tile's radius.
+ */
+function BareMark({ glyph, count, busy, radius: r }: { glyph: 'checkmark' | 'waveform' | null; count: number; busy: boolean; radius: number }) {
+  return (
+    <View pointerEvents="none" style={[bare.corner, { borderTopRightRadius: r }]}>
+      <LinearGradient colors={BARE_FADE} locations={[0, 0.55, 1]} start={{ x: 1, y: 0 }} end={{ x: 0.5, y: 0.5 }} style={StyleSheet.absoluteFill} />
+      <View style={bare.slot}>
+        {busy ? (
+          <ActivityIndicator size="small" color={mediaColors.white} />
+        ) : glyph ? (
+          <Icon name={glyph} size={BARE_GLYPH} color={mediaColors.white} weight="bold" />
+        ) : count > 0 ? (
+          <Text style={bare.count}>{count}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const BARE_GLYPH = u(30);
+const BARE_FADE = [withAlpha(mediaColors.black, 0.6), withAlpha(mediaColors.black, 0.28), withAlpha(mediaColors.black, 0)] as const;
+const bare = StyleSheet.create({
+  corner: { position: 'absolute', top: 0, right: 0, width: u(132), height: u(132), overflow: 'hidden' },
+  slot: { position: 'absolute', top: u(16), right: u(16), minWidth: BARE_GLYPH, height: BARE_GLYPH, alignItems: 'center', justifyContent: 'center' },
+  count: { ...tvFont(tvm.type.toolbar, { tabular: true }), fontWeight: '700', color: mediaColors.white },
+});
 
 function Progress({ fraction, inline }: { fraction: number; inline?: boolean }) {
   const s = useStyles(makeStyles);
