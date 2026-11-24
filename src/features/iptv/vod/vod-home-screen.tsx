@@ -182,6 +182,9 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
         contentContainerStyle={{ paddingBottom: spacing.huge * 2, paddingTop: spacing.xs }}
         // On a TV, react-native-tvos wraps a FlatList in a focus guide with no size: give it the page height.
         style={isTV ? { height: l.height } : s.flex}
+        // TV: the shelves in the header stay attached when they scroll out of view, so Up from the
+        // categories reaches them again (Android's list default takes them off the view tree).
+        removeClippedSubviews={!isTV}
         keyboardDismissMode="on-drag"
         ListHeaderComponent={
           <>

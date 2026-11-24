@@ -56,7 +56,7 @@ export interface TileProps {
   titleOnArt?: boolean;
   /** TV: take the first focus on the screen. */
   preferredFocus?: boolean;
-  /** Only the artwork, no title under it (TV Home: the billboard shows the focused title). */
+  /** Only the artwork, no title under it (TV Modern: the library root, where the server art carries the name). */
   artOnly?: boolean;
   /**
    * The tile took the focus (TV). Pass a stable function: the tile is a memo.

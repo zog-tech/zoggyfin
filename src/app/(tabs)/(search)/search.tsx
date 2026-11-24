@@ -3,7 +3,7 @@ import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } 
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { SearchBarCommands } from 'react-native-screens';
 
-import { useSearch, useVideoGenres } from '@/api/queries';
+import { useBrowseRows, useSearch, useVideoGenres } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { Button } from '@/components/button';
@@ -26,7 +26,10 @@ import { useTabRootPlace } from '@/features/extensions/tab-nav';
 import { useServerNames } from '@/features/servers/use-server-names';
 import { savedName } from '@/player/audio/catalog';
 import { useSavedId } from '@/player/audio/catalog-links';
+import { browseEmptyText, browseQueries } from '@/features/search/browse';
 import {
+  BROWSE_FILTERS,
+  browseKindOf,
   filterSections,
   GENRE_SEARCH_FILTERS,
   groupSearchResults,
@@ -138,6 +141,12 @@ export default function SearchScreen() {
   useFocusEffect(useCallback(() => remember, [remember]));
 
   const active = term.length >= 2 || !!genre;
+  // No words: rows to start from (browse.ts). The chips pick their kind; Episodes and People list All.
+  const kind = browseKindOf(filter);
+  const browseRowQueries = useMemo(() => browseQueries(kind), [kind]);
+  const browse = useBrowseRows(kind, browseRowQueries, !active && !localOnly);
+  const chips = active ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS) : localOnly ? [] : BROWSE_FILTERS;
+  const chipOn = active ? filter : kind;
   const genreChip = genreChipModel({ genre, genreCount: genreList.length, localOnly });
   // Extension searches with `global: true` run beside the server search, never before it.
   const extQuery = globalSearchQuery(term, { offline: localOnly, genre, filter });
@@ -257,7 +266,7 @@ export default function SearchScreen() {
         ) : null}
 
         <OfflineBanner />
-        {MODERN && (active || genreChip.visible) ? (
+        {MODERN && (chips.length || genreChip.visible) ? (
           <View style={[s.toolbarModern, { paddingHorizontal: l.gutter }]}>
             <TvToolbarRow ref={chipRow} inset={l.gutter}>
               {genreChip.visible ? (
@@ -266,25 +275,21 @@ export default function SearchScreen() {
                   {genreChip.showClear ? <TvToolbarItem value="Clear genre" on={false} onPress={() => pickGenre(null)} /> : null}
                 </>
               ) : null}
-              {active
-                ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
-                    <TvToolbarItem key={f.value} value={f.label} on={filter === f.value} onPress={() => setFilter(f.value)} />
-                  ))
-                : null}
+              {chips.map((f) => (
+                <TvToolbarItem key={f.value} value={f.label} on={chipOn === f.value} onPress={() => setFilter(f.value)} />
+              ))}
             </TvToolbarRow>
           </View>
-        ) : active || genreChip.visible ? (
+        ) : chips.length || genreChip.visible ? (
           <ScrollView
             ref={chipRow}
             horizontal
             showsHorizontalScrollIndicator={false}
             style={s.chips}
             contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
-            {active
-              ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
-                  <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
-                ))
-              : null}
+            {chips.map((f) => (
+              <Chip key={f.value} label={f.label} selected={chipOn === f.value} onPress={() => setFilter(f.value)} />
+            ))}
             {genreChip.visible ? (
               <>
                 <Chip
@@ -301,48 +306,64 @@ export default function SearchScreen() {
         ) : null}
 
         {body === 'idle' ? (
-          recent.length ? (
-            <View style={s.recent}>
-              <RowHeader title="Recent searches" />
-              {/* TV Modern: plain list rows on the page (no card); the row fill reaches into the gutter. */}
-              <View style={MODERN ? { marginHorizontal: l.gutter - u(24) } : [s.recentList, { marginHorizontal: l.gutter }]}>
-                {recent.map((r, i) => (
-                  <Touchable
-                    key={r}
-                    kind="row"
-                    onPress={() => applyRecent(r)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Search for ${r}`}
-                    style={
-                      MODERN ? s.recentRowModern : ({ pressed, hovered, focused }) => [s.recentRow, (pressed || hovered || (focused && !isTV)) && s.rowActive]
-                    }>
-                    <Icon name="clock.arrow.circlepath" size={MODERN ? u(30) : scaled(iconSize.sm)} color={c.text3} />
-                    <View style={MODERN ? s.recentBodyModern : [s.recentBody, i < recent.length - 1 && s.line]}>
-                      <Text style={[MODERN ? s.recentTextModern : s.recentText, scriptStyle(r, MODERN ? s.recentTextModern : s.recentText)]} numberOfLines={1}>
-                        {r}
-                      </Text>
-                    </View>
-                  </Touchable>
-                ))}
+          <>
+            {kind === 'all' && recent.length ? (
+              <View style={s.recent}>
+                <RowHeader title="Recent searches" />
+                {/* TV Modern: plain list rows on the page (no card); the row fill reaches into the gutter. */}
+                <View style={MODERN ? { marginHorizontal: l.gutter - u(24) } : [s.recentList, { marginHorizontal: l.gutter }]}>
+                  {recent.map((r, i) => (
+                    <Touchable
+                      key={r}
+                      kind="row"
+                      onPress={() => applyRecent(r)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Search for ${r}`}
+                      style={
+                        MODERN ? s.recentRowModern : ({ pressed, hovered, focused }) => [s.recentRow, (pressed || hovered || (focused && !isTV)) && s.rowActive]
+                      }>
+                      <Icon name="clock.arrow.circlepath" size={MODERN ? u(30) : scaled(iconSize.sm)} color={c.text3} />
+                      <View style={MODERN ? s.recentBodyModern : [s.recentBody, i < recent.length - 1 && s.line]}>
+                        <Text style={[MODERN ? s.recentTextModern : s.recentText, scriptStyle(r, MODERN ? s.recentTextModern : s.recentText)]} numberOfLines={1}>
+                          {r}
+                        </Text>
+                      </View>
+                    </Touchable>
+                  ))}
+                </View>
+                <Button
+                  title="Clear recent searches"
+                  variant="text"
+                  onPress={() => {
+                    writeJson(RECENT_KEY, []);
+                    setRecentVersion((v) => v + 1);
+                  }}
+                  containerStyle={{ marginLeft: MODERN ? l.gutter - u(tvm.size.actionPadX) : l.gutter - spacing.sm, alignSelf: 'flex-start' }}
+                />
               </View>
-              <Button
-                title="Clear recent searches"
-                variant="text"
-                onPress={() => {
-                  writeJson(RECENT_KEY, []);
-                  setRecentVersion((v) => v + 1);
-                }}
-                containerStyle={{ marginLeft: MODERN ? l.gutter - u(tvm.size.actionPadX) : l.gutter - spacing.sm, alignSelf: 'flex-start' }}
+            ) : null}
+            {localOnly ? (
+              recent.length ? null : MODERN ? (
+                <SearchHintModern />
+              ) : (
+                <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
+              )
+            ) : browse.isPending ? (
+              <LoadingState />
+            ) : browse.error && !browse.data ? (
+              <ErrorState error={browse.error} onRetry={browse.refetch} />
+            ) : browse.data?.length ? (
+              browse.data.map((sec) => <ItemRow key={sec.key} title={sec.title} items={sec.items} shape={sec.items[0] ? shapeFor(sec.items[0]) : 'poster'} />)
+            ) : kind === 'all' && recent.length ? null : MODERN && kind === 'all' ? (
+              <SearchHintModern />
+            ) : (
+              <EmptyState
+                icon="magnifyingglass"
+                title={kind === 'all' ? 'Search your server' : 'Nothing to list'}
+                message={kind === 'all' ? 'Find movies, shows, episodes, albums, songs, artists and people.' : browseEmptyText(kind)}
               />
-            </View>
-          ) : MODERN ? (
-            <View style={[s.hintModern, { paddingHorizontal: l.gutter }]}>
-              <Text style={s.hintTitleModern}>Search your server</Text>
-              <Text style={s.hintTextModern}>Find movies, shows, episodes, albums, songs, artists and people.</Text>
-            </View>
-          ) : (
-            <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
-          )
+            )}
+          </>
         ) : body === 'loading' ? (
           <LoadingState />
         ) : body === 'error' ? (
@@ -425,6 +446,18 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /** The top result card: art, title, facts and a Play or Resume button. */
+/** TV Modern: the hint before a query is left-aligned text, with no centred icon. */
+function SearchHintModern() {
+  const s = useStyles(makeStyles);
+  const l = useLayout();
+  return (
+    <View style={[s.hintModern, { paddingHorizontal: l.gutter }]}>
+      <Text style={s.hintTitleModern}>Search your server</Text>
+      <Text style={s.hintTextModern}>Find movies, shows, episodes, albums, songs, artists and people.</Text>
+    </View>
+  );
+}
+
 function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) {
   const s = useStyles(makeStyles);
   const l = useLayout();

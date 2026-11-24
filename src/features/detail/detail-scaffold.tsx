@@ -591,6 +591,10 @@ export function DetailScaffold<Row>({
         // On a TV, react-native-tvos wraps a FlatList in a focus guide with no size, so a flex list collapses to 1 dp.
         // TV: the item page starts at the screen's top edge (side-menu.tsx), so a hero's art reaches it.
         style={isTV ? [s.tvList, { height: l.height }] : s.list}
+        // TV: every part stays attached. Android's list default (on there) takes a part that scrolls out of
+        // view off the screen's view tree, so a D-pad press found nothing to go to: after Down to the episodes,
+        // Up never came back to the hero's buttons (Play, the banner), and on a season page not to the rows above.
+        removeClippedSubviews={!isTV}
         scrollEventThrottle={16}
         refreshControl={
           pull.onRefresh && !isTV ? (

@@ -34,7 +34,7 @@ interface ItemRowProps {
   hideWhenEmpty?: boolean;
   tileTitle?: (item: BaseItemDto) => string | null | undefined;
   tileSubtitle?: (item: BaseItemDto) => string | null | undefined;
-  /** Titles on the artwork (Continue watching). */
+  /** Titles on the artwork (Continue watching). TV puts them under the art, as on every TV tile. */
   titleOnArt?: boolean;
   /** TV: the first tile of this row takes the first focus. */
   preferredFocus?: boolean;
@@ -87,9 +87,11 @@ export function ItemRow({
   // asks for one has it (a row whose Select plays: its long press opens the item page).
   const menu = useItemMenu();
   const longPress = l.tv ? onLongPress : (onLongPress ?? menu.open);
-  // TV Home: art-only tiles (Continue watching keeps its progress bar); the billboard above shows the focused one.
+  // TV Home: the billboard above shows the focused title, and each tile still names its title under the art:
+  // with art only, a row of episode stills did not say which show, season or episode each one was.
   const billboard = useContext(BillboardRows) && l.tv;
-  const artOnly = billboard;
+  // TV: titles go under the art (the lit caption strip is the focus mark), never on it.
+  const onArt = !!titleOnArt && !l.tv;
   const section = useRef<ComponentRef<typeof View> | null>(null);
   // TV Home: the row fades as it slides up past the focused row's line (useRowFade).
   const fade = useRowFade(Math.round(l.height * 0.14));
@@ -119,12 +121,12 @@ export function ItemRow({
         onLongPress={longPress}
         title={tileTitle?.(item)}
         subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
-        titleOnArt={titleOnArt}
+        titleOnArt={onArt}
         preferredFocus={preferredFocus && index === 0}
       />
       </View>
     ),
-    [width, shape, press, longPress, tileTitle, tileSubtitle, titleOnArt, preferredFocus, l.gap],
+    [width, shape, press, longPress, tileTitle, tileSubtitle, onArt, preferredFocus, l.gap],
   );
 
   if (error && !items?.length) {
@@ -139,7 +141,7 @@ export function ItemRow({
 
   const artHeight = width / tileAspect(shape);
   // TV: room above and below for the focus scale and ring; a horizontal list clips at its edges.
-  const padV = l.tv ? tvFocusBleed(tileHeight(shape, width, !titleOnArt && !artOnly)) : spacing.xs;
+  const padV = l.tv ? tvFocusBleed(tileHeight(shape, width, !onArt)) : spacing.xs;
   return (
     <Animated.View ref={section} style={[s.section, billboard && MODERN ? homeRowGap(l.sectionGap) : { marginTop: l.sectionGap }, billboard ? fade.style : null]}>
       {/* Modern: 24 u from the header to the tiles; the shelf's room for the focus ring counts towards it. */}
@@ -150,7 +152,7 @@ export function ItemRow({
             {[0, 1, 2, 3, 4].map((i) => (
               <View key={i} style={{ width }}>
                 <SkeletonBlock width={width} height={artHeight} radius={shape === 'circle' ? width / 2 : MODERN ? u(tvm.size.tileRadius) : shape === 'square' ? 8 : 10} />
-                {titleOnArt ? null : <SkeletonText width={width} />}
+                {onArt ? null : <SkeletonText width={width} />}
               </View>
             ))}
           </View>
@@ -177,9 +179,8 @@ export function ItemRow({
               onLongPress={longPress}
               title={tileTitle?.(item)}
               subtitle={tileSubtitle ? tileSubtitle(item) : undefined}
-              titleOnArt={titleOnArt && !artOnly}
+              titleOnArt={onArt}
               preferredFocus={preferredFocus && index === 0}
-              artOnly={artOnly}
               index={index}
               onFocusItem={onFocus}
             />
