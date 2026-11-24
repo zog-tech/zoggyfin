@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { type ReactNode, useState } from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import { useChildren, useEpisodes, useNextUp, useOnDemandArtistTop, useSeasons, useSimilar } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
@@ -12,9 +12,11 @@ import { shapeForList } from '@/components/tile';
 import { episodeLabel, formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { rowSwipeScreenOptions } from '@/lib/stack-options';
+import { TvTab } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { usePlayer } from '@/player';
-import { createStyles, type AppTheme, font, spacing, type, useLayout, useStyles } from '@/theme';
+import { createStyles, type AppTheme, font, spacing, tvm, type, u, useLayout, useStyles } from '@/theme';
 
 import { mergeTopSongs } from './artist-top';
 import { DetailScaffold } from './detail-scaffold';
@@ -156,6 +158,9 @@ export function SeriesDetail({ item, onRefresh }: ViewProps) {
  * as chips, then the episodes of the chosen season in one row. Select on an
  * episode plays it (from where it was left); a long press opens its page.
  * The season of the next episode to watch comes first.
+ *
+ * TV Modern: the seasons are text tabs with an Ember underline on the current
+ * one, on one line that scrolls sideways with the focus (no chips).
  */
 function TvSeasonEpisodes({
   series,
@@ -189,9 +194,21 @@ function TvSeasonEpisodes({
   if (seasons && !seasons.length) return null;
   const many = (seasons?.length ?? 0) > 1;
   const chipRow = chipRowTV();
+  const modern = isTV && isTvModern;
   return (
-    <View style={{ marginTop: l.sectionGap }}>
-      {many ? (
+    // Modern: the row below keeps its own top margin, so the first row title sits right under the hero.
+    <View style={{ marginTop: modern && !many ? 0 : l.sectionGap }}>
+      {many && modern ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          // The text of the first tab sits on the page edge; its plate reaches into the gutter.
+          contentContainerStyle={[styles.seasonTabs, { paddingHorizontal: l.gutter - u(tvm.size.toolbarPadX) }]}>
+          {(seasons ?? []).map((x) => (
+            <TvTab key={x.Id} label={x.Name ?? 'Season'} selected={x.Id === seasonId} onPress={() => setPicked(x.Id ?? null)} />
+          ))}
+        </ScrollView>
+      ) : many ? (
         <View style={[styles.seasonChips, { paddingHorizontal: l.gutter }, chipRow]}>
           {(seasons ?? []).map((x) => (
             <Chip key={x.Id} label={x.Name ?? 'Season'} selected={x.Id === seasonId} onPress={() => setPicked(x.Id ?? null)} />
@@ -370,7 +387,7 @@ export function ArtistDetail({ item, onRefresh }: ViewProps) {
         meta={['Artist', albums.data ? `${albums.data.length} ${albums.data.length === 1 ? 'album' : 'albums'}` : null]}
         playable
         onShuffle={() => player.play({ item, shuffle: true })}
-        extraActions={[{ icon: 'wand.and.stars', label: 'Instant mix', onPress: () => player.instantMix(item) }]}
+        extraActions={[{ icon: 'wand.and.stars', label: 'Instant mix', spare: true, onPress: () => player.instantMix(item) }]}
         sheets={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
         onRefresh={onRefresh}
         beforeRows={
@@ -459,6 +476,8 @@ export function CollectionDetail({ item, onRefresh }: ViewProps) {
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
   seasonChips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const },
+  // Room under the tabs for the selected tab's underline (it hangs under the tab's box).
+  seasonTabs: { gap: u(tvm.size.toolbarGap), paddingBottom: u(tvm.size.underlineGap + tvm.size.underline) },
   message: { ...font(type.subheadline), color: c.text2, marginTop: spacing.md },
   disc: { ...font(type.footnote), letterSpacing: 0.4, color: c.text2, marginTop: spacing.lg, marginBottom: spacing.xs },
 }));

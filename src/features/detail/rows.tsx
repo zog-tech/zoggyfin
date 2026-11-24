@@ -10,7 +10,9 @@ import { Touchable } from '@/components/touchable';
 import { canDownload, downloads, useDownloadStatus } from '@/downloads';
 import { canQueue, queueAccessibilityActions, type QueueSwipe, useQueueSwipe } from '@/features/actions/queue-swipe';
 import { episodeLabel, formatClock, formatDuration, playedFraction } from '@/lib/format';
+import { TvIconButton } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { savedName } from '@/player/audio/catalog';
 import { useSavedId } from '@/player/audio/catalog-links';
 import { openFullPlayer } from '@/player';
@@ -26,11 +28,16 @@ import { createStyles,
   sizes,
   spacing,
   tvRowInset,
+  tvm,
   type,
+  u,
   useLayout,
   useStyles,
   useTheme,
 } from '@/theme';
+
+/** TV Modern look (design system §7.22): song rows are `listRowHeight` tall and their More is a bare glyph with the plate, not a circle. */
+const MODERN = isTV && isTvModern;
 
 /**
  * A song row (design system §7.10 rows): number or art, title, artist,
@@ -99,7 +106,7 @@ export const TrackRow = memo(function TrackRow({
         if (queueSwipe.runAccessibility(e.nativeEvent.actionName, item)) return;
         if (e.nativeEvent.actionName === 'longpress') onLongPress?.(item);
       }}
-      style={({ pressed, hovered, focused }) => [s.track, { paddingLeft: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
+      style={({ pressed, hovered, focused }) => [s.track, MODERN && s.trackModern, { paddingLeft: inset ? inset.padX : l.gutter }, (pressed || hovered || (focused && !isTV)) && s.active]}>
       {showArt ? (
         <View>
           <ItemImage item={item} variant="square" width={scaled(sizes.trackArt)} aspectRatio={1} rounded={6} hideArtTitle />
@@ -160,15 +167,19 @@ export const TrackRow = memo(function TrackRow({
   return (
     <View style={[s.tvTrack, { paddingRight: l.gutter }]}>
       {row}
-      <Touchable
-        kind="icon"
-        radius={radius.pill}
-        onPress={() => onLongPress?.(item)}
-        style={s.more}
-        accessibilityRole="button"
-        accessibilityLabel={`More for ${item.Name ?? 'this song'}`}>
-        <Icon name="ellipsis" size={scaled(iconSize.sm)} color={c.text2} />
-      </Touchable>
+      {MODERN ? (
+        <TvIconButton icon="ellipsis" label={`More for ${item.Name ?? 'this song'}`} size={tvm.size.railItem} glyph={tvm.size.actionIcon} onPress={() => onLongPress?.(item)} />
+      ) : (
+        <Touchable
+          kind="icon"
+          radius={radius.pill}
+          onPress={() => onLongPress?.(item)}
+          style={s.more}
+          accessibilityRole="button"
+          accessibilityLabel={`More for ${item.Name ?? 'this song'}`}>
+          <Icon name="ellipsis" size={scaled(iconSize.sm)} color={c.text2} />
+        </Touchable>
+      )}
     </View>
   );
 });
@@ -317,6 +328,7 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   tvTrack: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm },
   more: { width: scaled(44), height: scaled(44), borderRadius: radius.pill, alignItems: 'center' as const, justifyContent: 'center' as const },
   track: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md, minHeight: scaled(sizes.rowMedia) - 12 },
+  trackModern: { minHeight: u(tvm.size.listRowHeight) },
   trackBody: {
     flex: 1,
     flexDirection: 'row' as const,

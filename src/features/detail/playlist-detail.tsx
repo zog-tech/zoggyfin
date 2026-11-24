@@ -95,7 +95,8 @@ export function PlaylistDetail({ item, onRefresh }: ViewProps) {
         onShuffle={() => playFrom(0, shuffled(list))}
         extraActions={[
           { icon: editing ? 'checkmark' : 'line.3.horizontal', label: editing ? 'Done' : 'Reorder', onPress: () => setEditing((e) => !e) },
-          { icon: 'pencil', label: 'Rename', onPress: () => openRenamePlaylist(item) },
+          // Spare: the item sheet has Rename too, so a full TV row may move it there.
+          { icon: 'pencil', label: 'Rename', spare: true, onPress: () => openRenamePlaylist(item) },
         ]}
         onRefresh={() => Promise.all([onRefresh(), entries.refetch()])}
         sheets={<ItemActionSheet item={menu} visible={!!menu} onClose={() => setMenu(undefined)} />}
