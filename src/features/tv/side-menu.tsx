@@ -12,6 +12,9 @@
  * panel, and the items slid back the same distance), so the focus fill and the
  * labels never show outside the panel. On close they keep the open layout
  * until the panel is gone.
+ *
+ * TV Modern look: the same rules, drawn by `side-menu-modern.tsx` (no rail
+ * surface, a fade over the page, the focus plate, Settings at the bottom).
  */
 import { type Href, router, usePathname } from 'expo-router';
 import { TabList, Tabs, type TabsDescriptor, TabSlot, type TabsSlotRenderOptions, TabTrigger, useTabTrigger } from 'expo-router/ui';
@@ -36,10 +39,11 @@ import { usePagePlacement } from '@/features/extensions/use-placement';
 import { tvKeyFromEvent } from '@/player/tv-keys';
 import { isNativeTV, isTVPreview } from '@/platform/tv';
 import { isTvModern } from '@/platform/tv-look-now';
-import { type AppTheme, createStyles, font, motion, radius, spacing, tv, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
+import { type AppTheme, createStyles, font, motion, radius, spacing, tv, tvm, tvSafeInset, tvScale, type, useLayout, useStyles, useTheme, webPressable, withAlpha } from '@/theme';
 
 import { focusActivePage, type FocusTarget, focusView, isMenuFocused, noteRemoteKey, restoreContentFocus, setContentGuide, setMenuFocused, TvFocusGuide, tvPages } from './focus';
 import { menuRightAction, type NowPart } from './menu-right';
+import { MODERN_MENU_WIDTH, MODERN_RAIL_WIDTH, ModernMenuEntry, ModernNowPlayingEntry, ModernRailBackdrop, ModernRailEntries } from './side-menu-modern';
 import { useTvBack } from './use-tv-back';
 import { useTvRemote } from './use-tv-remote';
 import { installWebSpatialNav } from './web-spatial-nav';
@@ -93,6 +97,9 @@ function useDestinations(): Destination[] {
 }
 
 const STANDARD = Easing.bezier(...motion.easing.standard);
+
+/** The Modern drawing (side-menu-modern.tsx). Fixed per run, like the look. */
+const MODERN = isTvModern;
 
 /** The TV window never changes size, so the menu sizes are fixed. */
 const K = tvScale(Dimensions.get('window').width);
@@ -196,8 +203,8 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
   const l = useLayout();
   const reduced = useReducedMotion();
   const pathname = usePathname();
-  const railW = Math.round(tv.railWidth * tvScale(l.width));
-  const menuW = Math.round(tv.menuWidth * tvScale(l.width));
+  const railW = MODERN ? MODERN_RAIL_WIDTH : Math.round(tv.railWidth * tvScale(l.width));
+  const menuW = MODERN ? MODERN_MENU_WIDTH : Math.round(tv.menuWidth * tvScale(l.width));
   const [open, setOpen] = useState(false);
   const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The selected item: the focus lands on it when it comes into the menu.
@@ -261,8 +268,10 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
   // 0 closed, 1 open. The panel, the items' clip and the labels follow it on the UI thread.
   const progress = useSharedValue(0);
   useEffect(() => {
+    // Modern: open 220 ms, close 180 ms (tvModern.motion).
+    const duration = reduced ? 0 : MODERN ? (open ? tvm.motion.menuOpen : tvm.motion.menuClose) : motion.duration.fast;
     progress.set(
-      withTiming(open ? 1 : 0, { duration: reduced ? 0 : motion.duration.fast, easing: STANDARD }, (done) => {
+      withTiming(open ? 1 : 0, { duration, easing: STANDARD }, (done) => {
         // A close that ran to its end (an open in the middle cancels it).
         if (done && !open) scheduleOnRN(setWide, false);
       }),
@@ -282,6 +291,44 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
   // The clip's trailing edge is the panel's; the items inside stay still.
   const clip = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.get() - 1) * slide }] }));
   const unclip = useAnimatedStyle(() => ({ transform: [{ translateX: (1 - progress.get()) * slide }] }));
+
+  const item = (d: Destination) => (
+    <MenuItem
+      key={d.key}
+      destination={d}
+      open={wide}
+      pageOpen={pageOpen}
+      pathname={pathname}
+      railWidth={railW}
+      progress={progress}
+      onSelected={setActive}
+      onFocus={onItemFocus}
+      onBlur={onItemBlur}
+      onDone={close}
+    />
+  );
+
+  if (MODERN) {
+    return (
+      <TvFocusGuide ref={root} destinations={[active]} style={[s.rail, { width: railW }]} accessibilityRole="menu" accessibilityLabel="Menu">
+        <ModernRailBackdrop progress={progress} />
+        {/* The same clip as Classic: it slides with the (invisible) panel, so the entries show only where the menu is. */}
+        <Animated.View style={[s.panel, { width: menuW }, clip]}>
+          <Animated.View style={[s.panel, { width: wide ? menuW : railW }, unclip]}>
+            <ModernRailEntries
+              main={
+                <>
+                  <NowPlayingItem open={wide} railWidth={railW} progress={progress} onFocus={onItemFocus} onBlur={onItemBlur} />
+                  {destinations.filter((d) => d !== SETTINGS).map(item)}
+                </>
+              }
+              bottom={item(SETTINGS)}
+            />
+          </Animated.View>
+        </Animated.View>
+      </TvFocusGuide>
+    );
+  }
 
   return (
     <TvFocusGuide
@@ -316,21 +363,7 @@ function SideMenu({ content }: { content: RefObject<FocusTarget | null> }) {
           </View>
           <View style={s.items}>
             <NowPlayingItem open={wide} railWidth={railW} progress={progress} onFocus={onItemFocus} onBlur={onItemBlur} />
-            {destinations.map((d) => (
-              <MenuItem
-                key={d.key}
-                destination={d}
-                open={wide}
-                pageOpen={pageOpen}
-                pathname={pathname}
-                railWidth={railW}
-                progress={progress}
-                onSelected={setActive}
-                onFocus={onItemFocus}
-                onBlur={onItemBlur}
-                onDone={close}
-              />
-            ))}
+            {destinations.map(item)}
           </View>
         </Animated.View>
       </Animated.View>
@@ -407,19 +440,37 @@ function MenuItem({
     setTimeout(onDone, 80);
   };
 
+  const onItemFocus = () => {
+    setFocused(true);
+    onFocus();
+  };
+  const onItemBlur = () => {
+    setFocused(false);
+    onBlur();
+  };
+  if (MODERN) {
+    return (
+      <ModernMenuEntry
+        pressRef={view}
+        label={destination.label}
+        icon={destination.icon}
+        open={open}
+        selected={selected}
+        focused={focused}
+        progress={progress}
+        onPress={go}
+        onFocus={onItemFocus}
+        onBlur={onItemBlur}
+      />
+    );
+  }
   const fg = focused ? c.bg : selected ? c.text : c.text2;
   return (
     <Pressable
       ref={view}
       onPress={go}
-      onFocus={() => {
-        setFocused(true);
-        onFocus();
-      }}
-      onBlur={() => {
-        setFocused(false);
-        onBlur();
-      }}
+      onFocus={onItemFocus}
+      onBlur={onItemBlur}
       accessibilityRole="menuitem"
       accessibilityLabel={destination.label}
       accessibilityState={{ selected }}
@@ -484,6 +535,24 @@ function NowPlayingItem({
   };
   const cover = focused === 'cover';
   const toggle = focused === 'toggle';
+  if (MODERN) {
+    return (
+      <ModernNowPlayingEntry
+        item={item}
+        playing={playing}
+        open={open}
+        cover={cover}
+        toggle={toggle}
+        progress={progress}
+        toggleRef={toggleRef}
+        onOpenPlayer={openFullPlayer}
+        onTogglePlay={activePlayback.togglePlay}
+        onCoverFocus={take('cover')}
+        onToggleFocus={take('toggle')}
+        onBlur={leave}
+      />
+    );
+  }
   return (
     <View style={[s.item, s.nowItem, s.nowRow]}>
       <Pressable
