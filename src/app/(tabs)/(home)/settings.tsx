@@ -37,6 +37,7 @@ import { useHomeSettings } from '@/settings/home';
 import { useTabBarSettings } from '@/settings/tab-bar';
 import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from '@/settings/playback';
 import { FADE_CHOICES, fadeLabel } from '@/player/audio/crossfade';
+import { HOLD_TOP_CHOICES, holdPaceLabel } from '@/player/hold-seek';
 import { audioSession } from '@/player/audio/session';
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
@@ -187,7 +188,10 @@ function ServersSection() {
   );
 }
 
-type PickerKey = 'wifi' | 'cellular' | 'back' | 'forward' | 'fade' | null;
+type PickerKey = 'wifi' | 'cellular' | 'back' | 'forward' | 'hold' | 'fade' | null;
+
+/** "Up to 240×": the top speed of a held Left or Right. */
+const holdTopLabel = (top: number) => `Up to ${top}×`;
 
 function AppearanceSection() {
   const choice = useAppearance((st) => st.choice);
@@ -274,6 +278,7 @@ function PlaybackSection() {
   const quality: Option<number>[] = QUALITY_OPTIONS.map((q) => ({ value: q.value, label: q.label }));
   const skips: Option<number>[] = SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} s` }));
   const fades: Option<number>[] = FADE_CHOICES.map((n) => ({ value: n, label: fadeLabel(n) }));
+  const holds: Option<number>[] = HOLD_TOP_CHOICES.map((n) => ({ value: n, label: `${holdTopLabel(n)} (${holdPaceLabel(n)})` }));
   const sheet =
     picker === 'wifi'
       ? { title: 'Streaming quality on Wi-Fi', options: quality, selected: st.wifiBitrate, set: (v: number) => st.update({ wifiBitrate: v }) }
@@ -283,6 +288,8 @@ function PlaybackSection() {
           ? { title: 'Skip back', options: skips, selected: st.skipBackSeconds, set: (v: number) => st.update({ skipBackSeconds: v }) }
           : picker === 'forward'
             ? { title: 'Skip forward', options: skips, selected: st.skipForwardSeconds, set: (v: number) => st.update({ skipForwardSeconds: v }) }
+            : picker === 'hold'
+              ? { title: 'Hold to seek', options: holds, selected: st.holdSeekTop, set: (v: number) => st.update({ holdSeekTop: v }) }
             : picker === 'fade'
               ? { title: 'Fade between songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
               : null;
@@ -295,13 +302,15 @@ function PlaybackSection() {
   return (
     <Group
       title="Playback"
-      footer={`Autoplay similar music adds songs like the last ones when the queue ends. Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
+      footer={`Autoplay similar music adds songs like the last ones when the queue ends. Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${isTV ? ' Hold Left or Right on the remote to rewind or fast forward. The longer you hold, the faster it goes, up to the speed you choose.' : ''}${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
       <SettingsRow icon="gauge" label="Quality on Wi-Fi" value={qualityLabel(st.wifiBitrate)} onPress={() => setPicker('wifi')} />
       {cellular ? (
         <SettingsRow icon="antenna.radiowaves.left.and.right" label="Quality on cellular" value={qualityLabel(st.cellularBitrate)} onPress={() => setPicker('cellular')} />
       ) : null}
       <SettingsRow icon="gobackward.10" label="Skip back" value={`${st.skipBackSeconds} s`} onPress={() => setPicker('back')} />
       <SettingsRow icon="goforward.10" label="Skip forward" value={`${st.skipForwardSeconds} s`} onPress={() => setPicker('forward')} />
+      {/* TV: how fast a held Left or Right goes in the video player (player/hold-seek.ts). */}
+      {isTV ? <SettingsRow icon="timer" label="Hold to seek" value={holdTopLabel(st.holdSeekTop)} onPress={() => setPicker('hold')} /> : null}
       <SettingsRow
         icon="forward.fill"
         label="Play next episode automatically"

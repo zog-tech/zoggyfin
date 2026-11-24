@@ -27,6 +27,8 @@ export function KeyInput({
 }: {
   enabled?: boolean;
   onKey: (press: KeyPress) => void;
+  /** Web only (the TV preview); native keyboards send presses. */
+  onKeyUp?: (press: KeyPress) => void;
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 }) {

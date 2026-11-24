@@ -10,7 +10,7 @@ describe('readPlaybackSettings', () => {
 
   it('keeps older saved settings and turns the whole-video load on', () => {
     const old = { wifiBitrate: 20_000_000, cellularBitrate: 4_000_000, skipBackSeconds: 5, skipForwardSeconds: 30, autoplayNext: false, downloadQuality: 720 };
-    expect(readPlaybackSettings(old)).toEqual({ ...old, loadWholeVideo: true, loadWholeVideoChosen: false, previews: true, liteMode: 'auto', autoplaySimilar: true, fadeSeconds: 0 });
+    expect(readPlaybackSettings(old)).toEqual({ ...old, loadWholeVideo: true, loadWholeVideoChosen: false, previews: true, liteMode: 'auto', autoplaySimilar: true, fadeSeconds: 0, holdSeekTop: 240 });
   });
 
   it('ignores an "off" saved before the user chose it', () => {
@@ -32,5 +32,11 @@ describe('readPlaybackSettings', () => {
     expect(readPlaybackSettings({ fadeSeconds: 6 }).fadeSeconds).toBe(6);
     expect(readPlaybackSettings({ fadeSeconds: 7 }).fadeSeconds).toBe(0);
     expect(readPlaybackSettings({ autoplaySimilar: false }).autoplaySimilar).toBe(false);
+  });
+
+  it('keeps a known hold-to-seek top speed and drops an unknown one', () => {
+    expect(readPlaybackSettings({ holdSeekTop: 60 }).holdSeekTop).toBe(60);
+    expect(readPlaybackSettings({ holdSeekTop: 12 }).holdSeekTop).toBe(240);
+    expect(readPlaybackSettings({}).holdSeekTop).toBe(240);
   });
 });
