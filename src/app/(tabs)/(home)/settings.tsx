@@ -32,6 +32,10 @@ import { otaLabel, runningOta } from '@/lib/ota';
 import { toast } from '@/lib/toast';
 import { appVersion } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
+import { TV_LOOK_CHOICES, type TvLookChoice, tvLookLabel } from '@/platform/tv-look';
+import { clearTvLookOverride, shownTvLookChoice, tvLook, tvLookPending } from '@/platform/tv-look-now';
+import { confirmRestart, restartApp } from '@/lib/restart';
+import { useTvLookSetting } from '@/settings/tv-look';
 import { APPEARANCE_OPTIONS, useAppearance } from '@/settings/appearance';
 import { useHomeSettings } from '@/settings/home';
 import { useTabBarSettings } from '@/settings/tab-bar';
@@ -102,8 +106,8 @@ export default function SettingsScreen() {
 
           <AdminSettingsGroup />
 
-          {/* TV is always dark. */}
-          {isTV ? null : <AppearanceSection />}
+          {/* TV is always dark; it chooses its look instead. */}
+          {isTV ? <TvLookSection /> : <AppearanceSection />}
 
           <HomeSection />
 
@@ -207,6 +211,38 @@ function AppearanceSection() {
           trailing={choice === o.value ? <Icon name="checkmark" size={scaled(iconSize.sm)} color={c.accent} weight="semibold" /> : <View />}
         />
       ))}
+    </Group>
+  );
+}
+
+/** TV: the look (Classic or Modern). It applies at the next start, so a change asks for a restart. */
+function TvLookSection() {
+  const saved = useTvLookSetting((st) => st.choice);
+  const choice = shownTvLookChoice(saved);
+  const setChoice = useTvLookSetting((st) => st.setChoice);
+  const [open, setOpen] = useState(false);
+  const options: Option<TvLookChoice>[] = TV_LOOK_CHOICES.map((v) => ({
+    value: v,
+    label: v === 'auto' ? 'Auto: Modern, or Classic on Fire TV and in Lite mode' : v === 'modern' ? 'Modern' : 'Classic',
+  }));
+  const pending = tvLookPending(choice);
+  const choose = async (v: TvLookChoice) => {
+    // The web preview parameter would win over the new choice after the reload.
+    clearTvLookOverride();
+    setChoice(v);
+    if (!tvLookPending(v)) return;
+    if (await confirmRestart('Restart Zoggyfin to change the look?')) await restartApp();
+  };
+  return (
+    <Group title="Appearance" footer="Modern is the new design for TV. Classic is the earlier design. The change needs a restart.">
+      <SettingsRow
+        icon="tv"
+        label="TV look"
+        value={`${tvLookLabel(choice, tvLook)}${pending ? ' · restart to apply' : ''}`}
+        onPress={() => setOpen(true)}
+        last
+      />
+      <OptionSheet visible={open} title="TV look" options={options} selected={[choice]} onSelect={(v) => void choose(v)} onClose={() => setOpen(false)} />
     </Group>
   );
 }
