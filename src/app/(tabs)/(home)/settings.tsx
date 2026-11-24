@@ -9,6 +9,7 @@ import { clientIdentity } from '@/auth/identity';
 import { useAccounts } from '@/auth/session-store';
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
+import { TvPageTitle } from '@/components/tv-page-header';
 import { type Option, OptionSheet } from '@/components/option-sheet';
 import { LITE_CHOICES, type LiteChoice, liteLabel } from '@/platform/lite';
 import { useLite } from '@/platform/use-lite';
@@ -33,7 +34,7 @@ import { toast } from '@/lib/toast';
 import { appVersion } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
 import { TV_LOOK_CHOICES, type TvLookChoice, tvLookLabel } from '@/platform/tv-look';
-import { clearTvLookOverride, shownTvLookChoice, tvLook, tvLookPending } from '@/platform/tv-look-now';
+import { clearTvLookOverride, isTvModern, shownTvLookChoice, tvLook, tvLookPending } from '@/platform/tv-look-now';
 import { confirmRestart, restartApp } from '@/lib/restart';
 import { useTvLookSetting } from '@/settings/tv-look';
 import { APPEARANCE_OPTIONS, useAppearance } from '@/settings/appearance';
@@ -82,6 +83,8 @@ export default function SettingsScreen() {
     <>
       <Stack.Screen options={{ title: 'Settings', headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
       <TvScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}>
+        {/* TV Modern: the page title (TV has no header bar). */}
+        {isTV && isTvModern ? <TvPageTitle title="Settings" /> : null}
         <View style={styles.inner}>
           <Group>
             <View style={[styles.row, styles.account]}>
