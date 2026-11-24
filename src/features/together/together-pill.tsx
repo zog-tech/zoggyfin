@@ -2,17 +2,25 @@
  * The "Together" indicator in the video and music players: who is in the
  * session and whether the group waits. Tapping it opens the session sheet.
  * `TogetherChip` is the compact form for the mini player.
+ * TV Modern look (design system §7.22): no pill and no glass; the indicator
+ * is flat text with a glyph, and the focus plate shows behind it.
  */
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { Touchable } from '@/components/touchable';
 import { Glass } from '@/features/player/glass';
 import { c, radius, spacing, textStyle, type } from '@/features/player/tokens';
+import { PlateIcon, TvFocusPlate, TvPlateText } from '@/features/tv/tv-button';
 import { openFullPlayer } from '@/player';
 import { playerState } from '@/player/store';
-import { createStyles, type AppTheme, font, useStyles, useTheme } from '@/theme';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+import { createStyles, type AppTheme, font, tvFont, tvm, u, useStyles, useTheme } from '@/theme';
 import { openTogetherSheet, type TogetherState, useTogetherStore } from '@/together/store';
 import { groupCount } from '@/together/syncplay-logic';
+
+const MODERN = isTV && isTvModern;
 
 /** The pill text for a state, or null when no session runs. */
 export function togetherLabel(s: TogetherState): string | null {
@@ -55,6 +63,19 @@ export function TogetherPill({
 }) {
   const label = useTogetherStore(togetherLabel);
   if (!label) return null;
+  if (MODERN) {
+    return (
+      <Touchable kind="plain" ring={false} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}. Open the session.`} containerStyle={[styles.wrap, { top, left, right }]}>
+        <View style={modern.row}>
+          <TvFocusPlate />
+          <PlateIcon name="person.2.fill" size={u(24)} rest={c.textOnMedia} />
+          <TvPlateText style={modern.text} rest={c.textOnMedia}>
+            {label}
+          </TvPlateText>
+        </View>
+      </Touchable>
+    );
+  }
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}. Open the session.`} style={[styles.wrap, { top, left, right }]}>
       <Glass style={styles.pill}>
@@ -103,6 +124,11 @@ export function TogetherChip({ iconOnly = false }: { iconOnly?: boolean }) {
     </Pressable>
   );
 }
+
+const modern = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: u(12), height: u(tvm.size.toolbarItemHeight), paddingHorizontal: u(tvm.size.toolbarPadX) },
+  text: { ...tvFont(tvm.type.toolbar), fontWeight: '600' },
+});
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute' },
