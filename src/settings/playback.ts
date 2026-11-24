@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import type { DownloadQuality } from '@/downloads/types';
 import { FADE_CHOICES } from '@/player/audio/crossfade';
 import { LITE_CHOICES, type LiteChoice } from '@/platform/lite';
+import { DEFAULT_HOLD_TOP, validHoldTop } from '@/player/hold-seek';
 import { readJson, writeJson } from '@/storage/json';
 
 import { migrateSkipSettings, type SkipChoice, type SkipMode, type SkipSettings, withSkipMode } from './skip-modes';
@@ -62,6 +63,8 @@ export interface PlaybackSettings {
   autoplaySimilar: boolean;
   /** Music: "Fade between songs", in seconds; 0 is off (`player/audio/crossfade.ts`). */
   fadeSeconds: number;
+  /** TV: the top speed of a held Left or Right in the video player, 240 for 240× (`player/hold-seek.ts`). */
+  holdSeekTop: number;
 }
 
 const KEY = 'settings.playback.v1';
@@ -79,6 +82,7 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   liteMode: 'auto',
   autoplaySimilar: true,
   fadeSeconds: 0,
+  holdSeekTop: DEFAULT_HOLD_TOP,
 };
 
 interface Store extends PlaybackSettings {
@@ -103,6 +107,7 @@ export const usePlaybackSettings = create<Store>((set, get) => ({
       liteMode: s.liteMode,
       autoplaySimilar: s.autoplaySimilar,
       fadeSeconds: s.fadeSeconds,
+      holdSeekTop: s.holdSeekTop,
     };
     writeJson(KEY, saved);
   },
@@ -123,6 +128,7 @@ export function readPlaybackSettings(saved: unknown): PlaybackSettings {
   if (!out.loadWholeVideoChosen) out.loadWholeVideo = DEFAULT_PLAYBACK_SETTINGS.loadWholeVideo;
   if (!LITE_CHOICES.includes(out.liteMode)) out.liteMode = DEFAULT_PLAYBACK_SETTINGS.liteMode;
   if (!FADE_CHOICES.includes(out.fadeSeconds)) out.fadeSeconds = DEFAULT_PLAYBACK_SETTINGS.fadeSeconds;
+  out.holdSeekTop = validHoldTop(out.holdSeekTop);
   return out;
 }
 

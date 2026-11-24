@@ -51,6 +51,7 @@ import {
   tapSeekTransition,
   tapZone,
 } from '@/player/tap-seek';
+import { HOLD_MAX_MS, holdDirection, type HoldSeek, holdSpeed, holdTarget } from '@/player/hold-seek';
 import { MAX_BITRATE, QUALITY_OPTIONS, qualityLabel, usePlaybackSettings, useSkipSettings } from '@/settings/playback';
 import { breakpointFor, layout } from '@/theme/theme';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
@@ -530,6 +531,9 @@ export function PlayerScreen() {
   const scrubRun = useRef<ScrubRun>(NO_RUN);
   const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Hold to seek (player/hold-seek.ts): the hold in progress, and the speed it shows.
+  const holdRef = useRef<HoldSeek | null>(null);
+  const [holdShown, setHoldShown] = useState<{ dir: -1 | 1; speed: number } | null>(null);
   const clearScrubTimer = () => {
     if (scrubTimer.current) clearTimeout(scrubTimer.current);
     scrubTimer.current = null;
@@ -541,6 +545,8 @@ export function PlayerScreen() {
   const endScrub = () => {
     clearScrubTimer();
     stopHold();
+    holdRef.current = null;
+    setHoldShown(null);
     scrubRun.current = NO_RUN;
     setScrubTo(null);
     setScrubbing(false);
@@ -581,17 +587,54 @@ export function PlayerScreen() {
   /** Left and Right scrub: the bar has the focus, or no control has it. */
   const scrubsNow = () => isTV && visible && status !== 'error' && (barFocused || controlFocus.current <= 0);
 
+  /**
+   * Hold to seek: the target on the seek bar moves faster the longer the key is held, up to the
+   * top speed in Settings (player/hold-seek.ts), and the player seeks once, when the key is let go.
+   */
+  const startHoldSeek = (dir: -1 | 1) => {
+    stopHold();
+    clearScrubTimer();
+    // The hold takes over from a tap-seek run and a pending double press.
+    dispatchTap({ type: 'end' });
+    pairs.reset();
+    const top = settings.holdSeekTop;
+    holdRef.current = { dir, from: scrubToRef.current ?? playerState().position, start: Date.now() };
+    // Controls hidden: they show with the focus on the seek bar, which keeps Left and Right while the key repeats.
+    if (!visible) setFocusBar(true);
+    setScrubbing(true);
+    wake();
+    const step = () => {
+      const h = holdRef.current;
+      if (!h) return;
+      const t = Date.now();
+      // A key-up that never came (a sheet took the keys) must not run to the end of the video.
+      if (t - h.start > HOLD_MAX_MS) {
+        commitScrub();
+        return;
+      }
+      setScrubTo(holdTarget(h, t, top, playerState().duration));
+      const speed = holdSpeed(t - h.start, top);
+      setHoldShown((prev) => (prev && prev.speed === speed && prev.dir === h.dir ? prev : { dir: h.dir, speed }));
+    };
+    step();
+    holdTimer.current = setInterval(step, HOLD_TICK_MS);
+    console.log(`[tvkeys] hold seek dir=${dir} top=${top}`);
+  };
+
   const onTvHold = (key: TvKey, start: boolean) => {
-    if (key !== 'left' && key !== 'right') return;
+    const dir = holdDirection(key);
+    if (!dir) return;
     if (!start) {
-      stopHold();
+      // Let go: seek to the target now.
+      if (holdRef.current) commitScrub();
+      else stopHold();
       return;
     }
-    if (!scrubsNow()) return;
-    const dir = key === 'left' ? -1 : 1;
-    stopHold();
-    scrub(dir);
-    holdTimer.current = setInterval(() => scrub(dir), 150);
+    if (noSeek || status === 'error') return;
+    // Left and Right on a focused button keep moving the focus. They seek with the controls hidden,
+    // on the seek bar, or with no control focused. Rewind and fast forward always seek.
+    if ((key === 'left' || key === 'right') && visible && !scrubsNow()) return;
+    startHoldSeek(dir);
   };
 
   const onTvKey = (key: TvKey) => {
@@ -720,11 +763,31 @@ export function PlayerScreen() {
   // Back closes the player (a sheet first). Phones keep the system back (minimize).
   useTvBack(isNativeTV, () => onTvKey('back'));
 
+  // Web TV preview: like the remote, Left and Right act when the key goes up, and a key held
+  // WEB_HOLD_MS starts a hold (Android TV sends `longLeft` then), which ends when it goes up.
+  const webPress = useRef<{ key: TvKey; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  useEffect(
+    () => () => {
+      if (webPress.current?.timer) clearTimeout(webPress.current.timer);
+    },
+    [],
+  );
   const onKey = (k: KeyPress) => {
     if (isTV) {
       // Web TV preview: the keyboard stands in for the remote.
       const key = tvKeyFromWeb(k.key);
-      if (key) onTvKey(key);
+      if (!key) return;
+      if (holdDirection(key)) {
+        if (k.repeat || webPress.current) return;
+        const press: { key: TvKey; timer: ReturnType<typeof setTimeout> | null } = { key, timer: null };
+        press.timer = setTimeout(() => {
+          press.timer = null;
+          onTvHold(key, true);
+        }, WEB_HOLD_MS);
+        webPress.current = press;
+        return;
+      }
+      onTvKey(key);
       return;
     }
     wake();
@@ -850,6 +913,17 @@ export function PlayerScreen() {
     // A conversion the server makes: the reason tells whether a setting or the file causes it.
     convertReason ? { key: 'why', label: 'Converted because of', detail: convertReason } : null,
   ].filter((r) => r !== null);
+  const onKeyUp = (k: KeyPress) => {
+    const key = isTV ? tvKeyFromWeb(k.key) : null;
+    const press = webPress.current;
+    if (!key || !press || press.key !== key) return;
+    webPress.current = null;
+    if (press.timer) {
+      clearTimeout(press.timer);
+      onTvKey(key);
+    } else onTvHold(key, false);
+  };
+
   const settingsSections: SheetSection[] = now
     ? [
         ...(vod && vod.qualities.length
@@ -901,7 +975,7 @@ export function PlayerScreen() {
   const bottomPad = Math.max(insets.bottom, spacing.md);
 
   return (
-    <KeyInput enabled={!sheet} onKey={onKey} style={styles.root}>
+    <KeyInput enabled={!sheet} onKey={onKey} onKeyUp={onKeyUp} style={styles.root}>
       <StatusBar hidden={!visible} animated style="light" />
       {/* TV: the focus stays in the player. */}
       <TvFocusGuide trapFocus={isNativeTV} style={styles.root}>
@@ -973,6 +1047,19 @@ export function PlayerScreen() {
               {tapBubble.side === 'right' ? <Icon name="forward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
             </Glass>
           </Animated.View>
+        ) : null}
+        {/* Hold to seek: the speed now, on the side it goes to. The bar shows the target. */}
+        {holdShown ? (
+          <View
+            pointerEvents="none"
+            accessibilityLiveRegion="polite"
+            style={[styles.ripple, holdShown.dir < 0 ? { left: sideInset + spacing.xl } : { right: sideInset + spacing.xl }]}>
+            <Glass style={[styles.rippleInner, styles.rippleRow]}>
+              {holdShown.dir < 0 ? <Icon name="backward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+              <Text style={styles.rippleText} accessibilityLabel={`${holdShown.dir < 0 ? 'Rewind' : 'Fast forward'} ${holdShown.speed} times`}>{`${holdShown.speed}×`}</Text>
+              {holdShown.dir > 0 ? <Icon name="forward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+            </Glass>
+          </View>
         ) : null}
 
         {/* TV, controls hidden: the zap banner. It shows the guide only and never opens a second stream. */}
@@ -1345,6 +1432,12 @@ const PEEK_MS = 1500;
 
 /** TV: a double Left or Right seeks this far each way (seconds). */
 const DPAD_STEPS = { left: DOUBLE_PRESS_SEEK, right: DOUBLE_PRESS_SEEK };
+
+/** Hold to seek: the target and the speed update this often (ms). */
+const HOLD_TICK_MS = 150;
+
+/** Web TV preview: a key down this long is a hold, as on Android TV (ms). */
+const WEB_HOLD_MS = 300;
 
 /** The channel list in the player: Search, then the channels around the one that plays, in the list it was played from. */
 function channelSections(live: LiveNow, play: (index: number) => void, search: () => void): SheetSection[] {
