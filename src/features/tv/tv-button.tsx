@@ -306,7 +306,7 @@ function TextAction({ label, icon, progress, active }: { label: string; icon?: I
   );
 }
 
-/** The resume bar under an action's label. On the Ember rest fill it is dark; on the plate (and on a text action) grey and Ember. */
+/** The resume bar under an action's label (out of the layout, see `m.bar`). On the Ember rest fill it is dark; on the plate (and on a text action) grey and Ember. */
 function ResumeBar({ fraction, onAccent }: { fraction: number; onAccent?: boolean }) {
   const mark = useContext(TouchFocusMark);
   const track = useAnimatedStyle(() => ({
@@ -435,7 +435,12 @@ const m = StyleSheet.create({
   primaryLabel: { ...tvFont(tvm.type.action), fontWeight: '700' },
   textLabel: { ...tvFont(tvm.type.action) },
   on: { fontWeight: '700' },
-  bar: { height: BAR_HEIGHT, marginTop: BAR_HEIGHT, borderRadius: BAR_HEIGHT / 2, overflow: 'hidden' },
+  /**
+   * The bar hangs under the label and takes no room in the layout: the label
+   * then centres on the glyph (and on the labels of the actions next to it),
+   * as on an action with no bar.
+   */
+  bar: { position: 'absolute', left: 0, right: 0, top: '100%', height: BAR_HEIGHT, marginTop: BAR_HEIGHT, borderRadius: BAR_HEIGHT / 2, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: BAR_HEIGHT / 2 },
   square: { alignItems: 'center', justifyContent: 'center' },
   toggleLine: { position: 'absolute', width: u(24), height: u(4), borderRadius: u(2), backgroundColor: C.accent },
