@@ -20,6 +20,12 @@ describe('focusScrollOffset', () => {
     expect(focusScrollOffset({ ...page, offset: 400, top: 340, bottom: 400 })).toBe(0);
   });
 
+  it('goes back to the top for buttons low on the first screen (an item page banner)', () => {
+    expect(focusScrollOffset({ ...page, offset: 400, top: 390, bottom: 450 })).toBe(0);
+    // A view that does not fit on the first screen with its margin still moves up just enough.
+    expect(focusScrollOffset({ ...page, offset: 400, top: 420, bottom: 470 })).toBe(340);
+  });
+
   it('goes to the end near it, so text after the last control shows', () => {
     // max = 1460: the view at 1600 keeps its top margin there.
     expect(focusScrollOffset({ ...page, offset: 1100, top: 1600, bottom: 1700 })).toBe(1460);

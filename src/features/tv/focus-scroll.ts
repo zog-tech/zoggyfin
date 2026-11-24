@@ -6,8 +6,11 @@
  * stays a margin away from the top and bottom edges, so the focus ring and the
  * next view show. Near an end the page goes all the way, so the title above
  * the first control and any text after the last one come into view, because
- * no D-pad press reaches them. The offset never leaves the content, so the
- * page never scrolls past its end and cuts rows off.
+ * no D-pad press reaches them. On the way up that is any view that fits on
+ * the first screen: an item page's buttons sit low on a full-screen banner,
+ * and stopping a margin above them cut the show's title and logo off. The
+ * offset never leaves the content, so the page never scrolls past its end
+ * and cuts rows off.
  */
 
 export interface FocusScrollInput {
@@ -33,7 +36,7 @@ export function focusScrollOffset({ offset, top, bottom, viewport, content, marg
   else if (top < offset + margin) next = top - margin;
   else if (bottom > offset + viewport - margin) next = bottom - viewport + margin;
 
-  if (next < offset && next < viewport / 2 && bottom <= viewport - margin) next = 0;
+  if (next < offset && bottom <= viewport - margin) next = 0;
   else if (next > offset && max - next < viewport / 2 && top - max >= margin) next = max;
   return Math.min(max, Math.max(0, next));
 }
