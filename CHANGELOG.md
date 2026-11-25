@@ -13,6 +13,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Report a problem.** Settings, "Report a problem" lets you write what went wrong and share a
+  plain-text report (iOS, Android) or copy it (web, Mac app). The report holds the app version, the
+  update, the platform, the system version and a player log. The log is always on and is kept
+  after the app closes. It holds no server address, no account and no song names. "Show log" shows
+  the last entries on the device. Send the report to admin@zog-tech.com or attach it to a GitHub
+  issue. Not on TV.
 - **A new TV look (Modern).** TVs get a second design: tiles with a white ring and no caption
   strip, flat text actions with one white focus rectangle instead of grey pills, an Ember primary
   action and a soft fill on focused rows. Home and the movie and show pages run their art full
