@@ -627,16 +627,18 @@ export function NowPlayingScreen() {
           : sheet === 'more'
             ? [
                 {
-                  title: item.Name ?? 'Now playing',
+                  // No heading: the sheet's header names the song.
+                  title: '',
                   rows: [
                     ...(item.AlbumId
-                      ? [{ key: 'album', label: 'Go to album', selected: false, onPress: () => go({ Id: item.AlbumId ?? '', Name: item.Album, Type: 'MusicAlbum' }) }]
+                      ? [{ key: 'album', label: 'Go to album', icon: 'square.stack' as const, selected: false, onPress: () => go({ Id: item.AlbumId ?? '', Name: item.Album, Type: 'MusicAlbum' }) }]
                       : []),
                     ...((item.ArtistItems?.[0] ?? item.AlbumArtists?.[0])?.Id
                       ? [
                           {
                             key: 'artist',
                             label: 'Go to artist',
+                            icon: 'person' as const,
                             selected: false,
                             onPress: () => {
                               const a = item.ArtistItems?.[0] ?? item.AlbumArtists?.[0];
@@ -645,30 +647,31 @@ export function NowPlayingScreen() {
                           },
                         ]
                       : []),
-                    { key: 'playlist', label: 'Add to playlist…', selected: false, onPress: () => openAddToPlaylist(item) },
+                    { key: 'playlist', label: 'Add to playlist…', icon: 'text.badge.plus' as const, selected: false, onPress: () => openAddToPlaylist(item) },
                     ...(canDownload(item) && findDownload(item.Id)?.state !== 'completed'
-                      ? [{ key: 'download', label: 'Download this song', selected: false, onPress: () => void downloads.download(item) }]
+                      ? [{ key: 'download', label: 'Download this song', icon: 'arrow.down.circle' as const, selected: false, onPress: () => void downloads.download(item) }]
                       : []),
                     ...(features.watchTogether && (nearbySupported || (syncPlaySupported && signedIn))
                       ? [
                           {
                             key: 'together',
                             label: 'Listen together',
+                            icon: 'person.2' as const,
                             selected: false,
-                            // The menu closes first: one sheet at a time.
-                            onPress: () => setTimeout(() => openTogetherSheet('music', item), 300),
+                            onPress: () => openTogetherSheet('music', item),
                           },
                         ]
                       : []),
-                    { key: 'mix', label: 'Instant mix from this song', selected: false, onPress: () => void s.instantMix(item) },
-                    { key: 'queue', label: 'Add to queue again', selected: false, onPress: () => void s.addToQueue(item) },
-                    { key: 'stop', label: 'Stop playback', selected: false, onPress: () => void s.stop() },
+                    { key: 'mix', label: 'Instant mix from this song', icon: 'wand.and.stars' as const, selected: false, onPress: () => void s.instantMix(item) },
+                    { key: 'queue', label: 'Add to queue again', icon: 'text.append' as const, selected: false, onPress: () => void s.addToQueue(item) },
+                    { key: 'stop', label: 'Stop playback', icon: 'stop.fill' as const, destructive: true, selected: false, onPress: () => void s.stop() },
                   ],
                 },
               ]
             : [];
 
-  const sheetTitle = sheet === 'speed' ? 'Speed' : sheet === 'sleep' ? 'Sleep timer' : sheet === 'chapters' ? 'Chapters' : 'More';
+  const more = sheet === 'more';
+  const sheetTitle = sheet === 'speed' ? 'Speed' : sheet === 'sleep' ? 'Sleep timer' : sheet === 'chapters' ? 'Chapters' : (item.Name ?? 'Now playing');
 
   return (
     <KeyInput enabled={!sheet} onKey={onKey} style={styles.root}>
@@ -678,7 +681,14 @@ export function NowPlayingScreen() {
         <ArtBackground item={item} />
         <Animated.View style={[styles.root, frameStyle, { paddingBottom: bottomPad(insets.bottom) }]}>{body}</Animated.View>
       </TurnCrossfade>
-      <PlayerSheet visible={sheet !== null} title={sheetTitle} sections={sheetSections} onClose={() => setSheet(null)} />
+      <PlayerSheet
+        visible={sheet !== null}
+        title={sheetTitle}
+        subtitle={more ? artist : null}
+        art={more ? <ItemImage item={item} variant="square" width={44} aspectRatio={1} rounded={radius.sm} hideArtTitle /> : undefined}
+        sections={sheetSections}
+        onClose={() => setSheet(null)}
+      />
       <TogetherSheetHost where="music" />
       <ToastHost overlay />
     </KeyInput>

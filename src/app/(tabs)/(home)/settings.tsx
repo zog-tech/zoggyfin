@@ -332,7 +332,7 @@ function PlaybackSection() {
             : picker === 'hold'
               ? { title: 'Hold to seek', options: holds, selected: st.holdSeekTop, set: (v: number) => st.update({ holdSeekTop: v }) }
             : picker === 'fade'
-              ? { title: 'Fade between songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
+              ? { title: 'Crossfade songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
               : null;
   const cellular = Platform.OS !== 'web' && !isTV;
   const lite = useLite();
@@ -386,7 +386,7 @@ function PlaybackSection() {
           />
         }
       />
-      <SettingsRow icon="speaker.wave.2.fill" label="Fade between songs" value={fadeLabel(st.fadeSeconds)} onPress={() => setPicker('fade')} />
+      <SettingsRow icon="speaker.wave.2.fill" label="Crossfade songs" value={fadeLabel(st.fadeSeconds)} onPress={() => setPicker('fade')} />
       {liteRow ? <SettingsRow icon="gauge" label="Lite mode" value={liteLabel(st.liteMode, lite)} onPress={() => setLiteOpen(true)} /> : null}
       {isTV ? (
         <SettingsRow

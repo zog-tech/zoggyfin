@@ -1065,6 +1065,12 @@ export async function createPlaylist(
   return id;
 }
 
+/** A playlist's entries in order, with the tile fields (names and artists): enough to list them. */
+export async function getPlaylistEntries(api: Api, userId: string, playlistId: string): Promise<BaseItemDto[]> {
+  const res = await getPlaylistApi(api).getPlaylistItems({ playlistId, userId, fields: TILE_FIELDS, enableUserData: false });
+  return res.data.Items ?? [];
+}
+
 export async function addToPlaylist(api: Api, userId: string, playlistId: string, ids: string[]): Promise<void> {
   await getPlaylistApi(api).addItemToPlaylist({ playlistId, ids, userId });
 }

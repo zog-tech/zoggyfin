@@ -7,10 +7,19 @@ import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
 import { isTvModern } from '@/platform/tv-look-now';
 import { actionSections, type ItemAction } from '@/registry/item-actions';
-import { createStyles, type AppTheme, font, iconSize, scaled, spacing, type, u, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, u, useStyles, useTheme } from '@/theme';
 
 import { Icon } from './icon';
+import { ItemImage } from './item-image';
 import { makeSheetStyles, Sheet, SheetRow } from './sheet';
+import { afterSheets } from './sheet-turns';
+
+/** The second line of the sheet's header: who made the item, or what and when it is. */
+function itemSubtitle(item: BaseItemDto): string | null {
+  const by = item.AlbumArtist ?? item.Artists?.[0] ?? item.SeriesName;
+  if (by) return by;
+  return item.ProductionYear ? String(item.ProductionYear) : null;
+}
 
 /**
  * The item action sheet. Rows come from the item action registry, in its
@@ -45,7 +54,8 @@ export function ItemActionSheet({
           preferredFocus={isTV && first && i === 0}
           onPress={() => {
             onClose();
-            run(a);
+            // After the sheet has gone: an action can open a dialog, the share sheet or the next sheet.
+            afterSheets(() => run(a));
           }}>
           <Icon name={a.icon} size={MODERN ? u(32) : scaled(iconSize.md)} color={a.destructive ? c.danger : c.text} />
           <Text style={[s.rowText, a.destructive && { color: c.danger }]}>{titleOf(a)}</Text>
@@ -54,16 +64,24 @@ export function ItemActionSheet({
     </View>
   );
   return (
-    <Sheet visible={visible} title={item?.Name} onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title={item?.Name}
+      subtitle={item ? itemSubtitle(item) : null}
+      art={item && !isTV ? <ItemImage item={item} variant="square" width={scaled(44)} aspectRatio={1} rounded={radius.sm} hideArtTitle /> : undefined}
+      onClose={onClose}>
       <TvScrollView style={s.list} contentContainerStyle={s.body}>
         {sections.map((sec, i) => (
           <View key={sec.key}>{group(sec.actions, i === 0)}</View>
         ))}
-        <View style={s.group}>
-          <SheetRow onPress={onClose} last accessibilityLabel="Cancel" preferredFocus={isTV && sections.length === 0}>
-            <Text style={s.cancel}>Cancel</Text>
-          </SheetRow>
-        </View>
+        {/* Phones and the web close with the header button, the scrim or a drag. TV keeps a row to rest the focus on. */}
+        {isTV ? (
+          <View style={s.group}>
+            <SheetRow onPress={onClose} last accessibilityLabel="Cancel" preferredFocus={sections.length === 0}>
+              <Text style={s.cancel}>Cancel</Text>
+            </SheetRow>
+          </View>
+        ) : null}
       </TvScrollView>
     </Sheet>
   );
@@ -78,7 +96,7 @@ const makeStyles = createStyles((t: AppTheme) => {
     ...sheet,
     // No grow, so a short sheet stays short; the scroll view still shrinks to the panel's maximum height.
     list: { flexGrow: 0 },
-    body: { gap: MODERN ? u(16) : spacing.md, paddingBottom: spacing.sm },
+    body: { gap: MODERN ? u(16) : spacing.md },
     cancel: MODERN ? sheet.rowText : { ...font(type.headline), color: t.c.text, flex: 1, textAlign: 'center' as const },
   };
 });

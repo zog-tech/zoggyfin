@@ -1,4 +1,4 @@
-import { continuousAlbum, fadeBetween, fadeGain, fadeLabel, inFadeWindow } from '../crossfade';
+import { continuousAlbum, fadeBetween, fadeGain, fadeLabel, fadeLength, inFadeWindow, overlapDue, overlapGains } from '../crossfade';
 
 const on = { seconds: 6, longForm: false, repeatOne: false, together: false };
 
@@ -77,4 +77,32 @@ describe('inFadeWindow', () => {
 it('labels a choice', () => {
   expect(fadeLabel(0)).toBe('Off');
   expect(fadeLabel(6)).toBe('6 s');
+});
+
+describe('the overlap of a true crossfade', () => {
+  it('is as long as the setting, but at most a quarter of the song', () => {
+    expect(fadeLength(6, 200)).toBe(6);
+    expect(fadeLength(12, 20)).toBe(5);
+    expect(fadeLength(6, 0)).toBe(6);
+    expect(fadeLength(0, 200)).toBe(0);
+  });
+
+  it('is due when the song has that long left', () => {
+    expect(overlapDue(193, 200, 6)).toBe(false);
+    expect(overlapDue(194, 200, 6)).toBe(true);
+    expect(overlapDue(199.9, 200, 6)).toBe(true);
+    // No length yet: never due.
+    expect(overlapDue(10, 0, 6)).toBe(false);
+    expect(overlapDue(194, 200, 0)).toBe(false);
+  });
+
+  it('crosses with equal power', () => {
+    expect(overlapGains(0)).toEqual({ out: 1, into: 0 });
+    const mid = overlapGains(0.5);
+    expect(mid.out ** 2 + mid.into ** 2).toBeCloseTo(1);
+    expect(overlapGains(1).out).toBeCloseTo(0);
+    expect(overlapGains(1).into).toBe(1);
+    expect(overlapGains(2).into).toBe(1);
+    expect(overlapGains(-1).out).toBe(1);
+  });
 });
