@@ -58,6 +58,13 @@ import { VolumeSlider } from './volume-slider';
 
 export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
+/**
+ * The web and the Mac app (mouse and trackpad): no grabber and no swipe down
+ * to close (a drag on the art must not close the player), plain text tabs
+ * over the queue, and the app's volume slider (`volume-slider.tsx`).
+ */
+const POINTER = Platform.OS === 'web';
+
 type Panel = 'none' | 'queue' | 'lyrics';
 type SheetKind = 'speed' | 'sleep' | 'chapters' | 'more' | null;
 
@@ -187,6 +194,7 @@ export function NowPlayingScreen() {
   const dismiss = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(!POINTER)
         .activeOffsetY(20)
         .failOffsetY(-20)
         .failOffsetX([-24, 24])
@@ -494,7 +502,8 @@ export function NowPlayingScreen() {
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-      <View style={styles.grabber} />
+      {/* Pointer: the chevron closes; a bar to drag means nothing to a mouse. The space keeps the layout. */}
+      <View style={POINTER ? styles.grabberSpace : styles.grabber} />
       {closeButton}
       <TogetherPill top={insets.top + spacing.xs} right={spacing.lg} onPress={() => openTogetherSheet('music', null)} />
     </View>
@@ -759,6 +768,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', width: '100%' },
   header: { width: '100%', alignItems: 'center', paddingBottom: spacing.sm },
   grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
+  grabberSpace: { height: 5 },
   closeButton: { position: 'absolute', left: spacing.lg, bottom: -6 },
   closeInner: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   artArea: { alignItems: 'center', justifyContent: 'center', minHeight: 140, paddingVertical: spacing.md },
