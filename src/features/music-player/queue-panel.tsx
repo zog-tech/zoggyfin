@@ -38,6 +38,11 @@ const MAX_ROWS = 150;
 const REVEAL_WIDTH = 600;
 /** TV Modern look (§7.22): rows in TV units, the soft row fill, the More button with the focus plate (no ring, no circle). */
 const MODERN = isTV && isTvModern;
+/**
+ * The web and the Mac app: shuffle, repeat and autoplay are bare glyphs, dim
+ * when off and in the accent with a dot under them when on (no round fill).
+ */
+const POINTER = Platform.OS === 'web' && !isTV;
 /** The More glyph of a TV row: Modern draws it in TV units. */
 const MORE_GLYPH = MODERN ? u(28) : 18;
 
@@ -93,7 +98,7 @@ export function QueuePanel({
   return (
     <View style={styles.root}>
       {toolbar ? (
-        <View style={styles.controls}>
+        <View style={[styles.controls, POINTER && styles.controlsPointer]}>
         <Toggle icon="shuffle" label="Shuffle" active={queue.shuffle} onPress={() => s.toggleShuffle()} />
         <Toggle icon={repeatIcon} label={repeatLabel} active={queue.repeat !== 'off'} onPress={() => s.cycleRepeat()} />
         <Toggle
@@ -181,8 +186,17 @@ function Toggle({ icon, label, active, onPress }: { icon: IconName; label: strin
       accessibilityRole="switch"
       accessibilityState={{ checked: active }}
       accessibilityLabel={label}
-      style={[styles.toggle, active && styles.toggleOn]}>
-      <Icon name={icon} size={18} color={active ? c.onAccent : c.textOnMedia} weight="semibold" />
+      style={POINTER ? styles.bareToggle : [styles.toggle, active && styles.toggleOn]}>
+      {POINTER ? (
+        <>
+          <View style={active ? null : styles.dim}>
+            <Icon name={icon} size={20} color={active ? c.accent : c.textOnMediaSecondary} weight="semibold" />
+          </View>
+          <View style={[styles.dot, active && styles.dotOn]} />
+        </>
+      ) : (
+        <Icon name={icon} size={18} color={active ? c.onAccent : c.textOnMedia} weight="semibold" />
+      )}
     </Touchable>
   );
 }
@@ -530,6 +544,12 @@ const classicStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   toggleOn: { backgroundColor: c.accent },
+  controlsPointer: { gap: spacing.xs },
+  // The dot sits under the glyph inside the box, so on and off take the same room.
+  bareToggle: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center', paddingTop: spacing.xs },
+  dim: { opacity: 0.7 },
+  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 3, backgroundColor: 'transparent' },
+  dotOn: { backgroundColor: c.accent },
   clear: { paddingHorizontal: spacing.sm, height: 36, justifyContent: 'center' },
   clearText: { ...font(type.subheadline), fontWeight: '600', color: c.textOnMedia },
   header: { ...font(type.headline), color: c.textOnMedia, marginTop: spacing.lg, marginBottom: spacing.xs },
