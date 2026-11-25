@@ -4,6 +4,20 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.17 (2026-11-25)
+
+- Music: Crossfade songs: the next song starts over the last seconds of the current one (Settings, Playback)
+- Music: when the queue runs low, similar songs join it so the music does not stop (turn it off with ∞ in the queue)
+- Music: download a song from its row without playing it
+- Music: an artist's Top songs and "Appears on" show songs and albums with features
+- Playlists: share a playlist as a text list of "Artist - Title" lines
+- Sheets have a new look, and Add to playlist no longer freezes the app
+- Downloads: choose the quality of each film or episode download, with its size
+- Search: chips and rows to start from before you type
+- Genre tiles show an icon for the genre
+- Settings: Report a problem copies a short report with a player log
+- Player: a remux with an audio track the Mac cannot play now plays with a track it can
+
 ## 0.1.16 (2026-11-15)
 
 - Music: a Liked Songs tab with your favourite songs, and a Downloaded tab with the songs on this Mac, each with Play and Shuffle
