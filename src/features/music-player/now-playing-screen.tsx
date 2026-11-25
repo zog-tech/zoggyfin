@@ -421,6 +421,9 @@ export function NowPlayingScreen() {
   );
 
   const bottom = longForm ? (
+    <>
+    {/* Web and the Mac app: the app's volume (phones use the hardware volume here). */}
+    {POINTER ? <VolumeSlider /> : null}
     <View style={styles.pills}>
       <Pill flex={1} label={`Speed ${rate}×`} onPress={() => setSheet('speed')}>
         <Text style={styles.pillText}>{`${Number(rate.toFixed(2))}×`}</Text>
@@ -447,6 +450,7 @@ export function NowPlayingScreen() {
         </Pill>
       )}
     </View>
+    </>
   ) : (
     <>
       {/* Landscape has no height for it; the volume buttons still work. */}
