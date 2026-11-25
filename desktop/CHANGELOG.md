@@ -4,6 +4,14 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.18 (2026-11-25)
+
+- Volume: a slider in the music player and the video player, saved between starts; click the speaker to mute
+- Video player: Up and Down change the volume, M mutes
+- Mini player: a small volume control in a wide window
+- Music player: no grab bar and no drag to close; the chevron closes it
+- Queue: plain Up next and Lyrics tabs, and bare shuffle, repeat and autoplay buttons
+
 ## 0.1.17 (2026-11-25)
 
 - Music: Crossfade songs: the next song starts over the last seconds of the current one (Settings, Playback)
