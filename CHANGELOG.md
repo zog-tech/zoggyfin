@@ -13,6 +13,11 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Volume in the app (web and Mac app).** Music and video share one volume with a mute switch,
+  saved on the device. Now Playing has a volume row under the controls, the video player has a
+  speaker button and a slider beside the times, and the wide mini player has a small one. In the
+  video player, Up and Down change the volume by 5 % and M mutes. Phones and TVs keep the
+  hardware volume.
 - **Report a problem.** Settings, "Report a problem" lets you write what went wrong and share a
   plain-text report (iOS, Android) or copy it (web, Mac app). The report holds the app version, the
   update, the platform, the system version and a player log. The log is always on and is kept
@@ -318,6 +323,9 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Changed
 
+- **A calmer music player on the web and the Mac app.** Up next and Lyrics are plain text tabs, and
+  shuffle, repeat and autoplay are bare icons with an accent dot when on. The drag bar at the top
+  and the swipe down to close are gone there; the chevron button closes the player.
 - **Sheets have a new look.** A sheet is now a rounded panel that floats above the bottom edge.
   It rises with a spring and the dark layer behind it fades; before, the player's sheets moved
   that dark layer up from the bottom with the panel. A sheet has a round close button, the item
