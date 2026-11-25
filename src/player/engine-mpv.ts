@@ -10,6 +10,7 @@ import { bufferInputOf, mpvBufferOptions } from './buffer-ahead';
 import { fromMpv } from './embedded-tracks';
 import { type EngineEvent, type EngineListener, type EngineSource, type EngineSubtitle, sourceHeaders, type VideoEngine } from './engine-types';
 import { PositionLine } from './position-line';
+import { mpvVolume } from './volume';
 
 /** What Now Playing shows for the current state; null when nothing plays. */
 export function nowPlayingInfo(
@@ -77,6 +78,8 @@ export class MpvEngine implements VideoEngine {
   private meta: { title: string; subtitle?: string; artworkUri?: string } | null = null;
   private duration = 0;
   private rate = 1;
+  /** The last `volume` sent to libmpv (0 to 100). -1: none yet, so the first level always goes (a reloaded page meets a libmpv that kept its volume). */
+  private volume = -1;
 
   constructor() {
     mpv.subscribe(this.onEvent);
@@ -329,6 +332,14 @@ export class MpvEngine implements VideoEngine {
 
   setMuted(muted: boolean): void {
     this.run(() => mpv.set('mute', muted));
+  }
+
+  /** libmpv keeps `volume` across files, so one call holds for every later load. */
+  setVolume(level: number): void {
+    const v = mpvVolume(level);
+    if (v === this.volume) return;
+    this.volume = v;
+    this.run(() => mpv.set('volume', v));
   }
 
   startPip(): void {

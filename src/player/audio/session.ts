@@ -30,6 +30,7 @@ import { isOffline } from '@/lib/online';
 import { randomId } from '@/lib/id';
 import { toast } from '@/lib/toast';
 import { bitrateFor, usePlaybackSettings } from '@/settings/playback';
+import { followAppVolume } from '@/settings/volume';
 import { readJson, writeJson } from '@/storage/json';
 import { storage } from '@/storage/kv';
 
@@ -79,6 +80,7 @@ import { liteNow } from '@/platform/lite-now';
 import { fadeBetween, fadeGain, fadeLength, type FadePoint, inFadeWindow, overlapDue } from './crossfade';
 import { pickRadio, RADIO_BATCH, type RadioConditions, radioPluginSeeds, radioSeeds, radioWanted, rememberPlayed } from './radio';
 import { sleepDue, sleepFadeVolume, sleepOff, type SleepTimer } from './sleep-timer';
+import { elementGain, volumeProduct } from '../volume';
 import { audioState, initialAudioState, setAudioState } from './store';
 import { formatLine, hasCodecInfo, predictPlayMethod, universalAudioUrl } from './stream-url';
 
@@ -206,6 +208,11 @@ class AudioSession {
 
   constructor() {
     this.engine.subscribe(this.onEngine);
+    // The web and the Mac app: the app's own volume slider (a no-op elsewhere).
+    followAppVolume((level) => {
+      this.userVolume = elementGain(level);
+      this.applyVolume();
+    });
   }
 
   // ---- Engine events ------------------------------------------------------------
@@ -1475,6 +1482,8 @@ class AudioSession {
   private sleepVolume = 1;
   /** Listen together: another device plays the sound ("Sound plays on"); this one plays in sync with no sound. */
   private groupMuted = false;
+  /** The web and the Mac app: the app's volume slider, as an element gain (1 elsewhere). */
+  private userVolume = 1;
 
   private setSleepVolume(volume: number): void {
     this.sleepVolume = volume;
@@ -1482,7 +1491,8 @@ class AudioSession {
   }
 
   private applyVolume(): void {
-    this.engine.setVolume(this.groupMuted ? 0 : this.sleepVolume * this.fadeVolume);
+    // The mixer multiplies its crossfade gains onto this, so an overlap keeps the user's level.
+    this.engine.setVolume(this.groupMuted ? 0 : volumeProduct(this.userVolume, this.sleepVolume, this.fadeVolume));
   }
 
   // ---- Listen together ---------------------------------------------------------------

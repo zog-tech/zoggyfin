@@ -8,11 +8,13 @@ import { type ComponentRef, useEffect, useRef } from 'react';
 import { type StyleProp, View, type ViewStyle } from 'react-native';
 
 import { hasMpv, mpv, showVideoThrough } from '@/platform/desktop';
+import { followAppVolume } from '@/settings/volume';
 
 import { MpvEngine } from './engine-mpv';
 import { bufferInputOf, hlsBufferConfig } from './buffer-ahead';
 import { type ElementTrackLike, fromHls, fromMediaElement } from './embedded-tracks';
 import { type EngineListener, type EngineSource, headersForRequest, sourceHeaders, type VideoEngine, type VideoFit } from './engine-types';
+import { elementGain } from './volume';
 
 type MediaSessionAction = 'play' | 'pause' | 'seekbackward' | 'seekforward' | 'seekto' | 'nexttrack' | 'previoustrack';
 
@@ -331,6 +333,11 @@ class WebEngine implements VideoEngine {
     if (this.video) this.video.muted = muted;
   }
 
+  /** The element's `volume` is a linear amplitude: the level goes on the cubic curve. */
+  setVolume(level: number): void {
+    if (this.video) this.video.volume = elementGain(level);
+  }
+
   startPip(): void {
     const v = this.video;
     if (!v || !this.pipSupported) return;
@@ -357,7 +364,12 @@ class WebEngine implements VideoEngine {
 let engine: WebEngine | null = null;
 
 function webEngine(): WebEngine {
-  engine ??= new WebEngine();
+  if (!engine) {
+    const e = new WebEngine();
+    engine = e;
+    // The app's volume slider, for the engine's whole life (one engine per app run).
+    followAppVolume((level) => e.setVolume(level));
+  }
   return engine;
 }
 
@@ -366,7 +378,11 @@ let mpvEngine: MpvEngine | null = null;
 /** The HTML video element, or libmpv in the desktop app. */
 export function getEngine(): VideoEngine {
   if (hasMpv) {
-    mpvEngine ??= new MpvEngine();
+    if (!mpvEngine) {
+      const e = new MpvEngine();
+      mpvEngine = e;
+      followAppVolume((level) => e.setVolume(level));
+    }
     return mpvEngine;
   }
   return webEngine();

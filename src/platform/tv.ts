@@ -47,6 +47,12 @@ export const features = {
   extensionPanels: !isTV,
   touchGestures: !isTV,
   /**
+   * The app's own volume slider (`player/volume.ts`): the web and the Mac app
+   * only. Phones and TVs use the hardware volume (iOS also has the system
+   * slider in Now Playing).
+   */
+  inAppVolume: Platform.OS === 'web' && !isTV,
+  /**
    * Live TV from IPTV providers: every platform. The plain web build reads
    * only providers that allow web pages (CORS) and cannot send a user agent;
    * the apps (and the Mac app, through Rust) have neither limit.

@@ -125,6 +125,7 @@ import UserX from 'lucide-react/dist/esm/icons/user-x';
 import Users from 'lucide-react/dist/esm/icons/users';
 import Video from 'lucide-react/dist/esm/icons/video';
 import Volume from 'lucide-react/dist/esm/icons/volume';
+import Volume1 from 'lucide-react/dist/esm/icons/volume-1';
 import Volume2 from 'lucide-react/dist/esm/icons/volume-2';
 import VolumeX from 'lucide-react/dist/esm/icons/volume-x';
 import WandSparkles from 'lucide-react/dist/esm/icons/wand-sparkles';
@@ -211,6 +212,8 @@ const LUCIDE: Record<IconName, Glyph> = {
   key: { icon: KeyRound },
   'arrow.up.right.square': { icon: SquareArrowOutUpRight },
   nosign: { icon: Ban },
+  // Speakers stay outlined: a fill would also fill the open wave arcs.
+  'speaker.wave.1.fill': { icon: Volume1 },
   'speaker.wave.2.fill': { icon: Volume2 },
   'speaker.slash.fill': { icon: VolumeX },
   'arrow.up.left.and.arrow.down.right': { icon: Maximize },
@@ -248,8 +251,8 @@ const LUCIDE: Record<IconName, Glyph> = {
   'line.3.horizontal': { icon: Equal },
   'line.horizontal.3': { icon: Menu },
   'moon.zzz': { icon: MoonStar },
-  'speaker.fill': { icon: Volume, filled: true },
-  'speaker.wave.3.fill': { icon: Volume2, filled: true },
+  'speaker.fill': { icon: Volume },
+  'speaker.wave.3.fill': { icon: Volume2 },
   'text.line.first.and.arrowtriangle.forward': { icon: ListStart },
   'text.append': { icon: ListEnd },
   'wand.and.stars': { icon: WandSparkles },
