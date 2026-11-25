@@ -147,7 +147,9 @@ export default function SettingsScreen() {
             />
             <UpdateSettingsRow />
             <SettingsRow icon="lock.fill" label="Privacy policy" onPress={() => void Linking.openURL('https://zoggyfin.zog-tech.com/privacy')} />
-            <SettingsRow icon="info.circle" label="Help and support" onPress={() => void Linking.openURL('https://zoggyfin.zog-tech.com/support')} last />
+            <SettingsRow icon="info.circle" label="Help and support" onPress={() => void Linking.openURL('https://zoggyfin.zog-tech.com/support')} last={isTV} />
+            {/* TV has no share sheet and no easy text entry. */}
+            {isTV ? null : <SettingsRow icon="exclamationmark.triangle" label="Report a problem" onPress={() => router.push('/(tabs)/(home)/report')} last />}
           </Group>
 
           {__DEV__ ? <DevSection /> : null}

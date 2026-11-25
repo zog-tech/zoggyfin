@@ -19,6 +19,8 @@ import { checkDownloadedFiles, type DownloadRecord, findDownload, localExtraUri,
 import { outboxPosition } from '@/downloads/outbox-store';
 import { useDownloadsStore } from '@/downloads/store';
 import { resolveImage } from '@/images/resolve-image';
+import { errorText as diagError, shortId } from '@/lib/diag-log';
+import { diag } from '@/lib/diag-store';
 import { isOffline } from '@/lib/online';
 import { toast } from '@/lib/toast';
 import { bitrateFor, skipChoices, usePlaybackSettings } from '@/settings/playback';
@@ -290,6 +292,7 @@ class VideoSession {
     switch (e.type) {
       case 'status':
         if (e.status === 'error') {
+          diag('video', 'error', { live: !!st.now.live, external: !!st.now.external, message: diagError(e.error ?? '') });
           if (st.now.live) {
             if (this.restartLive()) break;
             this.liveFailed(e.error);
@@ -497,6 +500,7 @@ class VideoSession {
   /** Starts an item. Containers (show, season, collection) resolve to an episode or item first. */
   async play(request: PlayRequest): Promise<void> {
     const id = ++this.loadId;
+    diag('video', 'play', { id, item: shortId(request.item.Id), type: request.item.Type ?? null, start: request.startPositionTicks !== undefined });
     this.userPaused = false;
     // A server item replaces a live channel: its TS bridge session (iOS) ends too.
     this.endLiveAttempt();
@@ -1615,6 +1619,7 @@ class VideoSession {
 
   /** Ends playback, reports the last position and refreshes Continue Watching. */
   async stop(): Promise<void> {
+    diag('video', 'stop');
     this.loadId++;
     this.endLiveAttempt();
     await this.finishCurrent();
