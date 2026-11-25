@@ -14,7 +14,7 @@ import { activePlayback, openFullPlayer } from '@/player';
 import { artistLine } from '@/player/audio/item';
 import { useAudioStore } from '@/player/audio/store';
 import { useShowsPause } from '@/player/control-gate';
-import { isTV } from '@/platform/tv';
+import { features, isTV } from '@/platform/tv';
 import { usePlayerStore } from '@/player/store';
 
 import { createStyles, type AppTheme, font, tv, useLayout, useStyles, useTheme } from '@/theme';
@@ -22,6 +22,7 @@ import { createStyles, type AppTheme, font, tv, useLayout, useStyles, useTheme }
 import { Glass } from './glass';
 import { canSwipeDismiss, shouldDismiss, showsCloseButton } from './mini-player-rules';
 import { iconSize, motion, radius, spacing, type } from './tokens';
+import { VolumeControl } from './volume-control';
 
 /** True when the mini player should show: something plays and the full player is closed. */
 export function useMiniPlayerVisible(): boolean {
@@ -40,7 +41,10 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
   const styles = useStyles(makeStyles);
   const { c } = useTheme();
   // A phone-width bar has no room for the chip's text next to the title; the room bar above says it.
-  const narrow = useLayout().width < 600;
+  const width = useLayout().width;
+  const narrow = width < 600;
+  // Web and the Mac app with room: the app's volume, beside the buttons (the capsule grows for it).
+  const volume = features.inAppVolume && floating && !inline && width >= 720;
   const lift = useSharedValue(0);
   const liftStyle = useAnimatedStyle(() => ({
     opacity: interpolate(lift.get(), [0, 80], [1, 0.4], 'clamp'),
@@ -151,6 +155,7 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
           <Icon name="forward.fill" size={inline ? iconSize.sm : iconSize.md - 2} color={c.text} />
         </Touchable>
       ) : null}
+      {volume ? <VolumeControl colors={{ tint: c.text, track: c.surface3 }} sliderWidth={72} glyph={iconSize.sm} size={32} /> : null}
       {showsCloseButton({ inline, ...rules }) ? (
         <Touchable radius={22} onPress={() => activePlayback.stop()} hitSlop={6} style={styles.button} accessibilityRole="button" accessibilityLabel="Stop playback">
           <Icon name="xmark" size={iconSize.sm} color={c.text2} weight="semibold" />
@@ -161,7 +166,7 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
 
   return (
     <GestureDetector gesture={gestures}>
-      <Animated.View style={[styles.wrap, floating && styles.floating, liftStyle]}>
+      <Animated.View style={[styles.wrap, floating && styles.floating, volume && styles.floatingWide, liftStyle]}>
         {floating ? (
           <Glass variant="regular" scheme="auto" style={styles.capsule}>
             {content}
@@ -190,6 +195,7 @@ function Progress({ fraction }: { fraction: number }) {
 const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   wrap: { flex: 1, width: '100%', justifyContent: 'center' },
   floating: { flex: 0, maxWidth: 400, alignSelf: 'center' },
+  floatingWide: { maxWidth: 520 },
   capsule: {
     borderRadius: radius.pill,
     overflow: 'hidden',

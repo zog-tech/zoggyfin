@@ -53,6 +53,7 @@ import {
 } from '@/player/tap-seek';
 import { HOLD_MAX_MS, holdDirection, type HoldSeek, holdSpeed, holdTarget } from '@/player/hold-seek';
 import { MAX_BITRATE, QUALITY_OPTIONS, qualityLabel, usePlaybackSettings, useSkipSettings } from '@/settings/playback';
+import { stepAppVolume, toggleAppMute } from '@/settings/volume';
 import { breakpointFor, layout } from '@/theme/theme';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
 import { TogetherPill } from '@/features/together/together-pill';
@@ -101,6 +102,7 @@ import { SubtitleOverlay } from './subtitle-overlay';
 import { useTurnFade } from './use-turn-fade';
 import { nativeTurnHidesContent, TurnCrossfade } from '@/native/turn-crossfade';
 import { c, ease, iconSize, motion, player, playerTvModern, radius, spacing, textStyle, type } from './tokens';
+import { VolumeControl } from './volume-control';
 
 /**
  * TV Modern look (design system §7.22, spec 2.8): the title and the option
@@ -191,6 +193,8 @@ export function PlayerScreen() {
   // Height of the top bar, so the Together pill sits under it when the title wraps to its own line.
   const [topBarHeight, setTopBarHeight] = useState(0);
   const [scrubbing, setScrubbing] = useState(false);
+  // Web and the Mac app: a drag on the volume slider keeps the controls shown.
+  const [adjusting, setAdjusting] = useState(false);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [fit, setFit] = useState<VideoFit>('contain');
   const [poke, setPoke] = useState(0);
@@ -232,12 +236,12 @@ export function PlayerScreen() {
     wake();
   }, [wake]);
 
-  // Auto-hide after 3 s while playing; never while paused, scrubbing or with a sheet open.
+  // Auto-hide after 3 s while playing; never while paused, scrubbing, setting the volume or with a sheet open.
   useEffect(() => {
-    if (!visible || !playing || scrubbing || sheet) return;
+    if (!visible || !playing || scrubbing || adjusting || sheet) return;
     const t = setTimeout(() => setVisible(false), player.autoHideMs);
     return () => clearTimeout(t);
-  }, [visible, playing, scrubbing, sheet, poke]);
+  }, [visible, playing, scrubbing, adjusting, sheet, poke]);
 
   // A Cancel on the next-up card belongs to one item.
   const itemId = now?.item.Id ?? '';
@@ -814,10 +818,13 @@ export function PlayerScreen() {
       case 'ArrowUp':
       case 'PageUp':
         if (live) zap(1);
+        // Web and the Mac app: Up and Down set the app's volume (live channels zap with them).
+        else if (k.key === 'ArrowUp' && features.inAppVolume) stepAppVolume(1);
         break;
       case 'ArrowDown':
       case 'PageDown':
         if (live) zap(-1);
+        else if (k.key === 'ArrowDown' && features.inAppVolume) stepAppVolume(-1);
         break;
       case 'ArrowLeft':
       case 'j':
@@ -832,7 +839,9 @@ export function PlayerScreen() {
         else setFit((f) => (f === 'contain' ? 'cover' : 'contain'));
         break;
       case 'm':
-        s.toggleMuted();
+        // One mute on the web and the Mac app: the speaker button's.
+        if (features.inAppVolume) toggleAppMute();
+        else s.toggleMuted();
         break;
       case 'c': {
         const cur = now?.plan.subtitleIndex ?? null;
@@ -846,6 +855,11 @@ export function PlayerScreen() {
         break;
     }
   };
+
+  // Web and the Mac app: the speaker button and a short slider, in the row of the times.
+  const volumeControl = features.inAppVolume ? (
+    <VolumeControl colors={{ tint: c.textOnMedia, track: player.trackColor }} sliderWidth={96} glyph={iconSize.sm} size={32} onAdjusting={setAdjusting} onChange={wake} />
+  ) : null;
 
   const title = now?.item.Name ?? '';
   const chapter = usePlayerStore((st) => (st.now ? (chapterAt(st.now.chapters, st.position)?.name ?? null) : null));
@@ -1314,8 +1328,9 @@ export function PlayerScreen() {
                 <LiveChannelCard channel={zapChannel} source={live.source} live style={styles.liveCard} />
               )
             ) : (
-            <TimeLabels />
+            <TimeLabels volume={volumeControl} />
             )}
+            {live && zapChannel && !isTV && volumeControl ? <View style={styles.liveVolume}>{volumeControl}</View> : null}
           </View>
           </>
           ) : null}
@@ -1413,13 +1428,20 @@ export function PlayerScreen() {
 }
 
 /** The elapsed and remaining times under the seek bar. It reads the position itself (see PlayerScreen). */
-function TimeLabels() {
+function TimeLabels({ volume }: { volume?: React.ReactNode }) {
   const position = usePlayerStore((s) => s.position);
   const duration = usePlayerStore((s) => s.duration);
   return (
-    <View style={styles.times}>
+    <View style={[styles.times, volume ? styles.timesVolume : null]}>
       <Text style={styles.time}>{formatTime(position)}</Text>
-      <Text style={styles.time}>{formatTime(-(Math.max(0, duration - position)))}</Text>
+      {volume ? (
+        <View style={styles.timesEnd}>
+          {volume}
+          <Text style={styles.time}>{formatTime(-(Math.max(0, duration - position)))}</Text>
+        </View>
+      ) : (
+        <Text style={styles.time}>{formatTime(-(Math.max(0, duration - position)))}</Text>
+      )}
     </View>
   );
 }
@@ -1575,6 +1597,10 @@ const classicStyles = StyleSheet.create({
   },
   bottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   times: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -spacing.xs },
+  // With the volume control: the times centre on it, and the row takes no more room under the bar.
+  timesVolume: { alignItems: 'center', marginTop: -spacing.sm - spacing.xs, marginBottom: -spacing.sm },
+  timesEnd: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  liveVolume: { alignSelf: 'flex-end', marginTop: -spacing.xs },
   peekTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
   peekFill: { height: 4, backgroundColor: c.textOnMedia },
   peekTimes: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },

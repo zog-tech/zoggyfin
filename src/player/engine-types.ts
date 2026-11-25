@@ -161,6 +161,12 @@ export interface VideoEngine {
   seekTo(seconds: number): void;
   setRate(rate: number): void;
   setMuted(muted: boolean): void;
+  /**
+   * The web and the Mac app: the app's volume slider, as a level 0 to 1 (0
+   * when muted; `player/volume.ts`). Each engine applies its own loudness
+   * curve. Native engines have none: they follow the hardware volume.
+   */
+  setVolume?(level: number): void;
   readonly position: number;
   readonly pipSupported: boolean;
   startPip(): void;

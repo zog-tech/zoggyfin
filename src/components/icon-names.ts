@@ -77,6 +77,7 @@ export const ANDROID_SYMBOLS = {
   key: 'key',
   'arrow.up.right.square': 'open_in_new',
   nosign: 'block',
+  'speaker.wave.1.fill': 'volume_down',
   'speaker.wave.2.fill': 'volume_up',
   'speaker.slash.fill': 'volume_off',
   'arrow.up.left.and.arrow.down.right': 'fullscreen',

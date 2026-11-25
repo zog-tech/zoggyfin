@@ -58,6 +58,13 @@ import { VolumeSlider } from './volume-slider';
 
 export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
+/**
+ * The web and the Mac app (mouse and trackpad): no grabber and no swipe down
+ * to close (a drag on the art must not close the player), plain text tabs
+ * over the queue, and the app's volume slider (`volume-slider.tsx`).
+ */
+const POINTER = Platform.OS === 'web';
+
 type Panel = 'none' | 'queue' | 'lyrics';
 type SheetKind = 'speed' | 'sleep' | 'chapters' | 'more' | null;
 
@@ -187,6 +194,7 @@ export function NowPlayingScreen() {
   const dismiss = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(!POINTER)
         .activeOffsetY(20)
         .failOffsetY(-20)
         .failOffsetX([-24, 24])
@@ -413,6 +421,9 @@ export function NowPlayingScreen() {
   );
 
   const bottom = longForm ? (
+    <>
+    {/* Web and the Mac app: the app's volume (phones use the hardware volume here). */}
+    {POINTER ? <VolumeSlider /> : null}
     <View style={styles.pills}>
       <Pill flex={1} label={`Speed ${rate}×`} onPress={() => setSheet('speed')}>
         <Text style={styles.pillText}>{`${Number(rate.toFixed(2))}×`}</Text>
@@ -439,6 +450,7 @@ export function NowPlayingScreen() {
         </Pill>
       )}
     </View>
+    </>
   ) : (
     <>
       {/* Landscape has no height for it; the volume buttons still work. */}
@@ -494,7 +506,8 @@ export function NowPlayingScreen() {
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-      <View style={styles.grabber} />
+      {/* Pointer: the chevron closes; a bar to drag means nothing to a mouse. The space keeps the layout. */}
+      <View style={POINTER ? styles.grabberSpace : styles.grabber} />
       {closeButton}
       <TogetherPill top={insets.top + spacing.xs} right={spacing.lg} onPress={() => openTogetherSheet('music', null)} />
     </View>
@@ -540,7 +553,7 @@ export function NowPlayingScreen() {
           {controls}
         </View>
         <View style={[styles.wideRight, { paddingTop: insets.top + spacing.xl }]}>
-          <View style={styles.panelTabs}>
+          <View style={[styles.panelTabs, POINTER && styles.panelTabsPointer]}>
             <PanelTab label="Up next" active={effectivePanel === 'queue'} onPress={() => setPanel('queue')} />
             {lyrics ? <PanelTab label="Lyrics" active={effectivePanel === 'lyrics'} onPress={() => setPanel('lyrics')} /> : null}
           </View>
@@ -740,6 +753,20 @@ function BottomButton({ icon, label, active, disabled, onPress }: { icon: IconNa
 }
 
 function PanelTab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  if (POINTER) {
+    // Plain text tabs: the active one in the full text colour, the other one dim. No pill.
+    return (
+      <Touchable
+        kind="button"
+        radius={radius.sm}
+        onPress={onPress}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        style={styles.textTab}>
+        <Text style={[styles.textTabText, active && styles.textTabTextOn]}>{label}</Text>
+      </Touchable>
+    );
+  }
   return (
     <Touchable
       kind="button"
@@ -759,6 +786,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', width: '100%' },
   header: { width: '100%', alignItems: 'center', paddingBottom: spacing.sm },
   grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
+  grabberSpace: { height: 5 },
   closeButton: { position: 'absolute', left: spacing.lg, bottom: -6 },
   closeInner: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   artArea: { alignItems: 'center', justifyContent: 'center', minHeight: 140, paddingVertical: spacing.md },
@@ -807,6 +835,10 @@ const styles = StyleSheet.create({
   wideLeft: { alignItems: 'center', justifyContent: 'center' },
   wideRight: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
   panelTabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  panelTabsPointer: { gap: spacing.md, marginBottom: 0, marginLeft: -spacing.xs },
+  textTab: { paddingHorizontal: spacing.xs, height: 32, justifyContent: 'center' },
+  textTabText: { ...font(type.headline), color: c.textOnMediaSecondary, opacity: 0.7 },
+  textTabTextOn: { color: c.textOnMedia, opacity: 1 },
   panelTab: { paddingHorizontal: spacing.md, height: 32, borderRadius: 16, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)' },
   panelTabOn: { backgroundColor: c.textOnMedia },
   panelTabText: { ...font(type.subheadline), fontWeight: '600', color: c.textOnMedia },
