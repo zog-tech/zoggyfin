@@ -1,1 +1,1 @@
-Your own Jellyfin server on iPhone and iPad: movies, shows and music with a native player, downloads you can see, and watch together.
+Your own media server on iPhone and iPad: movies, shows and music with a native player, downloads you can see, and watch together.
