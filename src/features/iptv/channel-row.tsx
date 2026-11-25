@@ -13,8 +13,10 @@ import { Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
+import { PlateIcon, TvFocusPlate } from '@/features/tv/tv-button';
 import { type ProviderChannel, progressOf, useNowNext } from '@/iptv';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useStyles, useTheme } from '@/theme';
 
 import { ChannelLogo } from './channel-logo';
@@ -22,6 +24,9 @@ import { clock } from '@/lib/programme-time';
 
 /** The heart button's size on TV (the list leaves room for its focus ring). */
 export const HEART_TV = scaled(36);
+
+/** TV Modern look (design system §7.22): the heart shows the square focus plate, not a round ring. */
+const MODERN = isTV && isTvModern;
 
 /** The row height (TV rows are scaled with the type). */
 export const CHANNEL_ROW_HEIGHT = scaled(isTV ? 64 : 72);
@@ -130,7 +135,8 @@ export const ChannelRow = memo(function ChannelRow({
         </View>
       </Touchable>
       <Touchable
-        kind="icon"
+        kind={MODERN ? 'plain' : 'icon'}
+        ring={!MODERN}
         radius={radius.pill}
         onPress={() => onToggleFavourite(row)}
         onFocus={() => onFocusRow?.(row)}
@@ -139,7 +145,14 @@ export const ChannelRow = memo(function ChannelRow({
         accessibilityLabel={favourite ? `Remove ${channel.name} from Favourites` : `Add ${channel.name} to Favourites`}
         accessibilityState={{ selected: favourite }}
         style={s.heart}>
-        <Icon name={favourite ? 'heart.fill' : 'heart'} size={scaled(iconSize.sm)} color={favourite ? c.accent : c.text3} />
+        {MODERN ? (
+          <>
+            <TvFocusPlate />
+            <PlateIcon name={favourite ? 'heart.fill' : 'heart'} size={scaled(iconSize.sm)} rest={favourite ? c.accent : c.text3} focus={favourite ? c.accent : undefined} />
+          </>
+        ) : (
+          <Icon name={favourite ? 'heart.fill' : 'heart'} size={scaled(iconSize.sm)} color={favourite ? c.accent : c.text3} />
+        )}
       </Touchable>
     </View>
   );

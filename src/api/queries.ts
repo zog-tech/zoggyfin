@@ -291,6 +291,30 @@ export function useSearch(term: string, genre?: string) {
 }
 
 /**
+ * The Search page's rows before any words. `kind` names the set (the filter chip). The rows load
+ * together; a row with no items, or whose query failed while another worked, is left out.
+ */
+export function useBrowseRows(kind: string, rows: readonly { key: string; title: string; query: jf.BrowseQuery }[], enabled = true) {
+  const { api, userId, scope } = useApi();
+  return useQuery({
+    queryKey: queryKeys.searchBrowse(scope, kind),
+    queryFn: async ({ signal }) => {
+      const lists = await Promise.allSettled(rows.map((r) => jf.browseItems(api, userId, r.query, signal)));
+      const failed = lists.find((x): x is PromiseRejectedResult => x.status === 'rejected');
+      if (failed && lists.every((x) => x.status === 'rejected')) throw failed.reason;
+      return rows
+        .map((r, i) => {
+          const res = lists[i];
+          return { key: r.key, title: r.title, items: res.status === 'fulfilled' ? res.value : [] };
+        })
+        .filter((r) => r.items.length > 0);
+    },
+    enabled,
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+/**
  * The sessions this user can control. `pollMs` refetches while the caller is
  * on screen (the Remote screen polls every 2 s); the sheet loads once.
  */

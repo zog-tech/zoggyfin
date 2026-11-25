@@ -16,6 +16,15 @@ export function runningOta(): OtaInfo | null {
   return { id: Updates.updateId.slice(0, 8), createdAt: Updates.createdAt ?? null };
 }
 
+/** The runtime version of this binary (the OTA updates it can take), or null on the web and in development. */
+export function runtimeVersionNow(): string | null {
+  try {
+    return Updates.runtimeVersion ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The version for the server: `0.1.0+c66a06bb` when an update runs. Pure. */
 export function versionWithOta(version: string, ota: OtaInfo | null): string {
   return ota ? `${version}+${ota.id}` : version;

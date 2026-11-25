@@ -5,8 +5,9 @@ import type { BaseItemDto } from '@/api/types';
 import { useItemActions } from '@/features/actions/use-item-actions';
 import { TvScrollView } from '@/features/tv/page-scroll';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { actionSections, type ItemAction } from '@/registry/item-actions';
-import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, useStyles, useTheme } from '@/theme';
+import { createStyles, type AppTheme, font, iconSize, radius, scaled, spacing, type, u, useStyles, useTheme } from '@/theme';
 
 import { Icon } from './icon';
 import { ItemImage } from './item-image';
@@ -56,7 +57,7 @@ export function ItemActionSheet({
             // After the sheet has gone: an action can open a dialog, the share sheet or the next sheet.
             afterSheets(() => run(a));
           }}>
-          <Icon name={a.icon} size={scaled(iconSize.md)} color={a.destructive ? c.danger : c.text} />
+          <Icon name={a.icon} size={MODERN ? u(32) : scaled(iconSize.md)} color={a.destructive ? c.danger : c.text} />
           <Text style={[s.rowText, a.destructive && { color: c.danger }]}>{titleOf(a)}</Text>
         </SheetRow>
       ))}
@@ -86,13 +87,19 @@ export function ItemActionSheet({
   );
 }
 
-const makeStyles = createStyles((t: AppTheme) => ({
-  ...makeSheetStyles(t),
-  // No grow, so a short sheet stays short; the scroll view still shrinks to the panel's maximum height.
-  list: { flexGrow: 0 },
-  body: { gap: spacing.md },
-  cancel: { ...font(type.headline), color: t.c.text, flex: 1, textAlign: 'center' as const },
-}));
+/** TV Modern (design system §7.22): list rows with a 32 u glyph; Cancel is one more row, like the others. */
+const MODERN = isTV && isTvModern;
+
+const makeStyles = createStyles((t: AppTheme) => {
+  const sheet = makeSheetStyles(t);
+  return {
+    ...sheet,
+    // No grow, so a short sheet stays short; the scroll view still shrinks to the panel's maximum height.
+    list: { flexGrow: 0 },
+    body: { gap: MODERN ? u(16) : spacing.md },
+    cancel: MODERN ? sheet.rowText : { ...font(type.headline), color: t.c.text, flex: 1, textAlign: 'center' as const },
+  };
+});
 
 /**
  * One item action sheet for a row or a grid of tiles: `open(item)` shows it.

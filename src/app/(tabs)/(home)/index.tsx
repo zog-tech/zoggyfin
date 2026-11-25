@@ -12,6 +12,7 @@ import { Touchable } from '@/components/touchable';
 import { registerBuiltinHomeSections } from '@/features/home/builtin-sections';
 import { Billboard, BillboardRows, HomeHero } from '@/features/tv/billboard';
 import type { FocusTarget } from '@/features/tv/focus';
+import { TV_RAIL_INSET, useTvFullBleed } from '@/features/tv/screen-inset';
 import { tvDrivenScroll } from '@/features/tv/scroll';
 import { type TvRowPage, TvRowScroll } from '@/features/tv/shelf';
 import { mountedCut, rowsToMount } from '@/features/tv/shelf-window';
@@ -44,6 +45,8 @@ export default function HomeScreen() {
   const qc = useQueryClient();
   const sections = useSyncExternalStore(homeSections.subscribe, homeSections.list, homeSections.list);
   const [accounts, setAccounts] = useState(false);
+  // TV Modern: the billboard art runs under the rail; the rows below pad themselves by it (TV_RAIL_INSET, 0 in Classic).
+  useTvFullBleed();
 
   const pull = usePullRefresh(() => qc.invalidateQueries({ queryKey: queryKeys.all(scope) }));
   useRefreshSpinner(pull.refreshing);
@@ -193,7 +196,7 @@ export default function HomeScreen() {
                 setListH(h);
                 grow();
               }}>
-              <View ref={tvContent} onLayout={(e) => measureEnd(e.nativeEvent.layout.height)}>
+              <View ref={tvContent} style={TV_RAIL_INSET ? { paddingLeft: TV_RAIL_INSET } : undefined} onLayout={(e) => measureEnd(e.nativeEvent.layout.height)}>
                 <HomeHero />
                 <OfflineBanner entries />
                 {sections.slice(0, mounted).map((sec) => (

@@ -4,4 +4,6 @@ export interface KeyPress {
   shift: boolean;
   meta: boolean;
   alt: boolean;
+  /** A repeat of a held key (web). */
+  repeat?: boolean;
 }

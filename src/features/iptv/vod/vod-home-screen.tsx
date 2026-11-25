@@ -11,7 +11,7 @@ import { ActivityIndicator, FlatList, Text, TextInput, View } from 'react-native
 import { Button } from '@/components/button';
 import { PlainGrid } from '@/components/plain-grid';
 import { PlainShelf } from '@/components/plain-shelf';
-import { EmptyState, LoadingState } from '@/components/states';
+import { EmptyState, LoadingState, tvModernState } from '@/components/states';
 import { Icon } from '@/components/icon';
 import { Touchable } from '@/components/touchable';
 import {
@@ -32,6 +32,7 @@ import { useTvPageScroll } from '@/features/tv/page-scroll';
 import { toast } from '@/lib/toast';
 import { useDebounced } from '@/lib/use-debounced';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { createStyles, type AppTheme, font, iconSize, radius, scaled, sizes, spacing, type, useLayout, useStyles, useTheme, webInput } from '@/theme';
 
 import { providerFormHref, useLiveGroup } from '../nav';
@@ -155,10 +156,10 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
   } else if (cats.status === 'error' && !cats.data.length) {
     body = (
       <View style={[s.center, { paddingHorizontal: l.gutter }]} accessibilityRole="alert">
-        <Icon name="wifi.exclamationmark" size={scaled(sizes.stateIcon)} color={c.text3} />
-        <Text style={s.emptyTitle}>{`The ${labels.title.toLowerCase()} did not load`}</Text>
-        <Text style={s.emptyText}>{cats.error}</Text>
-        <View style={s.emptyActions}>
+        <Icon name="wifi.exclamationmark" size={MODERN ? tvModernState.iconSize : scaled(sizes.stateIcon)} color={c.text3} />
+        <Text style={MODERN ? tvModernState.title : s.emptyTitle}>{`The ${labels.title.toLowerCase()} did not load`}</Text>
+        <Text style={MODERN ? tvModernState.message : s.emptyText}>{cats.error}</Text>
+        <View style={MODERN ? tvModernState.actions : s.emptyActions}>
           <Button title="Try again" icon="arrow.clockwise" onPress={() => void vod.refresh(pid, kind)} preferredFocus={isTV} />
           <Button title="Edit provider" variant="tonal" onPress={() => router.push(providerFormHref(group, { id: pid }))} />
         </View>
@@ -181,6 +182,9 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
         contentContainerStyle={{ paddingBottom: spacing.huge * 2, paddingTop: spacing.xs }}
         // On a TV, react-native-tvos wraps a FlatList in a focus guide with no size: give it the page height.
         style={isTV ? { height: l.height } : s.flex}
+        // TV: the shelves in the header stay attached when they scroll out of view, so Up from the
+        // categories reaches them again (Android's list default takes them off the view tree).
+        removeClippedSubviews={!isTV}
         keyboardDismissMode="on-drag"
         ListHeaderComponent={
           <>
@@ -223,6 +227,9 @@ export function VodHomeScreen({ kind, providerId: wanted }: { kind: VodKind; pro
     </>
   );
 }
+
+/** TV Modern look (design system §7.22): the shared state style, action rows on one line. */
+const MODERN = isTV && isTvModern;
 
 const makeStyles = createStyles(({ c }: AppTheme) => ({
   flex: { flex: 1 },

@@ -15,7 +15,7 @@ import { View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
-import { TileCaption, TileFocusFill } from '@/components/tile-caption';
+import { TileCaption, TileFocusFill, TvArtRing, tvTileRadius } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { isTV } from '@/platform/tv';
 import { createStyles, type AppTheme, radius, useStyles, useTheme } from '@/theme';
@@ -49,6 +49,7 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const height = (width * 9) / 16;
+  const r = tvTileRadius(radius.md);
   // The Library stack, or Home when the grid shows there (Library replaced on a phone).
   const group = useExtGroup();
   const [failed, setFailed] = useState<string | null>(null);
@@ -56,7 +57,7 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
   return (
     <Touchable
       kind="tile"
-      radius={radius.md}
+      radius={r}
       // TV: the lit caption strip is the focus mark (design system §7.19).
       ring={!isTV}
       firstFocus={preferredFocus}
@@ -65,7 +66,8 @@ function PageTile({ page, width, preferredFocus }: { page: PlacedPage; width: nu
       accessibilityLabel={`${page.title}, ${page.extensionName}`}
       containerStyle={{ width }}>
       <TileFocusFill artHeight={height} radius={radius.md} />
-      <View style={[s.art, { width, height }]} accessibilityIgnoresInvertColors>
+      <TvArtRing radius={r} artHeight={height} />
+      <View style={[s.art, { width, height, borderRadius: r }]} accessibilityIgnoresInvertColors>
         {/* In a View: on the web a bare svg can paint under a sibling. */}
         <View>
           <Icon name={page.icon} size={Math.round(width * 0.2)} color={c.accent} />

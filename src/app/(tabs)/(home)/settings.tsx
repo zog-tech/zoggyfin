@@ -9,6 +9,7 @@ import { clientIdentity } from '@/auth/identity';
 import { useAccounts } from '@/auth/session-store';
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
+import { TvPageTitle } from '@/components/tv-page-header';
 import { type Option, OptionSheet } from '@/components/option-sheet';
 import { LITE_CHOICES, type LiteChoice, liteLabel } from '@/platform/lite';
 import { useLite } from '@/platform/use-lite';
@@ -32,11 +33,16 @@ import { otaLabel, runningOta } from '@/lib/ota';
 import { toast } from '@/lib/toast';
 import { appVersion } from '@/platform/desktop';
 import { isTV } from '@/platform/tv';
+import { TV_LOOK_CHOICES, type TvLookChoice, tvLookLabel } from '@/platform/tv-look';
+import { clearTvLookOverride, isTvModern, shownTvLookChoice, tvLook, tvLookPending } from '@/platform/tv-look-now';
+import { confirmRestart, restartApp } from '@/lib/restart';
+import { useTvLookSetting } from '@/settings/tv-look';
 import { APPEARANCE_OPTIONS, useAppearance } from '@/settings/appearance';
 import { useHomeSettings } from '@/settings/home';
 import { useTabBarSettings } from '@/settings/tab-bar';
 import { QUALITY_OPTIONS, qualityLabel, SKIP_OPTIONS, usePlaybackSettings } from '@/settings/playback';
 import { FADE_CHOICES, fadeLabel } from '@/player/audio/crossfade';
+import { HOLD_TOP_CHOICES, holdPaceLabel } from '@/player/hold-seek';
 import { audioSession } from '@/player/audio/session';
 import { iconSize, mediaColors, scaled, sizes, spacing, useStyles, useTheme } from '@/theme';
 import { useSidebarInset } from '@/theme/sidebar-inset';
@@ -78,6 +84,8 @@ export default function SettingsScreen() {
     <>
       <Stack.Screen options={{ title: 'Settings', headerStyle: { backgroundColor: c.bgGrouped }, contentStyle: { backgroundColor: c.bgGrouped } }} />
       <TvScrollView contentInsetAdjustmentBehavior="automatic" style={styles.page} contentContainerStyle={[styles.content, { paddingBottom: bottomPad }, sidebar ? { paddingLeft: sidebar + spacing.lg } : null]}>
+        {/* TV Modern: the page title (TV has no header bar). */}
+        {isTV && isTvModern ? <TvPageTitle title="Settings" /> : null}
         <View style={styles.inner}>
           <Group>
             <View style={[styles.row, styles.account]}>
@@ -102,8 +110,8 @@ export default function SettingsScreen() {
 
           <AdminSettingsGroup />
 
-          {/* TV is always dark. */}
-          {isTV ? null : <AppearanceSection />}
+          {/* TV is always dark; it chooses its look instead. */}
+          {isTV ? <TvLookSection /> : <AppearanceSection />}
 
           <HomeSection />
 
@@ -139,7 +147,9 @@ export default function SettingsScreen() {
             />
             <UpdateSettingsRow />
             <SettingsRow icon="lock.fill" label="Privacy policy" onPress={() => void Linking.openURL('https://zoggyfin.zog-tech.com/privacy')} />
-            <SettingsRow icon="info.circle" label="Help and support" onPress={() => void Linking.openURL('https://zoggyfin.zog-tech.com/support')} last />
+            <SettingsRow icon="info.circle" label="Help and support" onPress={() => void Linking.openURL('https://zoggyfin.zog-tech.com/support')} last={isTV} />
+            {/* TV has no share sheet and no easy text entry. */}
+            {isTV ? null : <SettingsRow icon="exclamationmark.triangle" label="Report a problem" onPress={() => router.push('/(tabs)/(home)/report')} last />}
           </Group>
 
           {__DEV__ ? <DevSection /> : null}
@@ -187,7 +197,10 @@ function ServersSection() {
   );
 }
 
-type PickerKey = 'wifi' | 'cellular' | 'back' | 'forward' | 'fade' | null;
+type PickerKey = 'wifi' | 'cellular' | 'back' | 'forward' | 'hold' | 'fade' | null;
+
+/** "Up to 240×": the top speed of a held Left or Right. */
+const holdTopLabel = (top: number) => `Up to ${top}×`;
 
 function AppearanceSection() {
   const choice = useAppearance((st) => st.choice);
@@ -207,6 +220,38 @@ function AppearanceSection() {
           trailing={choice === o.value ? <Icon name="checkmark" size={scaled(iconSize.sm)} color={c.accent} weight="semibold" /> : <View />}
         />
       ))}
+    </Group>
+  );
+}
+
+/** TV: the look (Classic or Modern). It applies at the next start, so a change asks for a restart. */
+function TvLookSection() {
+  const saved = useTvLookSetting((st) => st.choice);
+  const choice = shownTvLookChoice(saved);
+  const setChoice = useTvLookSetting((st) => st.setChoice);
+  const [open, setOpen] = useState(false);
+  const options: Option<TvLookChoice>[] = TV_LOOK_CHOICES.map((v) => ({
+    value: v,
+    label: v === 'auto' ? 'Auto: Modern, or Classic on Fire TV and in Lite mode' : v === 'modern' ? 'Modern' : 'Classic',
+  }));
+  const pending = tvLookPending(choice);
+  const choose = async (v: TvLookChoice) => {
+    // The web preview parameter would win over the new choice after the reload.
+    clearTvLookOverride();
+    setChoice(v);
+    if (!tvLookPending(v)) return;
+    if (await confirmRestart('Restart Zoggyfin to change the look?')) await restartApp();
+  };
+  return (
+    <Group title="Appearance" footer="Modern is the new design for TV. Classic is the earlier design. The change needs a restart.">
+      <SettingsRow
+        icon="tv"
+        label="TV look"
+        value={`${tvLookLabel(choice, tvLook)}${pending ? ' · restart to apply' : ''}`}
+        onPress={() => setOpen(true)}
+        last
+      />
+      <OptionSheet visible={open} title="TV look" options={options} selected={[choice]} onSelect={(v) => void choose(v)} onClose={() => setOpen(false)} />
     </Group>
   );
 }
@@ -274,6 +319,7 @@ function PlaybackSection() {
   const quality: Option<number>[] = QUALITY_OPTIONS.map((q) => ({ value: q.value, label: q.label }));
   const skips: Option<number>[] = SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} s` }));
   const fades: Option<number>[] = FADE_CHOICES.map((n) => ({ value: n, label: fadeLabel(n) }));
+  const holds: Option<number>[] = HOLD_TOP_CHOICES.map((n) => ({ value: n, label: `${holdTopLabel(n)} (${holdPaceLabel(n)})` }));
   const sheet =
     picker === 'wifi'
       ? { title: 'Streaming quality on Wi-Fi', options: quality, selected: st.wifiBitrate, set: (v: number) => st.update({ wifiBitrate: v }) }
@@ -283,6 +329,8 @@ function PlaybackSection() {
           ? { title: 'Skip back', options: skips, selected: st.skipBackSeconds, set: (v: number) => st.update({ skipBackSeconds: v }) }
           : picker === 'forward'
             ? { title: 'Skip forward', options: skips, selected: st.skipForwardSeconds, set: (v: number) => st.update({ skipForwardSeconds: v }) }
+            : picker === 'hold'
+              ? { title: 'Hold to seek', options: holds, selected: st.holdSeekTop, set: (v: number) => st.update({ holdSeekTop: v }) }
             : picker === 'fade'
               ? { title: 'Crossfade songs', options: fades, selected: st.fadeSeconds, set: (v: number) => st.update({ fadeSeconds: v }) }
               : null;
@@ -295,13 +343,15 @@ function PlaybackSection() {
   return (
     <Group
       title="Playback"
-      footer={`Autoplay similar music adds songs like the last ones when the queue ends. Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
+      footer={`Autoplay similar music adds songs like the last ones when the queue ends. Load the whole video ahead uses more data and memory. It helps on a slow or unstable connection. Nothing is kept after the player closes.${isTV ? ' Hold Left or Right on the remote to rewind or fast forward. The longer you hold, the faster it goes, up to the speed you choose.' : ''}${liteRow ? ' Lite mode uses less memory: no previews on Home, and a page you leave is closed.' : ''}`}>
       <SettingsRow icon="gauge" label="Quality on Wi-Fi" value={qualityLabel(st.wifiBitrate)} onPress={() => setPicker('wifi')} />
       {cellular ? (
         <SettingsRow icon="antenna.radiowaves.left.and.right" label="Quality on cellular" value={qualityLabel(st.cellularBitrate)} onPress={() => setPicker('cellular')} />
       ) : null}
       <SettingsRow icon="gobackward.10" label="Skip back" value={`${st.skipBackSeconds} s`} onPress={() => setPicker('back')} />
       <SettingsRow icon="goforward.10" label="Skip forward" value={`${st.skipForwardSeconds} s`} onPress={() => setPicker('forward')} />
+      {/* TV: how fast a held Left or Right goes in the video player (player/hold-seek.ts). */}
+      {isTV ? <SettingsRow icon="timer" label="Hold to seek" value={holdTopLabel(st.holdSeekTop)} onPress={() => setPicker('hold')} /> : null}
       <SettingsRow
         icon="forward.fill"
         label="Play next episode automatically"

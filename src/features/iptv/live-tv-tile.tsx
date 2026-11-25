@@ -12,7 +12,7 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { Icon } from '@/components/icon';
-import { TileCaption, TileFocusFill } from '@/components/tile-caption';
+import { TileCaption, TileFocusFill, TvArtRing, tvTileRadius } from '@/components/tile-caption';
 import { Touchable } from '@/components/touchable';
 import { useMergedLists, useProviders } from '@/iptv';
 import { isTV } from '@/platform/tv';
@@ -45,12 +45,13 @@ function LiveTvTile({ width, subtitle, preferredFocus }: { width: number; subtit
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const height = (width * 9) / 16;
+  const r = tvTileRadius(radius.md);
   // The Library stack, or Home when the grid shows there (Library replaced on a phone).
   const group = useLiveGroup();
   return (
     <Touchable
       kind="tile"
-      radius={radius.md}
+      radius={r}
       // TV: the lit caption strip is the focus mark (design system §7.19).
       ring={!isTV}
       firstFocus={preferredFocus}
@@ -59,7 +60,8 @@ function LiveTvTile({ width, subtitle, preferredFocus }: { width: number; subtit
       accessibilityLabel={`Live TV, ${subtitle}`}
       containerStyle={{ width }}>
       <TileFocusFill artHeight={height} radius={radius.md} />
-      <View style={[s.art, { width, height }]} accessibilityIgnoresInvertColors>
+      <TvArtRing radius={r} artHeight={height} />
+      <View style={[s.art, { width, height, borderRadius: r }]} accessibilityIgnoresInvertColors>
         <LinearGradient colors={[c.accent, c.accentPressed]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
         {/* In a View: on the web a bare svg would paint under the absolute gradient. */}
         <View>

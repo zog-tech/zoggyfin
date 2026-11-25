@@ -30,7 +30,7 @@ import { SHORT_POOL_SIZE, shortOnTime } from '@/features/home/short-on-time';
 import { useDay } from '@/features/home/use-day';
 import { LiveTvHomeRow } from '@/features/iptv/home-row';
 import { isSupportedView } from '@/features/library/library-kind';
-import { episodeLabel, formatDuration } from '@/lib/format';
+import { episodeLabel, formatDuration, remainingLabel } from '@/lib/format';
 import { itemHref, useOpenItem, useTabGroup, videoGenreHref } from '@/lib/navigation';
 import { usePlayer } from '@/player';
 import { useHomeSettings } from '@/settings/home';
@@ -42,6 +42,12 @@ const runtimeSubtitle = (item: BaseItemDto) => formatDuration(item.RunTimeTicks)
 
 const episodeSubtitle = (item: BaseItemDto) =>
   item.Type === 'Episode' ? [episodeLabel(item), item.Name].filter(Boolean).join(' · ') : undefined;
+
+/**
+ * Continue watching: an episode says its season, number and name under the show's title. TV puts the
+ * caption under the art, which has no room for the time left beside it: there a movie's line says it.
+ */
+const continueSubtitle = (item: BaseItemDto) => episodeSubtitle(item) ?? (isTV ? (remainingLabel(item) ?? undefined) : undefined);
 
 /**
  * TV: Select on a tile of a "watch now" row plays it at once (from where it was left), like the
@@ -66,7 +72,7 @@ function ContinueWatching() {
       isLoading={q.isPending}
       error={q.error}
       onRetry={q.refetch}
-      tileSubtitle={episodeSubtitle}
+      tileSubtitle={continueSubtitle}
       // TV: the first focus is on Home's Play button (HomeHero), not on this row.
       {...press}
     />

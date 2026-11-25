@@ -3,7 +3,7 @@ import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } 
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { SearchBarCommands } from 'react-native-screens';
 
-import { useSearch, useVideoGenres } from '@/api/queries';
+import { useBrowseRows, useSearch, useVideoGenres } from '@/api/queries';
 import type { BaseItemDto } from '@/api/types';
 import { ItemActionSheet, useItemMenu } from '@/components/action-sheet';
 import { Button } from '@/components/button';
@@ -16,6 +16,7 @@ import { ItemRow, RowHeader } from '@/components/item-row';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { shapeFor } from '@/components/tile';
 import { Touchable } from '@/components/touchable';
+import { TvToolbarRow } from '@/components/tv-page-header';
 import { isNetworkError, searchDownloads, useDownloadStatus } from '@/downloads';
 import { useDownloadsStore } from '@/downloads/store';
 import { TrackRow } from '@/features/detail/rows';
@@ -25,7 +26,10 @@ import { useTabRootPlace } from '@/features/extensions/tab-nav';
 import { useServerNames } from '@/features/servers/use-server-names';
 import { savedName } from '@/player/audio/catalog';
 import { useSavedId } from '@/player/audio/catalog-links';
+import { browseEmptyText, browseQueries } from '@/features/search/browse';
 import {
+  BROWSE_FILTERS,
+  browseKindOf,
   filterSections,
   GENRE_SEARCH_FILTERS,
   groupSearchResults,
@@ -39,12 +43,14 @@ import { genreChipModel, genreOptions } from '@/features/search/genre-chip';
 import { ExtensionSearchResults } from '@/features/search/extension-results';
 import { globalSearchQuery } from '@/features/search/extension-search';
 import { TvScrollView } from '@/features/tv/page-scroll';
+import { TvToolbarItem } from '@/features/tv/tv-button';
 import { formatDuration } from '@/lib/format';
 import { useOpenItem } from '@/lib/navigation';
 import { useRootScreenOptions } from '@/lib/stack-options';
 import { useOffline } from '@/lib/online';
 import { useDebounced } from '@/lib/use-debounced';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { usePlayer } from '@/player';
 import { readJson, writeJson } from '@/storage/json';
 import { createStyles,
@@ -56,7 +62,10 @@ import { createStyles,
   scriptStyle,
   sizes,
   spacing,
+  tvFont,
+  tvm,
   type,
+  u,
   useLayout,
   useStyles,
   useTheme,
@@ -69,6 +78,12 @@ const PLACEHOLDER = 'Movies, shows, music, people';
 const ownField = Platform.OS === 'web' || isTV;
 /** Android TV: the app's own field is not controlled (voice typing, see the TextInput). */
 const ownedField = ownField && Platform.OS === 'android';
+/**
+ * TV Modern (design system §7.22): a 72 u field whose focus is a white
+ * border, the filters and the genre as a one-line text toolbar (no chips),
+ * and a left-aligned hint before a query (no centred icon).
+ */
+const MODERN = isTV && isTvModern;
 
 export default function SearchScreen() {
   const s = useStyles(makeStyles);
@@ -106,6 +121,8 @@ export default function SearchScreen() {
   const [recentVersion, setRecentVersion] = useState(0);
   const searchRef = useRef<SearchBarCommands>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  // TV Modern: the field's focus border (a text field is not a Touchable, so it has no focus mark).
+  const [fieldFocused, setFieldFocused] = useState(false);
   const player = usePlayer();
   const [menu, setMenu] = useState<BaseItemDto | undefined>(undefined);
 
@@ -124,6 +141,12 @@ export default function SearchScreen() {
   useFocusEffect(useCallback(() => remember, [remember]));
 
   const active = term.length >= 2 || !!genre;
+  // No words: rows to start from (browse.ts). The chips pick their kind; Episodes and People list All.
+  const kind = browseKindOf(filter);
+  const browseRowQueries = useMemo(() => browseQueries(kind), [kind]);
+  const browse = useBrowseRows(kind, browseRowQueries, !active && !localOnly);
+  const chips = active ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS) : localOnly ? [] : BROWSE_FILTERS;
+  const chipOn = active ? filter : kind;
   const genreChip = genreChipModel({ genre, genreCount: genreList.length, localOnly });
   // Extension searches with `global: true` run beside the server search, never before it.
   const extQuery = globalSearchQuery(term, { offline: localOnly, genre, filter });
@@ -189,9 +212,9 @@ export default function SearchScreen() {
         style={s.page}
         contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}>
         {ownField ? (
-          <View style={[s.fieldRow, { paddingHorizontal: l.gutter }]}>
-            <View style={s.field}>
-              <Icon name="magnifyingglass" size={scaled(iconSize.sm)} color={c.text3} />
+          <View style={[s.fieldRow, MODERN && s.fieldRowModern, { paddingHorizontal: l.gutter }]}>
+            <View style={MODERN ? [s.field, s.fieldModern, fieldFocused && s.fieldFocusedModern] : s.field}>
+              <Icon name="magnifyingglass" size={MODERN ? u(30) : scaled(iconSize.sm)} color={c.text3} />
               <TextInput
                 key={fieldKey}
                 ref={inputRef}
@@ -205,18 +228,29 @@ export default function SearchScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus={!isTV}
-                style={s.input}
+                style={MODERN ? [s.input, s.inputModern] : s.input}
                 accessibilityLabel="Search"
                 returnKeyType="search"
                 onSubmitEditing={remember}
+                {...(MODERN ? { onFocus: () => setFieldFocused(true), onBlur: () => setFieldFocused(false) } : null)}
               />
-              {text ? (
+              {/* TV Modern: no round clear glyph; Cancel beside the field clears. */}
+              {text && !MODERN ? (
                 <Touchable onPress={() => setFieldText('')} hitSlop={10} radius={10} accessibilityRole="button" accessibilityLabel="Clear search">
                   <Icon name="xmark.circle.fill" size={scaled(iconSize.sm)} color={c.text3} />
                 </Touchable>
               ) : null}
             </View>
-            {text ? (
+            {text && MODERN ? (
+              <Button
+                title="Cancel"
+                variant="text"
+                onPress={() => {
+                  setFieldText('');
+                  inputRef.current?.blur();
+                }}
+              />
+            ) : text ? (
               <Touchable
                 onPress={() => {
                   setFieldText('');
@@ -232,18 +266,30 @@ export default function SearchScreen() {
         ) : null}
 
         <OfflineBanner />
-        {active || genreChip.visible ? (
+        {MODERN && (chips.length || genreChip.visible) ? (
+          <View style={[s.toolbarModern, { paddingHorizontal: l.gutter }]}>
+            <TvToolbarRow ref={chipRow} inset={l.gutter}>
+              {genreChip.visible ? (
+                <>
+                  <TvToolbarItem label="Genre" value={genre ?? 'Any'} onPress={() => setGenreSheet(true)} accessibilityLabel={genreChip.accessibilityLabel} />
+                  {genreChip.showClear ? <TvToolbarItem value="Clear genre" on={false} onPress={() => pickGenre(null)} /> : null}
+                </>
+              ) : null}
+              {chips.map((f) => (
+                <TvToolbarItem key={f.value} value={f.label} on={chipOn === f.value} onPress={() => setFilter(f.value)} />
+              ))}
+            </TvToolbarRow>
+          </View>
+        ) : chips.length || genreChip.visible ? (
           <ScrollView
             ref={chipRow}
             horizontal
             showsHorizontalScrollIndicator={false}
             style={s.chips}
             contentContainerStyle={[s.chipsContent, { paddingHorizontal: l.gutter }, chipRowTV()]}>
-            {active
-              ? (genre ? GENRE_SEARCH_FILTERS : SEARCH_FILTERS).map((f) => (
-                  <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
-                ))
-              : null}
+            {chips.map((f) => (
+              <Chip key={f.value} label={f.label} selected={chipOn === f.value} onPress={() => setFilter(f.value)} />
+            ))}
             {genreChip.visible ? (
               <>
                 <Chip
@@ -260,40 +306,64 @@ export default function SearchScreen() {
         ) : null}
 
         {body === 'idle' ? (
-          recent.length ? (
-            <View style={s.recent}>
-              <RowHeader title="Recent searches" />
-              <View style={[s.recentList, { marginHorizontal: l.gutter }]}>
-                {recent.map((r, i) => (
-                  <Touchable
-                    key={r}
-                    kind="row"
-                    onPress={() => applyRecent(r)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Search for ${r}`}
-                    style={({ pressed, hovered, focused }) => [s.recentRow, (pressed || hovered || (focused && !isTV)) && s.rowActive]}>
-                    <Icon name="clock.arrow.circlepath" size={scaled(iconSize.sm)} color={c.text3} />
-                    <View style={[s.recentBody, i < recent.length - 1 && s.line]}>
-                      <Text style={[s.recentText, scriptStyle(r, s.recentText)]} numberOfLines={1}>
-                        {r}
-                      </Text>
-                    </View>
-                  </Touchable>
-                ))}
+          <>
+            {kind === 'all' && recent.length ? (
+              <View style={s.recent}>
+                <RowHeader title="Recent searches" />
+                {/* TV Modern: plain list rows on the page (no card); the row fill reaches into the gutter. */}
+                <View style={MODERN ? { marginHorizontal: l.gutter - u(24) } : [s.recentList, { marginHorizontal: l.gutter }]}>
+                  {recent.map((r, i) => (
+                    <Touchable
+                      key={r}
+                      kind="row"
+                      onPress={() => applyRecent(r)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Search for ${r}`}
+                      style={
+                        MODERN ? s.recentRowModern : ({ pressed, hovered, focused }) => [s.recentRow, (pressed || hovered || (focused && !isTV)) && s.rowActive]
+                      }>
+                      <Icon name="clock.arrow.circlepath" size={MODERN ? u(30) : scaled(iconSize.sm)} color={c.text3} />
+                      <View style={MODERN ? s.recentBodyModern : [s.recentBody, i < recent.length - 1 && s.line]}>
+                        <Text style={[MODERN ? s.recentTextModern : s.recentText, scriptStyle(r, MODERN ? s.recentTextModern : s.recentText)]} numberOfLines={1}>
+                          {r}
+                        </Text>
+                      </View>
+                    </Touchable>
+                  ))}
+                </View>
+                <Button
+                  title="Clear recent searches"
+                  variant="text"
+                  onPress={() => {
+                    writeJson(RECENT_KEY, []);
+                    setRecentVersion((v) => v + 1);
+                  }}
+                  containerStyle={{ marginLeft: MODERN ? l.gutter - u(tvm.size.actionPadX) : l.gutter - spacing.sm, alignSelf: 'flex-start' }}
+                />
               </View>
-              <Button
-                title="Clear recent searches"
-                variant="text"
-                onPress={() => {
-                  writeJson(RECENT_KEY, []);
-                  setRecentVersion((v) => v + 1);
-                }}
-                containerStyle={{ marginLeft: l.gutter - spacing.sm, alignSelf: 'flex-start' }}
+            ) : null}
+            {localOnly ? (
+              recent.length ? null : MODERN ? (
+                <SearchHintModern />
+              ) : (
+                <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
+              )
+            ) : browse.isPending ? (
+              <LoadingState />
+            ) : browse.error && !browse.data ? (
+              <ErrorState error={browse.error} onRetry={browse.refetch} />
+            ) : browse.data?.length ? (
+              browse.data.map((sec) => <ItemRow key={sec.key} title={sec.title} items={sec.items} shape={sec.items[0] ? shapeFor(sec.items[0]) : 'poster'} />)
+            ) : kind === 'all' && recent.length ? null : MODERN && kind === 'all' ? (
+              <SearchHintModern />
+            ) : (
+              <EmptyState
+                icon="magnifyingglass"
+                title={kind === 'all' ? 'Search your server' : 'Nothing to list'}
+                message={kind === 'all' ? 'Find movies, shows, episodes, albums, songs, artists and people.' : browseEmptyText(kind)}
               />
-            </View>
-          ) : (
-            <EmptyState icon="magnifyingglass" title="Search your server" message="Find movies, shows, episodes, albums, songs, artists and people." />
-          )
+            )}
+          </>
         ) : body === 'loading' ? (
           <LoadingState />
         ) : body === 'error' ? (
@@ -376,6 +446,18 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /** The top result card: art, title, facts and a Play or Resume button. */
+/** TV Modern: the hint before a query is left-aligned text, with no centred icon. */
+function SearchHintModern() {
+  const s = useStyles(makeStyles);
+  const l = useLayout();
+  return (
+    <View style={[s.hintModern, { paddingHorizontal: l.gutter }]}>
+      <Text style={s.hintTitleModern}>Search your server</Text>
+      <Text style={s.hintTextModern}>Find movies, shows, episodes, albums, songs, artists and people.</Text>
+    </View>
+  );
+}
+
 function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) {
   const s = useStyles(makeStyles);
   const l = useLayout();
@@ -383,7 +465,7 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
   // Long press, and right click on the web and the Mac app: the item actions. Not on TV.
   const menu = useItemMenu();
   const shape = shapeFor(item);
-  const artWidth = scaled(shape === 'thumb' ? 112 : 64);
+  const artWidth = MODERN ? u(shape === 'thumb' ? 240 : 120) : scaled(shape === 'thumb' ? 112 : 64);
   const aspect = shape === 'poster' ? 2 / 3 : shape === 'thumb' ? 16 / 9 : 1;
   const facts = [TYPE_LABEL[item.Type ?? ''], item.ProductionYear ? String(item.ProductionYear) : null, formatDuration(item.RunTimeTicks)]
     .filter(Boolean)
@@ -394,8 +476,8 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
   const saved = useSavedId(item.Type === 'Audio' ? item.Id : null);
   const name = item.Type === 'Audio' && saved !== item.Id ? savedName(item.Name) : item.Name;
   return (
-    <View style={{ marginTop: spacing.lg, paddingHorizontal: l.gutter }}>
-      <Text style={s.topHeader} accessibilityRole="header">
+    <View style={{ marginTop: MODERN ? u(36) : spacing.lg, paddingHorizontal: l.gutter }}>
+      <Text style={MODERN ? s.topHeaderModern : s.topHeader} accessibilityRole="header">
         Top result
       </Text>
       {/* The card press area and the Play button are siblings: a button must not be inside a button (web). */}
@@ -410,19 +492,27 @@ function TopResult({ item, onPlay }: { item: BaseItemDto; onPlay: () => void }) 
           containerStyle={StyleSheet.absoluteFill}
           style={({ pressed, hovered }) => [s.topCardBg, (pressed || hovered) && s.topCardBgActive]}
         />
-        <View style={s.topCard} pointerEvents="box-none">
+        <View style={MODERN ? [s.topCard, s.topCardModern] : s.topCard} pointerEvents="box-none">
           <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <ItemImage item={item} variant={shape === 'thumb' ? 'landscape' : shape === 'poster' ? 'poster' : 'square'} width={artWidth} aspectRatio={aspect} rounded={radius.sm} circle={shape === 'circle'} hideArtTitle />
+            <ItemImage
+              item={item}
+              variant={shape === 'thumb' ? 'landscape' : shape === 'poster' ? 'poster' : 'square'}
+              width={artWidth}
+              aspectRatio={aspect}
+              rounded={MODERN ? u(12) : radius.sm}
+              circle={shape === 'circle'}
+              hideArtTitle
+            />
           </View>
           <View style={s.topBody} pointerEvents="box-none">
             <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={s.topText}>
-              <Text style={[s.topTitle, scriptStyle(name, s.topTitle)]} numberOfLines={2}>
+              <Text style={[MODERN ? s.topTitleModern : s.topTitle, scriptStyle(name, MODERN ? s.topTitleModern : s.topTitle)]} numberOfLines={2}>
                 {name}
               </Text>
               {facts || download.state !== 'none' ? (
                 <View style={s.topMetaRow}>
                   <DownloadGlyph id={item.Id} size={14} status={download} />
-                  {facts ? <Text style={s.topMeta}>{facts}</Text> : null}
+                  {facts ? <Text style={MODERN ? s.topMetaModern : s.topMeta}>{facts}</Text> : null}
                 </View>
               ) : null}
             </View>
@@ -480,4 +570,28 @@ const makeStyles = createStyles(({ c }: AppTheme) => ({
   topMeta: { ...font(type.footnote), color: c.text2, flexShrink: 1 },
   topMetaRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.xs },
   topButton: { alignSelf: 'flex-start' as const, marginTop: spacing.sm },
+  // TV Modern (redesign §2.7).
+  fieldRowModern: { gap: u(16), marginTop: u(20) },
+  fieldModern: {
+    height: u(72),
+    gap: u(16),
+    paddingHorizontal: u(24),
+    borderRadius: u(tvm.size.plateRadius),
+    borderWidth: u(2),
+    borderColor: c.controlBorder,
+  },
+  // A wider edge eats into the padding, so the icon and the text do not move.
+  fieldFocusedModern: { borderWidth: u(4), borderColor: c.text, paddingHorizontal: u(22) },
+  inputModern: { ...tvFont(tvm.type.body), fontSize: u(30), fontWeight: '400' as const },
+  toolbarModern: { marginTop: u(24) },
+  topHeaderModern: { ...tvFont(tvm.type.rowTitle), color: c.text, marginBottom: u(tvm.size.rowTitleGap) },
+  topCardModern: { gap: u(28), padding: u(20) },
+  topTitleModern: { ...tvFont(tvm.type.rowTitle), color: c.text },
+  topMetaModern: { ...tvFont(tvm.type.meta), color: c.text2, flexShrink: 1 },
+  hintModern: { marginTop: u(48), gap: u(12) },
+  hintTitleModern: { ...tvFont(tvm.type.body), fontSize: u(40), lineHeight: u(48), fontWeight: '700' as const, color: c.text },
+  hintTextModern: { ...tvFont(tvm.type.body), color: c.text2 },
+  recentRowModern: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: u(20), paddingHorizontal: u(24), minHeight: u(tvm.size.listRowHeight) },
+  recentBodyModern: { flex: 1, justifyContent: 'center' as const },
+  recentTextModern: { ...tvFont(tvm.type.body), fontSize: u(30), lineHeight: u(36), fontWeight: '500' as const, color: c.text },
 }));

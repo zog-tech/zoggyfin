@@ -3,6 +3,11 @@
  * keeps the shared player store current, reports progress per track,
  * keeps long-form positions, runs the sleep timer and saves the queue so
  * it comes back after a restart.
+ *
+ * It writes the player log (`lib/diag-store.ts`, area `music`): play
+ * requests, track starts and their source, play and pause and the branch
+ * taken, controls that a together session took, the queue end, Autoplay
+ * requests and the sleep timer. Only ids, kinds and counts: no names.
  */
 import type { Api } from '@jellyfin/sdk';
 import * as Network from 'expo-network';
@@ -19,6 +24,8 @@ import { useSessionStore } from '@/auth/session-store';
 import { checkDownloadedFiles, chooseMedia, downloadedChildren, findDownload, localExtraUri, readLocalText, documentsDir, serverOrLocal } from '@/downloads';
 import { addToOutbox } from '@/downloads/outbox-store';
 import { resolveImage } from '@/images/resolve-image';
+import { errorText, shortId, uriKind } from '@/lib/diag-log';
+import { diag } from '@/lib/diag-store';
 import { isOffline } from '@/lib/online';
 import { randomId } from '@/lib/id';
 import { toast } from '@/lib/toast';
@@ -236,6 +243,7 @@ class AudioSession {
         else this.previous();
         break;
       case 'error':
+        diag('music', 'engine-error', { message: errorText(e.message) });
         if (this.recoverAfterAddressSwitch()) break;
         setPlayerState({ status: 'error', error: e.message });
         break;
@@ -336,6 +344,7 @@ class AudioSession {
     // Sleep timer "end of track": the next track has already begun, so pause it at its start.
     const sleep = audioState().sleep;
     if (sleepDue(sleep, { now: Date.now(), itemKey: entry.key, position: 0, trackEnded: true }) && sleep.kind === 'end') {
+      diag('music', 'sleep-pause', { kind: 'end' });
       this.engine.pause();
       this.engine.seekTo(0);
       this.setSleep(sleepOff);
@@ -359,6 +368,7 @@ class AudioSession {
     const id = this.loadId;
     const q = audioState().queue;
     const entry = currentEntry(q);
+    diag('music', 'queue-end', { id, index: q.index, length: q.entries.length, sleepEnd: audioState().sleep.kind === 'end' });
     await this.finishReporter(playerState().duration);
     // A track started (or the player stopped) during the last report: that one owns the engine now.
     if (id !== this.loadId) return;
@@ -368,6 +378,7 @@ class AudioSession {
     const nq = audioState().sleep.kind === 'end' ? null : advance(audioState().queue);
     const target = nq ? currentEntry(nq) : null;
     if (nq && target && isCatalogSong(target.item)) {
+      diag('music', 'queue-end-next', { how: 'catalog' });
       setAudioState({ queue: nq, resumedAt: null });
       void this.startCurrent({ autoplay: true, startSeconds: 0 });
       return;
@@ -376,16 +387,19 @@ class AudioSession {
     // The ended player is unloaded first: a song that joins the native queue now could start by
     // itself (iOS keeps the rate after the last item) and move the queue under this wait.
     if (!nq && audioState().sleep.kind !== 'end' && entry) {
+      diag('music', 'queue-end-next', { how: 'radio-wait' });
       this.engine.unload();
       await this.extendRadio();
       if (id !== this.loadId || currentEntry(audioState().queue)?.key !== entry.key) return;
       const more = advance(audioState().queue);
+      diag('music', 'queue-end-radio', { more: !!more });
       if (more) {
         setAudioState({ queue: more, resumedAt: null });
         void this.startCurrent({ autoplay: true, startSeconds: 0 });
         return;
       }
     }
+    diag('music', 'queue-end-stop', { advanced: !!nq });
     this.engine.unload();
     if (audioState().sleep.kind === 'end') this.setSleep(sleepOff);
     setPlayerState({ status: 'ended', playing: false, position: 0 });
@@ -518,14 +532,24 @@ class AudioSession {
   private async startCurrent(opts: { autoplay: boolean; startSeconds?: number }): Promise<void> {
     const id = ++this.loadId;
     let entry = currentEntry(audioState().queue);
+    diag('music', 'start', { id, autoplay: opts.autoplay, start: opts.startSeconds ?? null, item: shortId(entry?.item.Id), index: audioState().queue.index });
     if (!entry) return;
     await this.finishReporter(this.engine.loaded ? this.engine.position : playerState().position);
-    this.bitrate = bitrateFor(usePlaybackSettings.getState(), await onCellular());
-    if (id !== this.loadId) return;
+    const cellular = await onCellular();
+    this.bitrate = bitrateFor(usePlaybackSettings.getState(), cellular);
+    if (id !== this.loadId) {
+      diag('music', 'start-stale', { id, at: 'network' });
+      return;
+    }
     entry = this.savedDownloadEntry(entry);
-    if (this.needsCatalogFetch(entry)) {
+    const catalog = this.needsCatalogFetch(entry);
+    diag('music', 'start-network', { id, cellular, offline: isOffline(), catalog });
+    if (catalog) {
       const saved = await this.fetchCatalogSong(entry, id, opts.startSeconds ?? 0);
-      if (id !== this.loadId) return;
+      if (id !== this.loadId) {
+        diag('music', 'start-stale', { id, at: 'catalog' });
+        return;
+      }
       if (saved) entry = saved;
     }
     const q = audioState().queue;
@@ -546,6 +570,18 @@ class AudioSession {
     }
     const nextEntry = upcomingEntry(q);
     const next = nextEntry ? this.nextTrackFor(nextEntry) : null;
+    const info = this.tracks.get(entry.key);
+    diag('music', 'start-track', {
+      id,
+      source: info?.remote ? 'stream' : this.shared ? 'shared' : 'download',
+      uri: uriKind(current.uri),
+      method: info?.playMethod ?? null,
+      start,
+      resumed,
+      next: !!next,
+      nextEntry: !!nextEntry,
+      longForm: audioState().longForm,
+    });
     this.publish(entry, start, 'loading');
     setAudioState({ resumedAt: resumed ? Date.now() : null });
     // In a session the group rate applies (the session sets it).
@@ -559,7 +595,10 @@ class AudioSession {
     // A load puts the next song in the playlist; the next fade check cues it when a crossfade applies.
     this.sentOverlap = false;
     await this.engine.load(current, next, start, opts.autoplay);
-    if (id !== this.loadId) return;
+    if (id !== this.loadId) {
+      diag('music', 'start-stale', { id, at: 'load' });
+      return;
+    }
     this.recent = rememberPlayed(this.recent, entry.item.Id);
     this.updateFade(start, duration);
     this.trackListeners.forEach((l) => l(entry.key));
@@ -610,6 +649,7 @@ class AudioSession {
     if (tail && this.radioRun?.tail === tail.key) return this.radioRun.done;
     if (!tail || this.radioTried === tail.key || isOffline() || !radioWanted(q, this.radioConditions())) return Promise.resolve(false);
     this.radioTried = tail.key;
+    diag('music', 'radio-ask', { tail: shortId(tail.key), length: q.entries.length, index: q.index });
     const run = {
       tail: tail.key,
       done: this.fetchRadio(tail.key).finally(() => {
@@ -635,6 +675,7 @@ class AudioSession {
     const add = (mix: BaseItemDto[]): boolean => {
       const q = audioState().queue;
       const songs = pickRadio(mix.filter((i) => i.Id).map(slimItem), q, this.recent);
+      diag('music', 'radio-answer', { mix: mix.length, songs: songs.length });
       if (!songs.length) return false;
       setAudioState({ queue: appendAutoplay(q, songs) });
       // After the queue ended the engine is unloaded (`onQueueEnd`), so this preloads nothing there.
@@ -644,6 +685,7 @@ class AudioSession {
     };
     // A failed request may try again at the queue end; an answer with no new songs does not.
     const failed = () => {
+      diag('music', 'radio-failed');
       if (this.radioTried === tailKey) this.radioTried = null;
       return false;
     };
@@ -798,6 +840,8 @@ class AudioSession {
     this.engine.unload();
     this.publish(entry, start, 'loading');
     this.catalogFetch = entry.key;
+    const began = Date.now();
+    diag('music', 'catalog-fetch', { id, item: shortId(entry.item.Id) });
     try {
       const profile = buildDeviceProfile(audioCapabilities(), { maxBitrate: this.bitrate || bitrateFor(usePlaybackSettings.getState(), false) });
       const body = playbackInfoBody({ userId: ctx.userId, profile, maxBitrate: profile.MaxStreamingBitrate ?? this.bitrate });
@@ -812,8 +856,10 @@ class AudioSession {
       const saved = currentEntry(nq);
       if (nq === q || saved?.key !== entry.key) return null;
       setAudioState({ queue: nq });
+      diag('music', 'catalog-done', { id, ms: Date.now() - began, ok: true });
       return saved;
     } catch (e) {
+      diag('music', 'catalog-done', { id, ms: Date.now() - began, ok: false, error: errorText(e) });
       if (id === this.loadId) console.warn('[audio] catalog fetch failed', describeError(e).title);
       return null;
     } finally {
@@ -966,11 +1012,15 @@ class AudioSession {
 
   /** Makes the engine's next track match the queue's. */
   private syncNext() {
-    if (!this.engine.loaded) return;
+    if (!this.engine.loaded) {
+      diag('music', 'sync-next', { loaded: false });
+      return;
+    }
     const q = audioState().queue;
     const next = upcomingEntry(q);
     const overlap = this.nextOverlaps();
     this.sentOverlap = overlap;
+    diag('music', 'sync-next', { loaded: true, next: shortId(next?.key), same: !!next && this.engine.nextKey === next.key, overlap });
     if (next && this.engine.nextKey === next.key && this.tracks.has(next.key)) {
       this.engine.setNext({ key: next.key, uri: this.tracks.get(next.key)?.url ?? '' }, overlap);
     } else {
@@ -1019,6 +1069,7 @@ class AudioSession {
     if (playerState().now) return;
     const s = useSessionStore.getState().session;
     if (!s) return;
+    diag('music', 'restore');
     const saved = readJson<SavedQueue | null>(QUEUE_KEY, null);
     if (!saved || saved.serverId !== s.serverId || saved.userId !== s.userId) return;
     const queue = restoreQueue(saved.queue, isAudioItemLike);
@@ -1038,6 +1089,7 @@ class AudioSession {
       presentation: 'mini',
     });
     setAudioState({ format: formatLine(entry.item) });
+    diag('music', 'restored', { item: shortId(entry.item.Id), position, length: queue.entries.length });
   }
 
   // ---- Public API ------------------------------------------------------------------
@@ -1050,13 +1102,25 @@ class AudioSession {
   }
 
   private gate(c: UserControl): boolean {
-    return controlGate.intercept(c);
+    const taken = controlGate.intercept(c);
+    if (taken) diag('music', 'gate', { action: c.action });
+    return taken;
   }
 
   /** Plays a request: a song with its album, a container (album, artist, playlist, genre) or a single item. */
   async play(request: PlayRequest): Promise<void> {
     if (this.queueLocked()) return;
     const id = ++this.loadId;
+    diag('music', 'play', {
+      id,
+      list: request.list?.length ?? null,
+      container: CONTAINERS.has(request.item.Type ?? ''),
+      type: request.item.Type ?? null,
+      queue: request.queue?.length ?? 0,
+      shuffle: !!request.shuffle,
+      start: request.startPositionTicks !== undefined,
+      item: shortId(request.item.Id),
+    });
     try {
       let items: BaseItemDto[];
       let start = 0;
@@ -1091,6 +1155,7 @@ class AudioSession {
         startSeconds: request.startPositionTicks !== undefined ? ticksToSecondsExact(request.startPositionTicks) : undefined,
       });
     } catch (e) {
+      diag('music', 'play-failed', { id, stale: id !== this.loadId, error: errorText(e) });
       if (id !== this.loadId) return;
       setPlayerState({ status: 'error', error: describeError(e).title });
       toast(describeError(e).title, { icon: 'exclamationmark.triangle' });
@@ -1160,6 +1225,7 @@ class AudioSession {
   }
 
   togglePlay(): void {
+    diag('music', 'toggle', { playing: playerState().playing, status: playerState().status, pause: togglePauses(playerState().playing) });
     if (togglePauses(playerState().playing)) this.pause();
     else this.resume();
   }
@@ -1171,12 +1237,17 @@ class AudioSession {
 
   private doResume(): void {
     // The server is fetching the current catalog song: it starts when the fetch ends.
-    if (this.catalogFetch && this.catalogFetch === currentEntry(audioState().queue)?.key) return;
+    if (this.catalogFetch && this.catalogFetch === currentEntry(audioState().queue)?.key) {
+      diag('music', 'resume', { branch: 'catalog-wait' });
+      return;
+    }
     if (!this.engine.loaded) {
       const st = playerState();
+      diag('music', 'resume', { branch: 'not-loaded', status: st.status });
       void this.startCurrent({ autoplay: true, startSeconds: st.status === 'ended' ? 0 : st.position });
       return;
     }
+    diag('music', 'resume', { branch: 'engine-play', status: playerState().status });
     this.engine.play();
   }
 
@@ -1186,6 +1257,7 @@ class AudioSession {
   }
 
   private doPause(): void {
+    diag('music', 'pause');
     this.engine.pause();
     this.saveNow();
   }
@@ -1390,6 +1462,7 @@ class AudioSession {
       const entry = currentEntry(audioState().queue);
       this.setSleepVolume(sleepFadeVolume(t, now));
       if (sleepDue(t, { now, itemKey: entry?.key ?? null, position: this.engine.position, trackEnded: false })) {
+        diag('music', 'sleep-pause', { kind: t.kind });
         this.pause();
         this.setSleepVolume(1);
         this.setSleep(sleepOff);
@@ -1504,6 +1577,7 @@ class AudioSession {
   }
 
   async stop(): Promise<void> {
+    diag('music', 'stop');
     this.loadId++;
     this.saveNow();
     await this.finishReporter(this.engine.loaded ? this.engine.position : playerState().position);

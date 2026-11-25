@@ -101,4 +101,6 @@ export const queryKeys = {
   localTrailers: (s: SessionScope, itemId: string) => [...scopeKey(s), 'localTrailers', itemId] as const,
   search: (s: SessionScope, term: string, genre = '') =>
     [...scopeKey(s), 'search', term.trim().toLowerCase(), genre] as const,
+  /** The Search page's rows before any words, per filter chip (`features/search/browse.ts`). */
+  searchBrowse: (s: SessionScope, kind: string) => [...scopeKey(s), 'searchBrowse', kind] as const,
 };

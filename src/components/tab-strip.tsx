@@ -1,34 +1,52 @@
-import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import { type ComponentRef, type ReactElement, useEffect, useRef, useState } from 'react';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 import Animated, { Extrapolation, interpolate, interpolateColor, type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
+import { TvTab } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { createStyles, type AppTheme, font, scaled, sizes, tv, type, useLayout, useStyles, useTheme } from '@/theme';
 
 import type { PagerTab } from './tab-pager-types';
 import { Touchable } from './touchable';
+import { TvToolbarRow } from './tv-page-header';
 
 interface Layout {
   x: number;
   width: number;
 }
 
-/**
- * The tab strip over a pager (design system §7.7). `position` is the pager's
- * live position (page index plus fraction), so the 3 pt `accent` bar and the
- * label colours follow the finger on the UI thread, with no React render.
- */
-export function TabStrip({
-  tabs,
-  index,
-  position,
-  onPress,
-}: {
+export interface TabStripProps {
   tabs: PagerTab[];
   index: number;
   position: SharedValue<number>;
   onPress: (index: number) => void;
-}) {
+}
+
+/**
+ * The tab strip over a pager (design system §7.7). `position` is the pager's
+ * live position (page index plus fraction), so the 3 pt `accent` bar and the
+ * label colours follow the finger on the UI thread, with no React render.
+ * TV Modern (§7.22): text tabs (`TvTab`) in one line with the Ember
+ * underline under the current one and the focus plate; no hairline.
+ */
+export const TabStrip: (props: TabStripProps) => ReactElement = isTV && isTvModern ? ModernTabStrip : ClassicTabStrip;
+
+/** TV Modern: the tabs move only on a press, so the current tab is plain props (no swipe to follow). */
+function ModernTabStrip({ tabs, index, onPress }: TabStripProps) {
+  const l = useLayout();
+  return (
+    <View style={{ paddingHorizontal: l.gutter }} accessibilityRole="tablist">
+      <TvToolbarRow inset={l.gutter} tabs>
+        {tabs.map((t, i) => (
+          <TvTab key={t.key} label={t.title} selected={i === index} onPress={() => onPress(i)} />
+        ))}
+      </TvToolbarRow>
+    </View>
+  );
+}
+
+function ClassicTabStrip({ tabs, index, position, onPress }: TabStripProps) {
   const s = useStyles(makeStyles);
   const { c } = useTheme();
   const l = useLayout();

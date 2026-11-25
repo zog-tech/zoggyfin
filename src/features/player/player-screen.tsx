@@ -51,6 +51,7 @@ import {
   tapSeekTransition,
   tapZone,
 } from '@/player/tap-seek';
+import { HOLD_MAX_MS, holdDirection, type HoldSeek, holdSpeed, holdTarget } from '@/player/hold-seek';
 import { MAX_BITRATE, QUALITY_OPTIONS, qualityLabel, usePlaybackSettings, useSkipSettings } from '@/settings/playback';
 import { breakpointFor, layout } from '@/theme/theme';
 import { TogetherSheetHost } from '@/features/together/together-sheet';
@@ -58,9 +59,12 @@ import { TogetherPill } from '@/features/together/together-pill';
 import { useSessionStore } from '@/auth/session-store';
 import { type FocusTarget, focusView, TvFocusGuide } from '@/features/tv/focus';
 import { useTvBack } from '@/features/tv/use-tv-back';
+import { TvPlateText } from '@/features/tv/tv-button';
 import { useTvRemote } from '@/features/tv/use-tv-remote';
 import { setTitleBarShade } from '@/platform/desktop';
 import { features, isNativeTV, isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+import { tvFont, tvm, u } from '@/theme';
 import {
   createDoublePress,
   DOUBLE_PRESS_SEEK,
@@ -90,13 +94,25 @@ import { Glass } from './glass';
 import { NextUpCard } from './next-up-card';
 import { embeddedTrackSections } from './embedded-track-sections';
 import { PlayerSheet, type SheetInfo, type SheetSection } from './player-sheet';
-import { RoundButton } from './round-button';
+import { PlayerAction, RoundButton } from './round-button';
 import { PlayerScrubber } from './scrubber';
 import { SkipPill } from './skip-pill';
 import { SubtitleOverlay } from './subtitle-overlay';
 import { useTurnFade } from './use-turn-fade';
 import { nativeTurnHidesContent, TurnCrossfade } from '@/native/turn-crossfade';
-import { c, ease, iconSize, motion, player, radius, spacing, textStyle, type } from './tokens';
+import { c, ease, iconSize, motion, player, playerTvModern, radius, spacing, textStyle, type } from './tokens';
+
+/**
+ * TV Modern look (design system §7.22, spec 2.8): the title and the option
+ * row sit at the bottom over the bar; the options are text actions; the
+ * centre transport is bare glyphs; no close button (Back closes). Only the
+ * drawing changes: the focus rows, the keys and the auto-hide are the same.
+ */
+const MODERN = isTV && isTvModern;
+const M = playerTvModern;
+/** Modern: no Reanimated layout animation on TV (they cost frames on TV hardware). */
+const enterFade = (ms: number) => (MODERN ? undefined : FadeIn.duration(ms));
+const exitFade = (ms: number) => (MODERN ? undefined : FadeOut.duration(ms));
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 const SKIP_GLYPHS = [5, 10, 15, 30, 60] as const;
@@ -530,6 +546,9 @@ export function PlayerScreen() {
   const scrubRun = useRef<ScrubRun>(NO_RUN);
   const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Hold to seek (player/hold-seek.ts): the hold in progress, and the speed it shows.
+  const holdRef = useRef<HoldSeek | null>(null);
+  const [holdShown, setHoldShown] = useState<{ dir: -1 | 1; speed: number } | null>(null);
   const clearScrubTimer = () => {
     if (scrubTimer.current) clearTimeout(scrubTimer.current);
     scrubTimer.current = null;
@@ -541,6 +560,8 @@ export function PlayerScreen() {
   const endScrub = () => {
     clearScrubTimer();
     stopHold();
+    holdRef.current = null;
+    setHoldShown(null);
     scrubRun.current = NO_RUN;
     setScrubTo(null);
     setScrubbing(false);
@@ -581,17 +602,54 @@ export function PlayerScreen() {
   /** Left and Right scrub: the bar has the focus, or no control has it. */
   const scrubsNow = () => isTV && visible && status !== 'error' && (barFocused || controlFocus.current <= 0);
 
+  /**
+   * Hold to seek: the target on the seek bar moves faster the longer the key is held, up to the
+   * top speed in Settings (player/hold-seek.ts), and the player seeks once, when the key is let go.
+   */
+  const startHoldSeek = (dir: -1 | 1) => {
+    stopHold();
+    clearScrubTimer();
+    // The hold takes over from a tap-seek run and a pending double press.
+    dispatchTap({ type: 'end' });
+    pairs.reset();
+    const top = settings.holdSeekTop;
+    holdRef.current = { dir, from: scrubToRef.current ?? playerState().position, start: Date.now() };
+    // Controls hidden: they show with the focus on the seek bar, which keeps Left and Right while the key repeats.
+    if (!visible) setFocusBar(true);
+    setScrubbing(true);
+    wake();
+    const step = () => {
+      const h = holdRef.current;
+      if (!h) return;
+      const t = Date.now();
+      // A key-up that never came (a sheet took the keys) must not run to the end of the video.
+      if (t - h.start > HOLD_MAX_MS) {
+        commitScrub();
+        return;
+      }
+      setScrubTo(holdTarget(h, t, top, playerState().duration));
+      const speed = holdSpeed(t - h.start, top);
+      setHoldShown((prev) => (prev && prev.speed === speed && prev.dir === h.dir ? prev : { dir: h.dir, speed }));
+    };
+    step();
+    holdTimer.current = setInterval(step, HOLD_TICK_MS);
+    console.log(`[tvkeys] hold seek dir=${dir} top=${top}`);
+  };
+
   const onTvHold = (key: TvKey, start: boolean) => {
-    if (key !== 'left' && key !== 'right') return;
+    const dir = holdDirection(key);
+    if (!dir) return;
     if (!start) {
-      stopHold();
+      // Let go: seek to the target now.
+      if (holdRef.current) commitScrub();
+      else stopHold();
       return;
     }
-    if (!scrubsNow()) return;
-    const dir = key === 'left' ? -1 : 1;
-    stopHold();
-    scrub(dir);
-    holdTimer.current = setInterval(() => scrub(dir), 150);
+    if (noSeek || status === 'error') return;
+    // Left and Right on a focused button keep moving the focus. They seek with the controls hidden,
+    // on the seek bar, or with no control focused. Rewind and fast forward always seek.
+    if ((key === 'left' || key === 'right') && visible && !scrubsNow()) return;
+    startHoldSeek(dir);
   };
 
   const onTvKey = (key: TvKey) => {
@@ -720,11 +778,31 @@ export function PlayerScreen() {
   // Back closes the player (a sheet first). Phones keep the system back (minimize).
   useTvBack(isNativeTV, () => onTvKey('back'));
 
+  // Web TV preview: like the remote, Left and Right act when the key goes up, and a key held
+  // WEB_HOLD_MS starts a hold (Android TV sends `longLeft` then), which ends when it goes up.
+  const webPress = useRef<{ key: TvKey; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  useEffect(
+    () => () => {
+      if (webPress.current?.timer) clearTimeout(webPress.current.timer);
+    },
+    [],
+  );
   const onKey = (k: KeyPress) => {
     if (isTV) {
       // Web TV preview: the keyboard stands in for the remote.
       const key = tvKeyFromWeb(k.key);
-      if (key) onTvKey(key);
+      if (!key) return;
+      if (holdDirection(key)) {
+        if (k.repeat || webPress.current) return;
+        const press: { key: TvKey; timer: ReturnType<typeof setTimeout> | null } = { key, timer: null };
+        press.timer = setTimeout(() => {
+          press.timer = null;
+          onTvHold(key, true);
+        }, WEB_HOLD_MS);
+        webPress.current = press;
+        return;
+      }
+      onTvKey(key);
       return;
     }
     wake();
@@ -778,7 +856,7 @@ export function PlayerScreen() {
       : (chapter ?? (now?.item.ProductionYear ? String(now.item.ProductionYear) : (vod?.items[vod.index]?.subtitle ?? null)));
 
   const loading = status === 'loading' || status === 'buffering' || (status === 'idle' && !error);
-  const sideInset = Math.max(gutter, insets.left + spacing.sm, insets.right + spacing.sm);
+  const sideInset = MODERN ? u(M.safeX) : Math.max(gutter, insets.left + spacing.sm, insets.right + spacing.sm);
 
   // IPTV: the tracks inside the stream (no server lists them). Live channels show the button only with a choice.
   const embedded = usePlayerStore((x) => x.embedded);
@@ -839,6 +917,38 @@ export function PlayerScreen() {
       ) : null}
     </View>
   );
+  // Modern TV: the title, one meta line (episode label, or year and quality) and the option row over the bar.
+  const metaLine = MODERN ? [sub, streamVideo ? videoSummary(streamVideo) : null].filter(Boolean).join(' · ') : '';
+  const modernRow = MODERN ? (
+    <View style={modernStyles.mRow} pointerEvents="box-none">
+      <View style={modernStyles.mTitleBlock}>
+        <Text style={modernStyles.mTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {metaLine ? (
+          <Text style={modernStyles.mMeta} numberOfLines={1}>
+            {metaLine}
+          </Text>
+        ) : null}
+      </View>
+      {/* One row that never wraps; the text of the first action is on the safe edge. */}
+      <View style={modernStyles.mOptions}>
+        <AirPlayButton onOpen={wake} />
+        {live && live.channels.length > 1 ? <PlayerAction onFocusChange={trackTop} icon="list.bullet" label="Channels" onPress={() => setSheet('channels')} /> : null}
+        {togetherAvailable && !live && !vod ? (
+          <PlayerAction onFocusChange={trackTop} icon="person.2" label="Watch together" onPress={() => openTogetherSheet('player', null)} />
+        ) : null}
+        {showTracks ? (
+          <PlayerAction onFocusChange={trackTop} icon="captions.bubble" label="Audio & subtitles" accessibilityLabel="Audio and subtitles" onPress={() => setSheet('tracks')} />
+        ) : null}
+        {now?.kind === 'audio' ? null : <PlayerAction onFocusChange={trackTop} icon="aspectratio" label="Screen size" onPress={() => setSheet('screen')} />}
+        {live ? null : <PlayerAction onFocusChange={trackTop} icon="gearshape" label="Quality" accessibilityLabel="Quality and speed" onPress={() => setSheet('settings')} />}
+        {Platform.OS === 'web' ? (
+          <PlayerAction onFocusChange={trackTop} icon="arrow.up.left.and.arrow.down.right" label="Full screen" onPress={() => s.toggleFullscreen(null)} />
+        ) : null}
+      </View>
+    </View>
+  ) : null;
   const original = now?.plan.original ?? null;
   const method = now?.plan.playMethod === 'Transcode' ? 'Transcoding' : now?.plan.playMethod === 'DirectStream' ? 'Direct stream' : 'Direct play';
   const originalAudio = now?.plan.audio.find((a) => a.index === now.plan.audioIndex)?.label ?? null;
@@ -850,6 +960,17 @@ export function PlayerScreen() {
     // A conversion the server makes: the reason tells whether a setting or the file causes it.
     convertReason ? { key: 'why', label: 'Converted because of', detail: convertReason } : null,
   ].filter((r) => r !== null);
+  const onKeyUp = (k: KeyPress) => {
+    const key = isTV ? tvKeyFromWeb(k.key) : null;
+    const press = webPress.current;
+    if (!key || !press || press.key !== key) return;
+    webPress.current = null;
+    if (press.timer) {
+      clearTimeout(press.timer);
+      onTvKey(key);
+    } else onTvHold(key, false);
+  };
+
   const settingsSections: SheetSection[] = now
     ? [
         ...(vod && vod.qualities.length
@@ -898,10 +1019,10 @@ export function PlayerScreen() {
       ]
     : [];
 
-  const bottomPad = Math.max(insets.bottom, spacing.md);
+  const bottomPad = MODERN ? u(M.safeBottom) : Math.max(insets.bottom, spacing.md);
 
   return (
-    <KeyInput enabled={!sheet} onKey={onKey} style={styles.root}>
+    <KeyInput enabled={!sheet} onKey={onKey} onKeyUp={onKeyUp} style={styles.root}>
       <StatusBar hidden={!visible} animated style="light" />
       {/* TV: the focus stays in the player. */}
       <TvFocusGuide trapFocus={isNativeTV} style={styles.root}>
@@ -944,14 +1065,14 @@ export function PlayerScreen() {
             The video is not in it: it takes the new size at once, so a picture of it showed two videos. */}
         <TurnCrossfade layoutSize={{ width, height }} hidesContent style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Animated.View style={[StyleSheet.absoluteFill, turnStyle]} pointerEvents="none">
-          <SubtitleOverlay bottom={visible ? 132 + bottomPad : bottomPad + spacing.xl} />
+          <SubtitleOverlay bottom={visible ? (MODERN ? u(M.controlsHeight) : 132) + bottomPad : bottomPad + spacing.xl} />
         </Animated.View>
 
         {ripple ? (
           <Animated.View
             key={ripple.key}
-            entering={FadeIn.duration(motion.duration.press)}
-            exiting={FadeOut.duration(motion.duration.fast)}
+            entering={enterFade(motion.duration.press)}
+            exiting={exitFade(motion.duration.fast)}
             pointerEvents="none"
             style={[styles.ripple, ripple.side === 'left' ? { left: sideInset + spacing.xl } : { right: sideInset + spacing.xl }]}>
             <Glass style={styles.rippleInner}>
@@ -963,23 +1084,36 @@ export function PlayerScreen() {
         {tapBubble ? (
           <Animated.View
             key={`tap-${tapBubble.side}`}
-            entering={reduced ? undefined : FadeIn.duration(motion.duration.press)}
-            exiting={reduced ? undefined : FadeOut.duration(motion.duration.fast)}
+            entering={reduced ? undefined : enterFade(motion.duration.press)}
+            exiting={reduced ? undefined : exitFade(motion.duration.fast)}
             pointerEvents="none"
             style={[styles.ripple, tapBubble.side === 'left' ? { left: sideInset + spacing.xl } : { right: sideInset + spacing.xl }]}>
             <Glass style={[styles.rippleInner, styles.rippleRow]}>
-              {tapBubble.side === 'left' ? <Icon name="backward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+              {tapBubble.side === 'left' ? <Icon name="backward.fill" size={MODERN ? u(24) : iconSize.sm} color={c.textOnMedia} /> : null}
               <Text style={styles.rippleText}>{`${tapBubble.side === 'left' ? '−' : '+'}${tapBubble.seconds} s`}</Text>
-              {tapBubble.side === 'right' ? <Icon name="forward.fill" size={iconSize.sm} color={c.textOnMedia} /> : null}
+              {tapBubble.side === 'right' ? <Icon name="forward.fill" size={MODERN ? u(24) : iconSize.sm} color={c.textOnMedia} /> : null}
             </Glass>
           </Animated.View>
+        ) : null}
+        {/* Hold to seek: the speed now, on the side it goes to. The bar shows the target. */}
+        {holdShown ? (
+          <View
+            pointerEvents="none"
+            accessibilityLiveRegion="polite"
+            style={[styles.ripple, holdShown.dir < 0 ? { left: sideInset + spacing.xl } : { right: sideInset + spacing.xl }]}>
+            <Glass style={[styles.rippleInner, styles.rippleRow]}>
+              {holdShown.dir < 0 ? <Icon name="backward.fill" size={MODERN ? u(24) : iconSize.sm} color={c.textOnMedia} /> : null}
+              <Text style={styles.rippleText} accessibilityLabel={`${holdShown.dir < 0 ? 'Rewind' : 'Fast forward'} ${holdShown.speed} times`}>{`${holdShown.speed}×`}</Text>
+              {holdShown.dir > 0 ? <Icon name="forward.fill" size={MODERN ? u(24) : iconSize.sm} color={c.textOnMedia} /> : null}
+            </Glass>
+          </View>
         ) : null}
 
         {/* TV, controls hidden: the zap banner. It shows the guide only and never opens a second stream. */}
         {isTV && !visible && live && zapChannel && zapState.phase !== 'idle' ? (
           <Animated.View
-            entering={FadeIn.duration(motion.duration.fast)}
-            exiting={FadeOut.duration(motion.duration.slow)}
+            entering={enterFade(motion.duration.fast)}
+            exiting={exitFade(motion.duration.slow)}
             pointerEvents="none"
             style={[styles.zapBanner, { bottom: bottomPad, left: sideInset, right: sideInset }]}>
             <LiveChannelCard channel={zapChannel} source={live.source} live={zapChannel.id === liveChannel?.id} tag={zapTag} />
@@ -988,8 +1122,8 @@ export function PlayerScreen() {
         {/* Seek mode: only a thin progress line with the times; it fades out slowly after the run, a short tail. */}
         {!visible && tapSeek.phase === 'seeking' && !noSeek ? (
           <Animated.View
-            entering={reduced ? undefined : FadeIn.duration(motion.duration.fast)}
-            exiting={reduced ? undefined : FadeOut.duration(motion.duration.slow)}
+            entering={reduced ? undefined : enterFade(motion.duration.fast)}
+            exiting={reduced ? undefined : exitFade(motion.duration.slow)}
             pointerEvents="none"
             style={[styles.bottom, { paddingBottom: bottomPad, paddingLeft: sideInset, paddingRight: sideInset }]}>
             <PeekLine />
@@ -1001,9 +1135,20 @@ export function PlayerScreen() {
           {/* TV: hidden controls are not mounted, so Select never presses an unseen button. */}
           {!isTV || visible ? (
           <>
+          {MODERN ? (
+            <>
+              <LinearGradient colors={M.topScrim} style={[styles.topScrim, { height: u(M.topScrimHeight) }]} pointerEvents="none" />
+              <LinearGradient colors={M.bottomScrim} style={[styles.bottomScrim, { height: u(M.bottomScrimHeight) }]} pointerEvents="none" />
+            </>
+          ) : (
+            <>
           <LinearGradient colors={player.topScrim} style={[styles.topScrim, { height: insets.top + 120 }]} pointerEvents="none" />
           <LinearGradient colors={player.bottomScrim} style={[styles.bottomScrim, { height: bottomPad + 180 }]} pointerEvents="none" />
+            </>
+          )}
 
+          {/* Modern: no top bar. Back closes the player; the title and the options sit over the bar. */}
+          {MODERN ? null : (
           <View
             style={[styles.topBar, compactBar && styles.topBarWrap, { paddingTop: insets.top + spacing.sm, paddingLeft: sideInset, paddingRight: sideInset }]}
             onLayout={(e) => setTopBarHeight(Math.round(e.nativeEvent.layout.height))}
@@ -1032,7 +1177,12 @@ export function PlayerScreen() {
             {/* A phone in portrait: the title gets its own line under the buttons, so it is not cut to one letter. */}
             {compactBar ? titleBlock : null}
           </View>
-          <TogetherPill top={topBarHeight ? topBarHeight + spacing.sm : insets.top + spacing.sm + player.closeSize + spacing.sm} left={sideInset} onPress={() => openTogetherSheet('player', null)} />
+          )}
+          <TogetherPill
+            top={MODERN ? u(M.safeTop) : topBarHeight ? topBarHeight + spacing.sm : insets.top + spacing.sm + player.closeSize + spacing.sm}
+            left={sideInset}
+            onPress={() => openTogetherSheet('player', null)}
+          />
 
           {!scrubbing && status !== 'error' ? (
             <View style={styles.center} pointerEvents="box-none">
@@ -1042,8 +1192,8 @@ export function PlayerScreen() {
                   nextFocusDown={cardView}
                   icon="backward.end.fill"
                   label="Previous channel"
-                  size={player.skipSize}
-                  glyph={iconSize.xl}
+                  size={SKIP_BOX}
+                  glyph={SKIP_GLYPH}
                   onPress={() => zap(-1)}
                 />
               ) : noSeek ? null : (
@@ -1052,8 +1202,8 @@ export function PlayerScreen() {
                 nextFocusDown={barView}
                 icon={skipIcon('back', settings.skipBackSeconds)}
                 label={`Back ${settings.skipBackSeconds} seconds`}
-                size={player.skipSize}
-                glyph={iconSize.xl}
+                size={SKIP_BOX}
+                glyph={SKIP_GLYPH}
                 onPress={() => {
                   wake();
                   s.skip(-settings.skipBackSeconds);
@@ -1067,15 +1217,15 @@ export function PlayerScreen() {
                 tvRef={setPlayView}
                 icon={loading ? undefined : showsPause ? 'pause.fill' : 'play.fill'}
                 label={showsPause ? 'Pause' : 'Play'}
-                size={player.playSize}
-                glyph={iconSize.xxl}
+                size={PLAY_BOX}
+                glyph={PLAY_GLYPH}
                 preferredFocus={isTV && visible && !focusBar && !live && focusOwner === 'controls'}
                 haptic
                 onPress={() => {
                   wake();
                   s.togglePlay();
                 }}>
-                {loading ? <ActivityIndicator color={c.textOnMedia} size="large" /> : null}
+                {loading ? <ActivityIndicator color={MODERN ? c.text3 : c.textOnMedia} size="large" /> : null}
               </RoundButton>
               {live ? (
                 <RoundButton
@@ -1083,8 +1233,8 @@ export function PlayerScreen() {
                   nextFocusDown={cardView}
                   icon="forward.end.fill"
                   label="Next channel"
-                  size={player.skipSize}
-                  glyph={iconSize.xl}
+                  size={SKIP_BOX}
+                  glyph={SKIP_GLYPH}
                   onPress={() => zap(1)}
                 />
               ) : noSeek ? null : (
@@ -1093,8 +1243,8 @@ export function PlayerScreen() {
                 nextFocusDown={barView}
                 icon={skipIcon('forward', settings.skipForwardSeconds)}
                 label={`Forward ${settings.skipForwardSeconds} seconds`}
-                size={player.skipSize}
-                glyph={iconSize.xl}
+                size={SKIP_BOX}
+                glyph={SKIP_GLYPH}
                 onPress={() => {
                   wake();
                   s.skip(settings.skipForwardSeconds);
@@ -1106,6 +1256,7 @@ export function PlayerScreen() {
           ) : null}
 
           <View style={[styles.bottom, { paddingBottom: bottomPad, paddingLeft: sideInset, paddingRight: sideInset }]} pointerEvents="box-none">
+            {modernRow}
             {now && !noSeek ? (
               <PlayerScrubber
                 playing={playing}
@@ -1172,7 +1323,11 @@ export function PlayerScreen() {
 
         {/* Prompts stay visible with the controls hidden. */}
         <Animated.View
-          style={[styles.prompts, { right: sideInset, bottom: visible ? bottomPad + 96 : bottomPad + spacing.lg }, turnStyle]}
+          style={[
+            styles.prompts,
+            { right: sideInset, bottom: MODERN ? bottomPad + u(visible ? M.controlsHeight : M.promptRest) : visible ? bottomPad + 96 : bottomPad + spacing.lg },
+            turnStyle,
+          ]}
           pointerEvents="box-none">
           {phase === 'counting' && now?.next ? (
             <NextUpCard
@@ -1204,6 +1359,13 @@ export function PlayerScreen() {
             <View style={styles.errorCard}>
               <Text style={styles.errorTitle}>Playback stopped</Text>
               <Text style={styles.errorText}>{error ?? 'The video could not be played.'}</Text>
+              {MODERN ? (
+                <View style={styles.errorActions}>
+                  {/* Try Again takes the focus, so the card never needs touch. */}
+                  <PlayerAction variant="primary" label="Try Again" preferredFocus onPress={() => s.retry()} />
+                  <PlayerAction label="Close" onPress={closePlayer} />
+                </View>
+              ) : (
               <View style={styles.errorActions}>
                 {/* TV: Try Again takes the focus, so the card never needs touch. */}
                 <Touchable kind="button" radius={radius.lg} hasTVPreferredFocus={isTV} onPress={() => s.retry()} style={styles.retry} accessibilityRole="button">
@@ -1213,6 +1375,7 @@ export function PlayerScreen() {
                   <Text style={styles.closeText}>Close</Text>
                 </Touchable>
               </View>
+              )}
             </View>
           </View>
         ) : null}
@@ -1305,6 +1468,15 @@ function externalQualitySection(external: ExternalNow, select: (id: string | nul
 
 function SkipNumber({ seconds }: { seconds: number }) {
   if (Platform.OS !== 'web') return null;
+  // Modern: the number turns dark with the glyph on the focus plate.
+  if (MODERN)
+    return (
+      <View style={modernStyles.skipNumberBox} pointerEvents="none">
+        <TvPlateText style={modernStyles.skipNumber} rest={c.textOnMedia}>
+          {String(seconds)}
+        </TvPlateText>
+      </View>
+    );
   return (
     <Text style={styles.skipNumber} accessible={false}>
       {seconds}
@@ -1340,11 +1512,23 @@ function PillButton({
   );
 }
 
+/** The centre transport: Classic round buttons, or Modern square glyph boxes (TV units). */
+const SKIP_BOX = MODERN ? u(M.skipBox) : player.skipSize;
+const SKIP_GLYPH = MODERN ? u(M.skipGlyph) : iconSize.xl;
+const PLAY_BOX = MODERN ? u(M.playBox) : player.playSize;
+const PLAY_GLYPH = MODERN ? u(M.playGlyph) : iconSize.xxl;
+
 /** TV: how long the bubble of a seek with the controls shown stays (ms). */
 const PEEK_MS = 1500;
 
 /** TV: a double Left or Right seeks this far each way (seconds). */
 const DPAD_STEPS = { left: DOUBLE_PRESS_SEEK, right: DOUBLE_PRESS_SEEK };
+
+/** Hold to seek: the target and the speed update this often (ms). */
+const HOLD_TICK_MS = 150;
+
+/** Web TV preview: a key down this long is a hold, as on Android TV (ms). */
+const WEB_HOLD_MS = 300;
 
 /** The channel list in the player: Search, then the channels around the one that plays, in the list it was played from. */
 function channelSections(live: LiveNow, play: (index: number) => void, search: () => void): SheetSection[] {
@@ -1364,7 +1548,7 @@ function channelSections(live: LiveNow, play: (index: number) => void, search: (
   ];
 }
 
-const styles = StyleSheet.create({
+const classicStyles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
   topScrim: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottomScrim: { position: 'absolute', bottom: 0, left: 0, right: 0 },
@@ -1414,3 +1598,42 @@ const styles = StyleSheet.create({
   closeBtn: { backgroundColor: c.surface3, borderRadius: radius.lg, paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: 'center' },
   closeText: { ...textStyle(type.headline), color: c.text },
 });
+
+/**
+ * Modern TV (spec 2.8): the bottom row (title left, options right), the
+ * times in `meta`, the bubble and the error card with radius 8 u and 28 u.
+ * Keys that are also in `classicStyles` replace them only in Modern.
+ */
+const modernStyles = StyleSheet.create({
+  mRow: { flexDirection: 'row', alignItems: 'flex-end', gap: u(32), marginBottom: u(M.rowGap) },
+  mTitleBlock: { flex: 1, minWidth: 0 },
+  mTitle: { ...tvFont(tvm.type.playerTitle), color: c.textOnMedia },
+  mMeta: { ...tvFont(tvm.type.meta), color: tvm.color.onArt },
+  // The text of the last action ends on the safe edge: the plate reaches into the margin.
+  mOptions: { flexDirection: 'row', flexWrap: 'nowrap', flexShrink: 0, alignItems: 'center', gap: u(tvm.size.actionGap), marginRight: -u(tvm.size.actionPadX) },
+  skipNumberBox: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  skipNumber: { fontSize: u(M.skipNumber), lineHeight: u(M.skipNumber + 4), fontWeight: '700', fontVariant: ['tabular-nums'] },
+  center: {
+    ...StyleSheet.absoluteFill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: u(M.centerGap),
+  },
+  times: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 0 },
+  time: { ...tvFont(tvm.type.meta, { tabular: true }), color: tvm.color.onArt },
+  peekTrack: { height: u(M.track), borderRadius: u(M.track / 2), backgroundColor: M.trackColor, overflow: 'hidden' },
+  peekFill: { height: u(M.track), backgroundColor: c.textOnMedia },
+  peekTimes: { flexDirection: 'row', justifyContent: 'space-between', marginTop: u(M.rowGap) },
+  rippleInner: { borderRadius: u(M.boxRadius), paddingHorizontal: u(24), paddingVertical: u(12), overflow: 'hidden' },
+  rippleRow: { flexDirection: 'row', alignItems: 'center', gap: u(12) },
+  rippleText: { ...tvFont(tvm.type.meta, { tabular: true }), color: c.textOnMedia },
+  errorWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', padding: u(M.safeX) },
+  errorCard: { backgroundColor: c.surface2, borderRadius: u(M.errorRadius), padding: u(M.errorPad), maxWidth: u(M.errorWidth), gap: u(16) },
+  errorTitle: { ...tvFont(tvm.type.pageTitle), fontSize: u(M.errorTitle.fontSize), lineHeight: u(M.errorTitle.lineHeight), color: c.text },
+  errorText: { ...tvFont(tvm.type.body), color: c.text2 },
+  // The primary action, then 24 u, then the text action (spec 2.3).
+  errorActions: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: u(24), marginTop: u(16) },
+});
+
+const styles = MODERN ? { ...classicStyles, ...modernStyles } : classicStyles;

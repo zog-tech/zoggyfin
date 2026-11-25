@@ -19,6 +19,8 @@ import { checkDownloadedFiles, type DownloadRecord, findDownload, localExtraUri,
 import { outboxPosition } from '@/downloads/outbox-store';
 import { useDownloadsStore } from '@/downloads/store';
 import { resolveImage } from '@/images/resolve-image';
+import { errorText as diagError, shortId } from '@/lib/diag-log';
+import { diag } from '@/lib/diag-store';
 import { isOffline } from '@/lib/online';
 import { toast } from '@/lib/toast';
 import { bitrateFor, skipChoices, usePlaybackSettings } from '@/settings/playback';
@@ -29,7 +31,7 @@ import { playRouter } from './play-router';
 import { buildDeviceProfile } from './device-profile';
 import { getEngine } from './engine';
 import { sameEmbeddedTracks } from './embedded-tracks';
-import type { EmbeddedTracks, EngineEvent, EngineSource } from './engine-types';
+import { type EmbeddedTracks, type EngineEvent, type EngineSource, NO_EMBEDDED_TRACKS } from './engine-types';
 import { isForeignDownload, outboxOnly, withOutbox } from './outbox-transport';
 import { ProgressReporter, type ProgressTransport, secondsToTicks, ticksToSecondsExact, toServerReport } from './progress-reporter';
 import { endPlaysNext, externalSegments, JELLYFIN_SKIP_SCOPE, nextUpModeOf, nextUpStartsAt, normalizeSegments } from './segments';
@@ -37,6 +39,8 @@ import { autoRanges, type SkipContext, skippedNow, transitionAutoSkip, undoneRan
 import { chooseTracks, rememberChoice, titleKey } from './track-prefs';
 import { loadTrackPrefs, saveTrackPrefs } from './track-prefs-store';
 import { setPlayerState, initialPlayerState, playerState, type ExternalNow, type LiveNow, type NowPlaying } from './store';
+import { engineAudioId, playableAudioInstead, playingAudioIndex } from './audio-choice';
+import { transcodeTarget } from './stream-info';
 import { audioOptions, audioSwitchNeedsStream, dolbyAudioFallback, pickSource, planStream, playbackInfoBody, type StreamPlan, type StreamServer } from './stream';
 import { chaptersOf, pickTrickplay } from './timeline';
 import type { ExternalPlayRequest, ExternalProgress, ExternalStream, LivePlayRequest, LiveStreamChoice, PlayRequest } from './types';
@@ -240,6 +244,10 @@ class VideoSession {
   private nextDismissal: { itemId: string; at: number } | null = null;
   /** IPTV: the saved track choice was applied to the stream that loads (once per kind and load). */
   private tracksApplied = { audio: false, subtitle: false };
+  /** The tracks the engine lists for a Jellyfin file it plays as it is (`switchesInFile`). */
+  private fileTracks: EmbeddedTracks = NO_EMBEDDED_TRACKS;
+  /** The plan's audio track was set in the engine for this file (`onFileTracks`). */
+  private fileAudioSet = false;
 
   constructor() {
     this.engine.subscribe(this.onEngine);
@@ -284,6 +292,7 @@ class VideoSession {
     switch (e.type) {
       case 'status':
         if (e.status === 'error') {
+          diag('video', 'error', { live: !!st.now.live, external: !!st.now.external, message: diagError(e.error ?? '') });
           if (st.now.live) {
             if (this.restartLive()) break;
             this.liveFailed(e.error);
@@ -364,6 +373,7 @@ class VideoSession {
       case 'embedded':
         // Jellyfin items use the server's streams; only IPTV has no other list.
         if (st.now.live || st.now.external) this.onEmbedded(e.tracks);
+        else if (this.switchesInFile(st.now.plan)) this.onFileTracks(st.now.plan, e.tracks);
         break;
     }
   };
@@ -381,6 +391,28 @@ class VideoSession {
     if (!live || !ch) return null;
     const t = live.source.titleOf?.(ch.id) ?? { providerId: live.source.providerId, channelId: ch.id };
     return titleKey(t.providerId, { kind: 'live', id: t.channelId });
+  }
+
+  /**
+   * A Jellyfin file played as it is listed its tracks (audio-choice.ts). ExoPlayer picks the track it
+   * likes best, and expo-video names no track until one is set: a TV that decodes TrueHD itself played
+   * the Atmos track while the menu named the compatibility track asked for. So a track other than the
+   * file's default one is set in the engine once, and after that the menu follows the engine.
+   */
+  private onFileTracks(plan: StreamPlan, tracks: EmbeddedTracks): void {
+    this.fileTracks = tracks;
+    const playing = playingAudioIndex(plan.audio, tracks);
+    if (playing !== null) {
+      const now = playerState().now;
+      if (now && playing !== now.plan.audioIndex) setPlayerState({ now: { ...now, plan: { ...now.plan, audioIndex: playing } } });
+      return;
+    }
+    const def = plan.audio.find((a) => a.isDefault) ?? plan.audio[0];
+    if (this.fileAudioSet || plan.audioIndex === null || !def || def.index === plan.audioIndex) return;
+    const id = engineAudioId(plan.audio, tracks, plan.audioIndex);
+    if (!id) return;
+    this.fileAudioSet = true;
+    this.engine.embedded?.selectAudio(id);
   }
 
   /** A new stream loads: its tracks are not known yet. */
@@ -468,6 +500,7 @@ class VideoSession {
   /** Starts an item. Containers (show, season, collection) resolve to an episode or item first. */
   async play(request: PlayRequest): Promise<void> {
     const id = ++this.loadId;
+    diag('video', 'play', { id, item: shortId(request.item.Id), type: request.item.Type ?? null, start: request.startPositionTicks !== undefined });
     this.userPaused = false;
     // A server item replaces a live channel: its TS bridge session (iOS) ends too.
     this.endLiveAttempt();
@@ -1059,30 +1092,53 @@ class VideoSession {
     const { api, userId, server } = context();
     const settings = usePlaybackSettings.getState();
     const bitrate = opts.bitrateChoice ?? bitrateFor(settings, await onCellular());
-    const profile = buildDeviceProfile(mediaCapabilities(), { maxBitrate: bitrate, noDolbyHlsAudio: this.aacAudioItem === item.Id });
+    const caps = mediaCapabilities();
+    const profile = buildDeviceProfile(caps, { maxBitrate: bitrate, noDolbyHlsAudio: this.aacAudioItem === item.Id });
     const current = playerState().now;
     const keep = current && current.item.Id === item.Id ? current : null;
     const sameItem = keep !== null;
     const keepSource = keep ? keep.plan.mediaSourceId : undefined;
-    const info = await jf.getPlaybackInfo(
-      api,
-      item.Id ?? '',
-      playbackInfoBody({
-        userId,
-        profile,
-        maxBitrate: bitrate,
-        startTicks: secondsToTicks(opts.startSeconds),
-        mediaSourceId: keepSource,
-        audioIndex: opts.audioIndex,
-        subtitleIndex: opts.subtitleIndex,
-        forceStream: opts.forceStream,
-      }),
-    );
+    const ask = (audioIndex: number | null | undefined, mediaSourceId: string | undefined) =>
+      jf.getPlaybackInfo(
+        api,
+        item.Id ?? '',
+        playbackInfoBody({
+          userId,
+          profile,
+          maxBitrate: bitrate,
+          startTicks: secondsToTicks(opts.startSeconds),
+          mediaSourceId,
+          audioIndex,
+          subtitleIndex: opts.subtitleIndex,
+          forceStream: opts.forceStream,
+        }),
+      );
+    let info = await ask(opts.audioIndex, keepSource);
     if (id !== this.loadId) return;
-    const source = pickSource(info.MediaSources, keepSource);
+    let source = pickSource(info.MediaSources, keepSource);
     if (!source) throw new Error('The server has no playable version of this item.');
+    let audioIndex = opts.audioIndex;
+    // A default track this device cannot play (TrueHD, DTS-HD) made the server convert the whole file;
+    // a playable track in the same language lets it play as it is (audio-choice.ts). ExoPlayer only: it
+    // plays a track it can decode when the file's default one is not, so the picked track is heard. A
+    // browser and AVPlayer play the default track of a file as it is. Not when the user chose a track.
+    const instead =
+      caps.engine === 'exo' && audioIndex === undefined && !opts.forceStream
+        ? playableAudioInstead(source, transcodeTarget(source.TranscodingUrl ?? '').reasons, { codecs: caps.audioCodecs, maxChannels: caps.maxAudioChannels })
+        : null;
+    if (instead !== null) {
+      const again = await ask(instead, source.Id ?? keepSource).catch(() => null);
+      if (id !== this.loadId) return;
+      const alt = again ? pickSource(again.MediaSources, source.Id ?? keepSource) : null;
+      // Only a file that now plays as it is: a stream with another track would still convert it.
+      if (again && alt?.SupportsDirectPlay) {
+        info = again;
+        source = alt;
+        audioIndex = instead;
+      }
+    }
     const plan = planStream(server, item.Id ?? '', source, info.PlaySessionId ?? null, {
-      audioIndex: opts.audioIndex,
+      audioIndex,
       subtitleIndex: opts.subtitleIndex,
     });
     const next: NowPlaying = {
@@ -1097,6 +1153,8 @@ class VideoSession {
       bitrate,
       next: keep ? keep.next : (queue[0] ?? null),
     };
+    this.fileTracks = NO_EMBEDDED_TRACKS;
+    this.fileAudioSet = false;
     setPlayerState({
       now: next,
       status: 'loading',
@@ -1371,11 +1429,26 @@ class VideoSession {
     return !!this.engine.tracks && plan.playMethod === 'DirectPlay';
   }
 
+  /**
+   * ExoPlayer, a file played as it is: the audio tracks switch inside the file by the engine's own ids
+   * (audio-choice.ts). A new stream from the server for another track converted a 4K film on its CPU.
+   */
+  private switchesInFile(plan: StreamPlan): boolean {
+    return !!this.engine.embedded && !this.engine.tracks && plan.playMethod === 'DirectPlay' && mediaCapabilities().engine === 'exo';
+  }
+
   async selectAudio(index: number): Promise<void> {
     const now = playerState().now;
     if (!now || now.plan.audioIndex === index) return;
     if (this.engineTracks(now.plan)) {
       this.engine.tracks?.selectAudio(index);
+      setPlayerState({ now: { ...now, plan: { ...now.plan, audioIndex: index } } });
+      this.reporter?.tick('AudioTrackChange');
+      return;
+    }
+    const inFile = this.switchesInFile(now.plan) ? engineAudioId(now.plan.audio, this.fileTracks, index) : null;
+    if (inFile !== null) {
+      this.engine.embedded?.selectAudio(inFile);
       setPlayerState({ now: { ...now, plan: { ...now.plan, audioIndex: index } } });
       this.reporter?.tick('AudioTrackChange');
       return;
@@ -1546,6 +1619,7 @@ class VideoSession {
 
   /** Ends playback, reports the last position and refreshes Continue Watching. */
   async stop(): Promise<void> {
+    diag('video', 'stop');
     this.loadId++;
     this.endLiveAttempt();
     await this.finishCurrent();

@@ -10,11 +10,15 @@
  *
  * The phone, iPad, web and Mac player (`now-playing-screen.tsx`) is a
  * different layout with touch gestures; TV uses this one.
+ *
+ * TV Modern look (§7.22, spec 2.9): the same layout in TV units: art 600 u
+ * at the safe edge, the song from x = 792 u, bare transport glyphs with the
+ * focus plate, and one row of text actions that never wraps.
  */
 import { type Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import type { BaseItemDto } from '@/api/types';
 import { ItemImage } from '@/components/item-image';
@@ -22,6 +26,8 @@ import { ToastHost } from '@/components/toast-host';
 import { tabGroupNow } from '@/features/extensions/tab-nav';
 import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { TvButton, TvIconButton } from '@/features/tv/tv-button';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { useTvBack } from '@/features/tv/use-tv-back';
 import { itemHref } from '@/lib/navigation';
 import { artistLine } from '@/player/audio/item';
@@ -31,7 +37,7 @@ import { useAudioStore } from '@/player/audio/store';
 import { useShowsPause } from '@/player/control-gate';
 import { playerState, setPlayerState, usePlayerStore } from '@/player/store';
 import { formatTime } from '@/player/timeline';
-import { type AppTheme, createStyles, font, mediaColors, radius, scaled, scriptStyle, spacing, type, useLayout, useStyles } from '@/theme';
+import { type AppTheme, createStyles, font, mediaColors, radius, scaled, scriptStyle, spacing, tvFont, tvm, type, u, useLayout, useStyles } from '@/theme';
 
 import { PlayerSheet, type SheetSection } from '../player/player-sheet';
 import { c } from '../player/tokens';
@@ -42,13 +48,20 @@ import { QueuePanel } from './queue-panel';
 
 type Panel = 'none' | 'queue' | 'lyrics';
 
+const MODERN = isTV && isTvModern;
+
+/** A transport button's size: Classic the circle in points; Modern the box and the glyph in TV units. */
+function transport(classic: number, box: number, glyph: number): { size: number; glyph?: number } {
+  return MODERN ? { size: box, glyph } : { size: classic };
+}
+
 function leave() {
   if (router.canGoBack()) router.back();
   else router.replace('/');
 }
 
 export function TvNowPlaying() {
-  const s = useStyles(makeStyles);
+  const s = useNowPlayingStyles();
   const l = useLayout();
   const now = usePlayerStore((st) => st.now);
   const status = usePlayerStore((st) => st.status);
@@ -97,7 +110,7 @@ export function TvNowPlaying() {
   };
   const artistItem = item.ArtistItems?.[0] ?? item.AlbumArtists?.[0];
 
-  const side = Math.round(l.height * 0.6);
+  const side = MODERN ? u(ART) : Math.round(l.height * 0.6);
   const sections: SheetSection[] = [
     {
       // No heading: the sheet's header names the song.
@@ -116,7 +129,7 @@ export function TvNowPlaying() {
     <View style={s.root}>
       <StatusBar style="light" />
       <ArtBackground item={item} />
-      <View style={[s.body, { paddingHorizontal: l.gutter * 1.5, gap: l.gutter }]}>
+      <View style={[s.body, MODERN ? modernStyles.bodyPad : { paddingHorizontal: l.gutter * 1.5, gap: l.gutter }]}>
         <View style={{ width: side, height: side }}>
           {shown === 'queue' ? (
             <QueuePanel selectedKey={selected} onSelect={setSelected} toolbar={false} />
@@ -124,7 +137,7 @@ export function TvNowPlaying() {
             <LyricsPanel lyrics={lyrics} />
           ) : (
             <View style={s.art}>
-              <ItemImage item={item} variant="square" width={side} aspectRatio={1} rounded={radius.lg} hideArtTitle={false} />
+              <ItemImage item={item} variant="square" width={side} aspectRatio={1} rounded={MODERN ? u(ART_RADIUS) : radius.lg} hideArtTitle={false} />
             </View>
           )}
         </View>
@@ -145,20 +158,20 @@ export function TvNowPlaying() {
           <Progress error={status === 'error' ? (error ?? 'Playback failed') : null} />
           <View style={s.transport}>
             {longForm ? (
-              <TvIconButton icon="gobackward.15" label="Back 15 seconds" size={56} plain onPress={() => session.skip(-15)} />
+              <TvIconButton icon="gobackward.15" label="Back 15 seconds" {...transport(56, 80, 40)} plain onPress={() => session.skip(-15)} />
             ) : (
-              <TvIconButton icon="shuffle" label={queue.shuffle ? 'Shuffle on' : 'Shuffle off'} size={56} plain active={queue.shuffle} onPress={() => session.toggleShuffle()} />
+              <TvIconButton icon="shuffle" label={queue.shuffle ? 'Shuffle on' : 'Shuffle off'} {...transport(56, 80, 40)} plain active={queue.shuffle} onPress={() => session.toggleShuffle()} />
             )}
-            <TvIconButton icon="backward.fill" label="Previous" size={64} plain onPress={() => (longForm ? session.chapterStep(-1) : session.previous())} />
-            <TvIconButton icon={showsPause ? 'pause.fill' : 'play.fill'} label={showsPause ? 'Pause' : 'Play'} size={88} firstFocus onPress={() => session.togglePlay()} />
-            <TvIconButton icon="forward.fill" label="Next" size={64} plain onPress={() => (longForm ? session.chapterStep(1) : session.next())} />
+            <TvIconButton icon="backward.fill" label="Previous" {...transport(64, 96, 52)} plain onPress={() => (longForm ? session.chapterStep(-1) : session.previous())} />
+            <TvIconButton icon={showsPause ? 'pause.fill' : 'play.fill'} label={showsPause ? 'Pause' : 'Play'} {...transport(88, 112, 72)} firstFocus onPress={() => session.togglePlay()} />
+            <TvIconButton icon="forward.fill" label="Next" {...transport(64, 96, 52)} plain onPress={() => (longForm ? session.chapterStep(1) : session.next())} />
             {longForm ? (
-              <TvIconButton icon="goforward.30" label="Forward 30 seconds" size={56} plain onPress={() => session.skip(30)} />
+              <TvIconButton icon="goforward.30" label="Forward 30 seconds" {...transport(56, 80, 40)} plain onPress={() => session.skip(30)} />
             ) : (
               <TvIconButton
                 icon={queue.repeat === 'one' ? 'repeat.1' : 'repeat'}
                 label={queue.repeat === 'off' ? 'Repeat off' : queue.repeat === 'all' ? 'Repeat all' : 'Repeat one'}
-                size={56}
+                {...transport(56, 80, 40)}
                 plain
                 active={queue.repeat !== 'off'}
                 onPress={() => session.cycleRepeat()}
@@ -188,7 +201,7 @@ export function TvNowPlaying() {
 
 /** The position line and times. Its own component: the position ticks several times a second. */
 function Progress({ error }: { error: string | null }) {
-  const s = useStyles(makeStyles);
+  const s = useNowPlayingStyles();
   const position = usePlayerStore((st) => st.position);
   const duration = usePlayerStore((st) => st.duration);
   const fraction = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
@@ -227,3 +240,34 @@ const makeStyles = createStyles((_t: AppTheme) => ({
   transport: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.xl, marginTop: spacing.md },
   pills: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: spacing.md, marginTop: spacing.md },
 }));
+
+/** Modern (spec 2.9): the art and the gap to the song, in TV units. */
+const ART = 600;
+const ART_RADIUS = 20;
+const SAFE_X = 96;
+
+/** Modern TV: the keys that differ from Classic. Text actions and transport boxes shift left by their padding, so their text and glyphs start on the column edge. */
+const modernStyles = StyleSheet.create({
+  bodyPad: { paddingLeft: u(SAFE_X), paddingRight: u(SAFE_X), gap: u(SAFE_X) },
+  art: { borderRadius: u(ART_RADIUS), overflow: 'hidden' },
+  info: { flex: 1, gap: u(8) },
+  from: { ...tvFont(tvm.type.eyebrow), color: tvm.color.onArt, textTransform: 'uppercase' },
+  title: { ...tvFont(tvm.type.hero), fontSize: u(64), lineHeight: u(72), color: c.textOnMedia },
+  artist: { ...tvFont(tvm.type.menu), fontSize: u(36), lineHeight: u(44), fontWeight: '500', color: c.text2 },
+  progress: { marginTop: u(40), gap: u(12) },
+  track: { height: u(8), borderRadius: u(4), backgroundColor: mediaColors.tvTrack, overflow: 'hidden' },
+  fill: { height: '100%', backgroundColor: mediaColors.white, borderRadius: u(4) },
+  times: { flexDirection: 'row', justifyContent: 'space-between', gap: u(24) },
+  time: { ...tvFont(tvm.type.meta, { tabular: true }), color: c.text2 },
+  error: { ...tvFont(tvm.type.meta), color: c.textOnMedia, flexShrink: 1 },
+  // The shuffle box is 80 u around a 40 u glyph: shift by the 20 u inset.
+  transport: { flexDirection: 'row', alignItems: 'center', gap: u(16), marginTop: u(32), marginLeft: -u(20) },
+  // One row that never wraps (spec 2.3); the first label starts on the column edge.
+  pills: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: u(tvm.size.actionGap), marginTop: u(24), marginLeft: -u(tvm.size.actionPadX) },
+});
+
+/** The styles of this look: Classic as before; Modern replaces the keys above. */
+function useNowPlayingStyles() {
+  const base = useStyles(makeStyles);
+  return MODERN ? { ...base, ...modernStyles } : base;
+}

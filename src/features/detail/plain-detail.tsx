@@ -17,6 +17,10 @@
  *
  * TV: Play takes the first focus; with no Play, the first round action. The
  * D-pad order is Play, the round actions, then the content below.
+ *
+ * TV Modern look (design system §7.22): no circles. Play is the Ember primary
+ * action and the round actions are flat text actions (`TvButton`), on one
+ * line that scrolls sideways (this page has no More sheet to take them).
  */
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
@@ -28,9 +32,13 @@ import { type IconName, isIconName } from '@/components/icon-names';
 import { PlainArt, type PlainKind } from '@/components/plain-art';
 import { Overview, RoundAction } from '@/features/detail/detail-scaffold';
 import { TvScrollView } from '@/features/tv/page-scroll';
+import { TvButton } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import type { Shape } from '@/extensions/schema/common';
-import { createStyles, type AppTheme, font, radius, scaled, scriptStyle, sizes, spacing, type, useLayout, useStyles, useTheme, withAlpha } from '@/theme';
+import { createStyles, type AppTheme, font, radius, scaled, scriptStyle, sizes, spacing, tvm, type, u, useLayout, useStyles, useTheme, withAlpha } from '@/theme';
+
+const MODERN = isTV && isTvModern;
 
 /** The icon of a round action whose icon name the app does not know. */
 export const DEFAULT_ROUND_ICON: IconName = 'square.grid.2x2';
@@ -103,14 +111,20 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
   const heroH = Math.round(Math.min(l.height * (twoColumn ? 0.55 : 0.42), l.contentWidth * 0.6));
 
   const play = primary ? (
-    <View>
-      <Button title={primary.label} icon="play.fill" onPress={primary.onPress} disabled={primary.disabled} preferredFocus={isTV} />
-      {primary.progress !== null ? (
-        <View style={s.resumeTrack} accessibilityLabel={`${Math.round(primary.progress * 100)} percent watched`}>
-          <View style={[s.resumeFill, { width: `${Math.round(primary.progress * 100)}%` }]} />
-        </View>
-      ) : null}
-    </View>
+    MODERN ? (
+      <View style={s.selfStart}>
+        <TvButton variant="primary" label={primary.label} icon="play.fill" progress={primary.progress} onPress={primary.disabled ? () => undefined : primary.onPress} firstFocus />
+      </View>
+    ) : (
+      <View>
+        <Button title={primary.label} icon="play.fill" onPress={primary.onPress} disabled={primary.disabled} preferredFocus={isTV} />
+        {primary.progress !== null ? (
+          <View style={s.resumeTrack} accessibilityLabel={`${Math.round(primary.progress * 100)} percent watched`}>
+            <View style={[s.resumeFill, { width: `${Math.round(primary.progress * 100)}%` }]} />
+          </View>
+        ) : null}
+      </View>
+    )
   ) : null;
 
   // The picture: a poster stays 2:3. A wide or square picture shows whole (the poster, else the backdrop),
@@ -126,17 +140,28 @@ export function PlainDetailHeader({ kind, id, title, eyebrow, poster, backdrop, 
       horizontal
       showsHorizontalScrollIndicator={false}
       style={[s.actionsScroll, { marginHorizontal: -rowInset }]}
-      contentContainerStyle={[s.actions, { paddingHorizontal: rowInset }, !twoColumn && s.actionsCenter, isTV && s.actionsTV]}>
-      {actions.map((a, i) => (
-        <RoundAction
-          key={a.key ?? a.label}
-          icon={isIconName(a.icon) ? a.icon : DEFAULT_ROUND_ICON}
-          label={a.label}
-          active={a.active}
-          onPress={a.onPress}
-          firstFocus={isTV && !primary && i === 0}
-        />
-      ))}
+      contentContainerStyle={[s.actions, { paddingHorizontal: rowInset }, !twoColumn && s.actionsCenter, isTV && s.actionsTV, MODERN && s.actionsModern]}>
+      {actions.map((a, i) =>
+        MODERN ? (
+          <TvButton
+            key={a.key ?? a.label}
+            icon={isIconName(a.icon) ? a.icon : DEFAULT_ROUND_ICON}
+            label={a.label}
+            active={a.active}
+            onPress={a.onPress}
+            firstFocus={!primary && i === 0}
+          />
+        ) : (
+          <RoundAction
+            key={a.key ?? a.label}
+            icon={isIconName(a.icon) ? a.icon : DEFAULT_ROUND_ICON}
+            label={a.label}
+            active={a.active}
+            onPress={a.onPress}
+            firstFocus={isTV && !primary && i === 0}
+          />
+        ),
+      )}
     </ScrollView>
   );
 
@@ -231,4 +256,7 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   actionsCenter: { justifyContent: 'center' as const },
   // TV: room above and below for the focus scale and ring.
   actionsTV: { paddingVertical: spacing.md },
+  // TV Modern: flat actions 8 u apart; their own padding is the room for the plate.
+  actionsModern: { gap: u(tvm.size.actionGap) },
+  selfStart: { alignSelf: 'flex-start' as const },
 }));

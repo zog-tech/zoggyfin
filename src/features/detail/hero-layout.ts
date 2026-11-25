@@ -74,3 +74,28 @@ export function fitRoundActions<T extends { spare?: boolean }>(items: readonly T
 export function solidHeaderAfter(media: boolean, heroH: number, barH: number): number {
   return media ? Math.max(0, heroH - barH) : 1;
 }
+
+/**
+ * TV Modern: which text actions of an item page stay in its one row of
+ * actions (design system §7.22: an action row never wraps). `widths` are the
+ * measured box widths of the text actions, in order (null: not measured
+ * yet); `room` is the width they may share, with the primary action and the
+ * More action already taken out; each kept action also takes one `gap`
+ * (the gap after it). Actions marked `spare` (also in the More sheet) leave
+ * first, last first; then the others, last first. They go behind More. Until
+ * every width is known, all actions stay, so nothing is hidden on a guess.
+ * Pure, so it is unit-tested.
+ */
+export function fitTvActions(widths: readonly (number | null)[], spare: readonly boolean[], room: number, gap: number): { shown: number[]; hidden: number[] } {
+  const all = widths.map((_, i) => i);
+  if (room <= 0 || widths.some((w) => w === null)) return { shown: all, hidden: [] };
+  const size = (keep: readonly number[]) => keep.reduce((sum, i) => sum + (widths[i] ?? 0) + gap, 0);
+  const kept = [...all];
+  for (const pass of [true, false]) {
+    for (let k = kept.length - 1; k >= 0 && size(kept) > room; k--) {
+      const i = kept[k] as number;
+      if (!!spare[i] === pass) kept.splice(k, 1);
+    }
+  }
+  return { shown: kept, hidden: all.filter((i) => !kept.includes(i)) };
+}

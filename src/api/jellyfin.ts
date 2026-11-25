@@ -781,6 +781,31 @@ async function searchGenre(api: Api, userId: string, term: string, genre: string
   return res.data.Items ?? [];
 }
 
+/** One row of the Search page before any words (`features/search/browse.ts` builds them). */
+export interface BrowseQuery {
+  types: string[];
+  sortBy: string[];
+  sortOrder: ('Ascending' | 'Descending')[];
+  limit: number;
+}
+
+/** The items of one browse row, from every library of the user. */
+export async function browseItems(api: Api, userId: string, q: BrowseQuery, signal?: AbortSignal): Promise<BaseItemDto[]> {
+  const res = await getLibraryApi(api).getItems(
+    {
+      userId,
+      recursive: true,
+      includeItemTypes: q.types as BaseItemKind[],
+      sortBy: q.sortBy as ItemSortBy[],
+      sortOrder: q.sortOrder,
+      limit: q.limit,
+      ...tile,
+    },
+    { signal },
+  );
+  return res.data.Items ?? [];
+}
+
 /** `genre`: only movies and shows of that genre (artists, people and songs have no movie genre). */
 export async function search(api: Api, userId: string, term: string, signal?: AbortSignal, genre?: string): Promise<BaseItemDto[]> {
   if (genre) return searchGenre(api, userId, term, genre, signal);

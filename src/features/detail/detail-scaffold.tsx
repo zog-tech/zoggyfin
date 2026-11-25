@@ -27,6 +27,7 @@ import { Touchable } from '@/components/touchable';
 import { useItemActions } from '@/features/actions/use-item-actions';
 import { TogetherSheetHost, usePlayForEveryone, useTogetherEntry } from '@/features/together/together-sheet';
 import { buildImageUrl, imageSource } from '@/images/image-url';
+import { TV_RAIL_INSET } from '@/features/tv/screen-inset';
 import { TvButton } from '@/features/tv/tv-button';
 import { useTvPageScroll } from '@/features/tv/page-scroll';
 import { TvRowScroll } from '@/features/tv/shelf';
@@ -34,6 +35,7 @@ import { formatClock, playedFraction } from '@/lib/format';
 import { turnedOn } from '@/lib/pop-in';
 import { type PopInOptions, usePopIn } from '@/lib/use-pop-in';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import type { ItemAction } from '@/registry/item-actions';
 import { usePlayer } from '@/player';
 import { audioResumeTicks } from '@/player/audio/resume';
@@ -48,7 +50,10 @@ import { createStyles,
   sizes,
   spacing,
   tv,
+  tvFont,
+  tvm,
   type,
+  u,
   useLayout,
   useStyles,
   useTheme,
@@ -61,6 +66,7 @@ import { usePullRefresh } from '@/lib/use-pull-refresh';
 
 import { downloadButtonView } from './download-button';
 import { fitRoundActions, heroHeight, heroLayout, solidHeaderAfter } from './hero-layout';
+import { type TvAction, TvArtHero, TvMediaHero, TvOverflowSheet } from './tv-hero-modern';
 import { useTabBottomPadding } from '@/lib/tab-bar-inset';
 
 export type ArtShape = 'poster' | 'square' | 'circle' | 'thumb';
@@ -80,8 +86,11 @@ interface DetailScaffoldProps<Row> {
   onShuffle?: () => void;
   /** Replaces what Play does (a playlist plays its entries). */
   onPlay?: () => void;
-  /** More round buttons after Played and Favourite (Instant mix). */
-  extraActions?: { icon: IconName; label: string; onPress: () => void }[];
+  /**
+   * More round buttons after Played and Favourite (Instant mix). `spare`: the
+   * item's More sheet has it too, so TV Modern may move it there when the row is full.
+   */
+  extraActions?: { icon: IconName; label: string; onPress: () => void; spare?: boolean }[];
   rows?: Row[];
   renderRow?: (row: Row, index: number) => ReactElement;
   rowKey?: (row: Row, index: number) => string;
@@ -100,6 +109,9 @@ interface DetailScaffoldProps<Row> {
 }
 
 const VIDEO_TYPES = new Set(['Movie', 'Episode', 'Video', 'MusicVideo']);
+
+/** TV Modern look (design system §7.22): the item page uses `tv-hero-modern.tsx`. Classic keeps `TvHero` below. */
+const MODERN = isTV && isTvModern;
 
 /**
  * The shared item page (design system §7.6). The hero depends on the item:
@@ -143,6 +155,8 @@ export function DetailScaffold<Row>({
   // An album or playlist counts its songs on the button ("3 of 12"); null for a single item.
   const downloadCounts = useCollectionCounts(item.Id);
   const [sheet, setSheet] = useState(false);
+  // TV Modern: the actions that left the one-line row and are not in the item sheet.
+  const [overflow, setOverflow] = useState<TvAction[] | null>(null);
   const [rowWidth, setRowWidth] = useState(0);
   const pull = usePullRefresh(onRefresh);
   const scrollRef = useAnimatedRef<Animated.FlatList<Row>>();
@@ -186,6 +200,9 @@ export function DetailScaffold<Row>({
   const primaryLabel = room?.label ?? playLabel ?? (resumable ? `Resume ${formatClock(position) ?? ''}`.trim() : 'Play');
 
   const facts = meta.filter((m): m is string => !!m);
+  // The box of each block under the hero: centred at most 1280 wide; TV Modern uses the full width from the page edge
+  // (a full-bleed page keeps the rail clear itself).
+  const rowBox = MODERN ? { width: l.contentWidth, marginLeft: media ? TV_RAIL_INSET : 0 } : [s.page, { width: pageWidth }];
 
   // Web and Android: the header gets a solid bar when the hero scrolls away (see solidHeaderAfter).
   // iOS keeps its native transparent bar (Liquid Glass buttons); TV has no header.
@@ -226,7 +243,7 @@ export function DetailScaffold<Row>({
     spare?: boolean;
   }[] = [];
   if (playable && resumable) {
-    secondary.push({ icon: 'arrow.counterclockwise', label: 'Start over', onPress: () => player.play({ item, startPositionTicks: 0 }) });
+    secondary.push({ key: 'startOver', icon: 'arrow.counterclockwise', label: 'Start over', onPress: () => player.play({ item, startPositionTicks: 0 }) });
   }
   const dlAction = actions.find((a) => a.id === 'builtin.download' || a.id === 'builtin.downloading' || a.id === 'builtin.removeDownload');
   if (dlAction) {
@@ -248,8 +265,9 @@ export function DetailScaffold<Row>({
   if (playlistAction && item.Type !== 'Playlist') secondary.push({ icon: 'text.badge.plus', label: 'Playlist', a11y: 'Add to playlist', spare: true, onPress: () => run(playlistAction) });
   if (playedAction) secondary.push({ icon: 'checkmark', label: 'Played', active: played, spare: true, onPress: () => toggle('played', !played, playedAction) });
   if (favAction) secondary.push({ icon: favorite ? 'heart.fill' : 'heart', label: 'Favourite', active: favorite, spare: true, onPress: () => toggle('favorite', !favorite, favAction) });
-  for (const a of extraActions ?? []) secondary.push(a);
-  secondary.push({ icon: 'ellipsis', label: 'More', onPress: () => setSheet(true) });
+  // `spare` on an extra action is for the TV Modern row only; the round actions keep it in their row.
+  for (const { spare, ...a } of extraActions ?? []) secondary.push(MODERN ? { ...a, spare } : a);
+  secondary.push({ key: 'more', icon: 'ellipsis', label: 'More', onPress: () => setSheet(true) });
 
   const centered = !twoColumn;
   // Two columns: Play and the round actions go under the facts in the text column. Under the poster
@@ -349,8 +367,63 @@ export function DetailScaffold<Row>({
       </View>
     ) : null;
 
+  // TV Modern: the actions that fit go in one row (More is added by the row); no download, Together or Playlist button on TV.
+  const tvKept = secondary.filter((a) => a.key !== 'download' && a.key !== 'more' && a.label !== 'Together' && a.label !== 'Playlist');
+  const tvShuffle: TvAction[] = onShuffle ? [{ icon: 'shuffle', label: 'Shuffle', onPress: onShuffle }] : [];
+  const tvPrimary = playable
+    ? {
+        label: room?.label ?? (onShuffle ? 'Play' : primaryLabel),
+        icon: (room?.locked ? 'lock.fill' : 'play.fill') as IconName,
+        progress: onShuffle ? null : progress,
+        onPress: room?.locked ? () => undefined : (onPlay ?? (() => player.play({ item }))),
+      }
+    : null;
+  // More: when actions that are not in the item sheet left the row, one sheet shows them first, then the item's actions.
+  const onTvMore = (hidden: TvAction[]) => {
+    const own = hidden.filter((a) => !a.spare);
+    if (own.length) setOverflow(own);
+    else setSheet(true);
+  };
+
   let header: ReactElement;
-  if (isTV && media) {
+  if (MODERN && media) {
+    // Start over, Shuffle, Played, Favourite, Trailer (spec §2.6).
+    header = (
+      <View>
+        <TvMediaHero
+          item={item}
+          eyebrow={eyebrow}
+          facts={facts}
+          title={<Title item={item} centered={false} big modern />}
+          primary={tvPrimary}
+          actions={[...tvKept.filter((a) => a.key === 'startOver'), ...tvShuffle, ...tvKept.filter((a) => a.key !== 'startOver')]}
+          onMore={onTvMore}
+        />
+        {beforeRows ? <View style={rowBox}>{beforeRows}</View> : null}
+      </View>
+    );
+  } else if (MODERN) {
+    // Albums, playlists, artists and people. The album artist is an action too (also in the item sheet: Go to artist).
+    header = (
+      <View>
+        <TvArtHero
+          item={item}
+          circle={layout === 'circle'}
+          eyebrow={eyebrow && !onEyebrowPress ? eyebrow : null}
+          subtitle={eyebrow && onEyebrowPress ? eyebrow : null}
+          facts={facts}
+          primary={tvPrimary}
+          actions={[
+            ...tvShuffle,
+            ...(eyebrow && onEyebrowPress ? [{ icon: 'person' as IconName, label: eyebrow, onPress: onEyebrowPress, spare: true }] : []),
+            ...tvKept,
+          ]}
+          onMore={onTvMore}
+        />
+        {beforeRows ? <View style={rowBox}>{beforeRows}</View> : null}
+      </View>
+    );
+  } else if (isTV && media) {
     // TV: the streaming-app item page. The art fills the screen, the text and the buttons sit on its left.
     header = (
       <View>
@@ -510,14 +583,18 @@ export function DetailScaffold<Row>({
         data={rows ?? []}
         keyExtractor={rowKey ?? ((_, i) => String(i))}
         renderItem={({ item: row, index }) => (
-          <View style={[s.page, { width: pageWidth }]}>{renderRow ? renderRow(row, index) : null}</View>
+          <View style={rowBox}>{renderRow ? renderRow(row, index) : null}</View>
         )}
         ListHeaderComponent={header}
-        ListFooterComponent={<View style={[s.page, s.footer, { width: pageWidth, paddingBottom: bottomPad }]}>{footer}</View>}
+        ListFooterComponent={<View style={[rowBox, s.footer, { paddingBottom: bottomPad }]}>{footer}</View>}
         contentInsetAdjustmentBehavior="never"
         // On a TV, react-native-tvos wraps a FlatList in a focus guide with no size, so a flex list collapses to 1 dp.
         // TV: the item page starts at the screen's top edge (side-menu.tsx), so a hero's art reaches it.
         style={isTV ? [s.tvList, { height: l.height }] : s.list}
+        // TV: every part stays attached. Android's list default (on there) takes a part that scrolls out of
+        // view off the screen's view tree, so a D-pad press found nothing to go to: after Down to the episodes,
+        // Up never came back to the hero's buttons (Play, the banner), and on a season page not to the rows above.
+        removeClippedSubviews={!isTV}
         scrollEventThrottle={16}
         refreshControl={
           pull.onRefresh && !isTV ? (
@@ -528,6 +605,7 @@ export function DetailScaffold<Row>({
       </TvRowScroll.Provider>
       {sheets}
       <ItemActionSheet item={item} visible={sheet} onClose={() => setSheet(false)} />
+      {MODERN ? <TvOverflowSheet item={item} actions={overflow} onClose={() => setOverflow(null)} /> : null}
       <TogetherSheetHost where="item" />
     </>
   );
@@ -667,7 +745,7 @@ function Hero({ item, height, style }: { item: BaseItemDto; height: number; styl
  * `display`. The text title shows until the logo has loaded, so a slow or
  * failed logo never leaves an empty space.
  */
-function Title({ item, centered, big }: { item: BaseItemDto; centered: boolean; big: boolean }) {
+function Title({ item, centered, big, modern }: { item: BaseItemDto; centered: boolean; big: boolean; /** TV Modern: the logo up to 600 × 220 u, else the `hero` type in 2 lines. */ modern?: boolean }) {
   const s = useStyles(makeStyles);
   const server = useImageServer();
   const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading');
@@ -679,7 +757,7 @@ function Title({ item, centered, big }: { item: BaseItemDto; centered: boolean; 
   const name = item.Name ?? '';
   const uri =
     logo && server && big && state !== 'failed'
-      ? buildImageUrl(server, { itemId: logo.id, type: 'Logo', tag: logo.tag, width: scaled(sizes.logoMaxWidth) * PixelRatio.get() })
+      ? buildImageUrl(server, { itemId: logo.id, type: 'Logo', tag: logo.tag, width: (modern ? u(600) : scaled(sizes.logoMaxWidth)) * PixelRatio.get() })
       : null;
   const image = uri ? (
     <Image
@@ -693,19 +771,19 @@ function Title({ item, centered, big }: { item: BaseItemDto; centered: boolean; 
   ) : null;
   if (image && state === 'loaded') {
     return (
-      <View style={[s.logoBox, centered ? s.selfCenter : null]} accessible accessibilityRole="header" accessibilityLabel={name}>
+      <View style={[modern ? s.logoBoxModern : s.logoBox, centered ? s.selfCenter : null]} accessible accessibilityRole="header" accessibilityLabel={name}>
         {image}
       </View>
     );
   }
-  const base = big ? s.display : s.title2;
+  const base = modern ? s.heroModern : big ? s.display : s.title2;
   return (
     <View>
-      <Text style={[base, scriptStyle(name, base, !centered), centered && s.textCenter]} numberOfLines={3} accessibilityRole="header">
+      <Text style={[base, scriptStyle(name, base, !centered), centered && s.textCenter]} numberOfLines={modern ? 2 : 3} accessibilityRole="header">
         {name}
       </Text>
       {image ? (
-        <View style={[s.logoBox, s.logoProbe]} pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+        <View style={[modern ? s.logoBoxModern : s.logoBox, s.logoProbe]} pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
           {image}
         </View>
       ) : null}
@@ -868,6 +946,9 @@ const makeStyles = createStyles(({ c, shadow }: AppTheme) => ({
   title2: { ...font(type.title2), color: c.text },
   logoBox: { width: scaled(sizes.logoMaxWidth), height: scaled(sizes.logoMaxHeight) },
   logo: { width: '100%' as const, height: '100%' as const },
+  // TV Modern title (spec §2.6): the logo box and the text title.
+  logoBoxModern: { width: u(600), height: u(220) },
+  heroModern: { ...tvFont(tvm.type.hero), color: c.text },
   logoProbe: { position: 'absolute' as const, top: 0, left: 0, opacity: 0 },
   meta: { ...font(type.footnote, { tabular: true }), color: c.text2 },
   pairRow: { flexDirection: 'row' as const, gap: spacing.md, marginTop: spacing.sm },

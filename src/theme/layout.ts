@@ -2,7 +2,10 @@
  * Layout from the window or content width (design system §2). Pure: no React,
  * so it is unit-tested. TV gets its own 10-foot sizes (§ TV in the spec).
  */
-import { type Breakpoint, breakpointFor, gridFor, type GridResult, layout, spacing, type TileKind } from './theme';
+import { type Breakpoint, breakpointFor, gridFor, type GridResult, layout, spacing, type TileKind, tvModern } from './theme';
+
+/** The TV look (platform/tv-look.ts). Repeated here, so this pure module imports nothing from the platform. */
+export type LayoutLook = 'classic' | 'modern';
 
 /**
  * TV sizes, designed on a 1920-point-wide screen (Apple TV). Android TV
@@ -72,9 +75,15 @@ export function tvSafeInset(width: number): SafeInset {
 /**
  * The space a focused TV tile of this size needs on each side: it grows by
  * `focusScale` around its centre and the ring sits outside it. A row or a
- * scroll view with less padding than this cuts the ring off.
+ * scroll view with less padding than this cuts the ring off. Classic rings
+ * are in plain points; Modern rings are TV units, so `scale` (tvScale) applies
+ * to them. `@/theme` exports a version bound to the running look.
  */
-export function tvFocusBleed(size: number): number {
+export function tvFocusBleed(size: number, look: LayoutLook = 'classic', scale = 1): number {
+  if (look === 'modern') {
+    const m = tvModern.size;
+    return Math.ceil((size * (m.focusScale - 1)) / 2 + Math.round(m.ringWidth * scale) + Math.round(m.ringGap * scale) + 2);
+  }
   return Math.ceil((size * (tv.focusScale - 1)) / 2 + tv.focusRingWidth + tv.focusRingGap + 2);
 }
 
@@ -116,20 +125,24 @@ export interface LayoutInfo {
 
 /**
  * Layout for a window. `sidebar` is the width of a visible sidebar (iPad) or
- * the TV rail; grids and rows use the width that is left.
+ * the TV rail; grids and rows use the width that is left. TV `look` 'modern'
+ * takes the tile gap, the row gap and the row tile sizes of the Modern look;
+ * the gutter and the content width are the same in both looks, so the page
+ * edge does not move.
  */
-export function layoutFor(width: number, opts: { tv?: boolean; sidebar?: number } = {}): LayoutInfo {
+export function layoutFor(width: number, opts: { tv?: boolean; sidebar?: number; look?: LayoutLook } = {}): LayoutInfo {
   if (opts.tv) {
     const s = tvScale(width);
     const rail = (opts.sidebar ?? tv.railWidth) * s;
-    const r = (k: TileKind) => Math.round(tv.rowTileWidth[k] * s);
+    const sizes = opts.look === 'modern' ? tvModern.size : tv;
+    const r = (k: TileKind) => Math.round(sizes.rowTileWidth[k] * s);
     return {
       tv: true,
       bp: 'wide',
       contentWidth: Math.max(0, width - rail),
       gutter: Math.round(tv.gutter * s),
-      gap: Math.round(tv.tileGap * s),
-      sectionGap: Math.round(tv.sectionGap * s),
+      gap: Math.round(sizes.tileGap * s),
+      sectionGap: Math.round(sizes.sectionGap * s),
       rowTile: { poster: r('poster'), thumb: r('thumb'), square: r('square'), circle: r('circle') },
       safe: tvSafeInset(width),
     };
@@ -153,13 +166,17 @@ export function layoutFor(width: number, opts: { tv?: boolean; sidebar?: number 
   };
 }
 
-/** Grid columns and tile width for a content width. TV uses the 10-foot minimum tile widths. */
-export function gridLayout(kind: TileKind, contentWidth: number, isTv = false, screenWidth = contentWidth): GridResult {
+/**
+ * Grid columns and tile width for a content width. TV uses the 10-foot
+ * minimum tile widths of its look (Modern: seven posters across at 1920).
+ */
+export function gridLayout(kind: TileKind, contentWidth: number, isTv = false, screenWidth = contentWidth, look: LayoutLook = 'classic'): GridResult {
   if (!isTv) return gridFor(kind, contentWidth);
+  const sizes = look === 'modern' ? tvModern.size : tv;
   const s = tvScale(screenWidth);
-  const gutter = Math.round(tv.gutter * s);
-  const gap = Math.round(tv.tileGap * s);
-  const min = tv.gridMinTile[kind] * s;
+  const gutter = Math.round(sizes.gutter * s);
+  const gap = Math.round(sizes.tileGap * s);
+  const min = sizes.gridMinTile[kind] * s;
   const [lo, hi] = layout.gridColumnLimits[kind];
   const inner = contentWidth - gutter * 2;
   const columns = Math.min(hi, Math.max(lo, Math.floor((inner + gap) / (min + gap))));

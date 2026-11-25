@@ -10,6 +10,11 @@ import { useTabRootPlace } from '@/features/extensions/tab-nav';
 import { useLiveTvTile } from '@/features/iptv/live-tv-tile';
 import { isSupportedView } from '@/features/library/library-kind';
 import { useRootScreenOptions } from '@/lib/stack-options';
+import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
+
+/** TV Modern: the library tiles are art only; the server image carries the name, so it is not shown twice. */
+const ART_ONLY = isTV && isTvModern;
 
 export default function LibraryScreen() {
   const root = useRootScreenOptions();
@@ -37,6 +42,7 @@ export default function LibraryScreen() {
           shape="thumb"
           // Library folders have no item actions worth a menu.
           itemMenu={false}
+          artOnly={ART_ONLY}
           onRefresh={views.refetch}
           headerless={!pushed}
           ListEmptyComponent={<EmptyState icon="square.stack" title="No libraries" message="This account has no libraries yet." />}

@@ -21,9 +21,18 @@
  * On iOS and Android the engine also watches each start the app asks for
  * (`start-watch.ts`): a track that comes ready but stays silent (a catalog
  * song after a long first answer) gets its play again.
+ *
+ * The engine writes the player log (`lib/diag-store.ts`, area `audio`) for
+ * bug reports: loads, plays and why, pauses, the window, phase changes,
+ * start-watch verdicts, a status when its main flags change, and a probe of
+ * the native player 1.5 s after each play. The log only observes: it never
+ * changes what the engine does, and it holds no URL and no name.
  */
 import { type AudioPlaylist, createAudioPlaylist, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { Platform } from 'react-native';
+
+import { errorText, shortId, uriKind } from '@/lib/diag-log';
+import { diag } from '@/lib/diag-store';
 
 import { AudioMixer } from './mixer';
 import { type SessionPhase, resumedByItself, transition } from './session-phase';
@@ -80,6 +89,13 @@ const watchStarts = Platform.OS !== 'web';
 
 /** How far (s) a status of a track that loads may be from its start, or from 0 before its start seek. */
 const STALE_SLACK_S = 3;
+/** The probe of the native player runs this long after a play. */
+const PROBE_DELAY_MS = 1500;
+/** A playing track logs its time at most this often when nothing else changes. */
+const STATUS_TICK_MS = 10_000;
+
+/** Why the engine sent a play to the native player (for the log). */
+type PlayWhy = 'load' | 'start-seek' | 'user' | 'user-restored' | 'kick' | 'kick-restored' | 'resumed-by-itself';
 
 /**
  * True for a status that cannot be the track that loads: a finish, the second item of the list, or
@@ -131,6 +147,12 @@ export class AudioEngine {
   /** The load whose track gave sound: its later plays are not watched, so a pause the app did not ask for is never undone. */
   private soundToken = -1;
 
+  /** The log: the flags of the last logged status and when it came, the dropped statuses in a row, the last start verdict. */
+  private logStatusKey = '';
+  private logStatusAt = 0;
+  private staleRun = 0;
+  private logVerdict: string | null = null;
+
   /** The last web status: its track and time (see `webFix`). */
   private webLast: { index: number; time: number } | null = null;
 
@@ -166,19 +188,28 @@ export class AudioEngine {
       const s = this.webFix(raw);
       // No track (after `unload`, while the server fetches a catalog song): a status is the old
       // track's. Its finish ended "the queue", and the session went on to the song after the one chosen.
-      if (!this.keys.length) return;
+      if (!this.keys.length) {
+        this.logDropped(s, 'no-track');
+        return;
+      }
       // A new load empties the native playlist, and ExoPlayer then sends the last statuses of the
       // old track: loaded at its old position, then finished. They are not about the new track.
-      if (this.loading && staleStatus(s, this.loadStart, Platform.OS === 'android')) return;
+      if (this.loading && staleStatus(s, this.loadStart, Platform.OS === 'android')) {
+        this.logDropped(s, 'stale');
+        return;
+      }
+      this.logStatus(s);
       const index = s.currentIndex ?? 0;
       const offset = this.offsets[index] ?? 0;
       if (this.pendingStart !== null && s.isLoaded && index === 0) {
         const start = this.pendingStart;
         const token = this.loadToken;
         this.pendingStart = null;
+        diag('audio', 'start-seek', { token, to: start });
         void p.seekTo(start).finally(() => {
+          diag('audio', 'start-seek-done', { token, stale: token !== this.loadToken, play: this.pendingPlay });
           if (token !== this.loadToken) return;
-          if (this.pendingPlay) this.playNow(p);
+          if (this.pendingPlay) this.playNow(p, 'start-seek');
           this.pendingPlay = false;
         });
       }
@@ -206,12 +237,16 @@ export class AudioEngine {
         buffering: s.isBuffering,
         loaded: s.isLoaded,
       });
-      if (s.didJustFinish && index >= this.keys.length - 1) this.emit({ type: 'ended' });
+      if (s.didJustFinish && index >= this.keys.length - 1) {
+        diag('audio', 'ended', { index });
+        this.emit({ type: 'ended' });
+      }
     });
     p.addListener('trackChanged', ({ previousIndex, currentIndex }) => {
       const key = this.keys[currentIndex];
       if (!key) return;
       this.lastIndex = currentIndex;
+      diag('audio', 'track', { from: previousIndex, to: currentIndex, key: shortId(key) });
       this.emit({ type: 'track', key, previousKey: this.keys[previousIndex] ?? null, at: Date.now() });
     });
     this.remoteTracks(p);
@@ -227,7 +262,10 @@ export class AudioEngine {
     if (typeof r.setRemoteTrackCommands !== 'function') return;
     try {
       r.addListener('remoteTrackCommand', (e) => {
-        if (e?.command === 'next' || e?.command === 'previous') this.emit({ type: 'remote', command: e.command });
+        if (e?.command === 'next' || e?.command === 'previous') {
+          diag('audio', 'remote', { command: e.command });
+          this.emit({ type: 'remote', command: e.command });
+        }
       });
       r.setRemoteTrackCommands(true);
     } catch {
@@ -235,9 +273,16 @@ export class AudioEngine {
     }
   }
 
-  private onPhase(e: Parameters<typeof transition>[1]) {
+  /** Moves the session phase, and logs a change. */
+  private movePhase(e: Parameters<typeof transition>[1]) {
     const prev = this.phase;
     this.phase = transition(prev, e);
+    if (this.phase !== prev) diag('audio', 'phase', { from: prev, to: this.phase, on: e.type });
+  }
+
+  private onPhase(e: Parameters<typeof transition>[1]) {
+    const prev = this.phase;
+    this.movePhase(e);
     if (!guardSession || !resumedByItself(prev, this.phase)) return;
     // The player plays again without the app (lock screen, headset). The session may still be
     // inactive: activate it, then play once more so the sound starts.
@@ -245,7 +290,7 @@ export class AudioEngine {
     const intent = this.intent;
     void this.restoreSession().then(() => {
       if (token !== this.loadToken || intent !== this.intent || this.phase !== 'playing') return;
-      if (this.playlist) this.playNow(this.playlist);
+      if (this.playlist) this.playNow(this.playlist, 'resumed-by-itself');
     });
   }
 
@@ -256,6 +301,10 @@ export class AudioEngine {
     if (!w) return;
     this.startStatus = st;
     const verdict = startVerdict(w, st, Date.now());
+    if (verdict !== this.logVerdict) {
+      this.logVerdict = verdict;
+      diag('audio', 'watch', { verdict, token: w.token, kicks: w.kicks, ms: Date.now() - w.since });
+    }
     if (verdict === 'started' || verdict === 'give-up') {
       this.clearStart();
       return;
@@ -278,16 +327,17 @@ export class AudioEngine {
     if (!p || !st || this.start !== w || w.token !== this.loadToken) return;
     if (startVerdict(w, st, Date.now()) !== 'kick') return;
     w.kicks += 1;
+    diag('audio', 'kick', { token: w.token, kicks: w.kicks, phase: this.phase });
     if (__DEV__) console.log(`[audio] start stayed silent, play again (${w.kicks})`);
     if (guardSession && this.phase === 'lost') {
       // The player stopped by itself: the session may be inactive, so activate it before the play.
       const intent = this.intent;
       void this.restoreSession().then(() => {
-        if (this.start === w && w.token === this.loadToken && intent === this.intent) this.playNow(p);
+        if (this.start === w && w.token === this.loadToken && intent === this.intent) this.playNow(p, 'kick-restored');
       });
       return;
     }
-    this.playNow(p);
+    this.playNow(p, 'kick');
   }
 
   private cancelStartTimer() {
@@ -299,18 +349,24 @@ export class AudioEngine {
     this.cancelStartTimer();
     this.start = null;
     this.startStatus = null;
+    this.logVerdict = null;
   }
 
   /** Sets the audio mode and activates the session again after it was lost. Never throws. */
   private async restoreSession(): Promise<void> {
+    const began = Date.now();
+    diag('audio', 'restore-begin', { phase: this.phase });
+    let threw: string | null = null;
     this.modeSet = false;
     await this.audioMode();
     try {
       await setIsAudioActiveAsync(true);
-    } catch {
+    } catch (e) {
       // Another app still holds the audio: the play below tries anyway.
+      threw = errorText(e);
     }
-    this.phase = transition(this.phase, { type: 'restored' });
+    this.movePhase({ type: 'restored' });
+    diag('audio', 'restore-end', { ms: Date.now() - began, threw: threw !== null, error: threw });
   }
 
   private async audioMode() {
@@ -324,8 +380,9 @@ export class AudioEngine {
         allowsRecording: false,
         shouldRouteThroughEarpiece: false,
       });
-    } catch {
+    } catch (e) {
       this.modeSet = false;
+      diag('audio', 'mode-failed', { error: errorText(e) });
     }
   }
 
@@ -375,7 +432,7 @@ export class AudioEngine {
     this.clearStart();
     this.loading = true;
     p.pause();
-    this.phase = transition(this.phase, { type: 'pause' });
+    this.movePhase({ type: 'pause' });
     p.clear();
     this.keys = [];
     this.offsets = [];
@@ -394,13 +451,23 @@ export class AudioEngine {
     if (this.rate !== 1) p.playbackRate = this.rate;
     // The start inside the stream: a transcode that starts at `startSeconds` needs no seek.
     const local = startSeconds - (current.offset ?? 0);
+    diag('audio', 'load', {
+      token: this.loadToken,
+      autoplay,
+      start: startSeconds,
+      offset: current.offset ?? 0,
+      next: !!next,
+      uri: uriKind(current.uri),
+      key: shortId(current.key),
+      phase: this.phase,
+    });
     if (local > 0.5) {
       this.pendingStart = local;
       this.pendingPlay = autoplay;
     } else {
       this.pendingStart = null;
       this.pendingPlay = false;
-      if (autoplay) this.playNow(p);
+      if (autoplay) this.playNow(p, 'load');
     }
   }
 
@@ -411,6 +478,7 @@ export class AudioEngine {
     const cur = this.lastIndex;
     if (next && this.keys.length === cur + 2 && this.keys[cur + 1] === next.key) return;
     if (!next && this.keys.length === cur + 1) return;
+    diag('audio', 'set-next', { cur, removes: this.keys.length - cur - 1, adds: !!next, uri: next ? uriKind(next.uri) : null, keys: this.keys.length });
     for (let i = this.keys.length - 1; i > cur; i--) {
       p.remove(i);
       this.keys.pop();
@@ -425,44 +493,131 @@ export class AudioEngine {
 
   /** Moves to the preloaded next track (gapless path). */
   next(): void {
+    diag('audio', 'next', { index: this.lastIndex, keys: this.keys.length });
     this.playlist?.next();
   }
 
   play(): void {
     this.intent += 1;
     if (this.pendingStart !== null) {
+      diag('audio', 'play-pending', { token: this.loadToken });
       this.pendingPlay = true;
       return;
     }
     const p = this.playlist;
-    if (!p) return;
+    if (!p) {
+      diag('audio', 'play-no-player');
+      return;
+    }
     if (guardSession && this.phase === 'lost') {
       // An interruption (camera, call) left the session inactive: activate it first, or the play is silent.
       const token = this.loadToken;
       const intent = this.intent;
       void this.restoreSession().then(() => {
-        if (token === this.loadToken && intent === this.intent) this.playNow(p);
+        if (token === this.loadToken && intent === this.intent) this.playNow(p, 'user-restored');
       });
       return;
     }
-    this.playNow(p);
+    this.playNow(p, 'user');
   }
 
   /** Plays, then sets the rate again: on iOS, play() puts the rate back to 1. */
-  private playNow(p: AudioPlaylist): void {
-    this.phase = transition(this.phase, { type: 'play' });
+  private playNow(p: AudioPlaylist, why: PlayWhy): void {
+    this.movePhase({ type: 'play' });
     // Watch the start until it gives sound (start-watch.ts). A second play of the same start keeps its count.
-    if (watchStarts && this.soundToken !== this.loadToken && (!this.start || this.start.token !== this.loadToken)) {
+    const watch = watchStarts && this.soundToken !== this.loadToken && (!this.start || this.start.token !== this.loadToken);
+    if (watch) {
       this.start = { token: this.loadToken, kicks: 0, since: Date.now() };
     }
+    diag('audio', 'play-now', { why, token: this.loadToken, watch, loading: this.loading, keys: this.keys.length });
     p.play();
     if (this.rate !== 1) p.playbackRate = this.rate;
+    this.scheduleProbe(p, why);
+  }
+
+  /**
+   * Logs what the native player says some time after a play: the key fact
+   * when a play gives no status. Reads only; every property is guarded, as
+   * an older binary may lack one.
+   */
+  private scheduleProbe(p: AudioPlaylist, why: PlayWhy): void {
+    const token = this.loadToken;
+    setTimeout(() => {
+      try {
+        const o = p as unknown as Record<string, unknown>;
+        const read = (name: string): boolean | number | null => {
+          try {
+            const v = o[name];
+            return typeof v === 'boolean' || typeof v === 'number' ? v : null;
+          } catch {
+            return null;
+          }
+        };
+        diag('audio', 'probe', {
+          why,
+          token,
+          current: token === this.loadToken,
+          playing: read('playing'),
+          isLoaded: read('isLoaded'),
+          isBuffering: read('isBuffering'),
+          currentIndex: read('currentIndex'),
+          trackCount: read('trackCount'),
+          currentTime: read('currentTime'),
+          phase: this.phase,
+          watched: this.start !== null,
+          statusAgeMs: this.statusAt ? Math.round(nowMs() - this.statusAt) : null,
+        });
+      } catch {
+        // The probe never matters to playback.
+      }
+    }, PROBE_DELAY_MS);
+  }
+
+  /** Logs a status when one of its main flags changes, or every 10 s while it plays. */
+  private logStatus(s: { playing: boolean; isBuffering: boolean; isLoaded: boolean; currentIndex?: number; currentTime: number; duration: number; didJustFinish?: boolean }): void {
+    if (this.staleRun) {
+      diag('audio', 'status-drop-end', { count: this.staleRun });
+      this.staleRun = 0;
+    }
+    const key = `${s.playing}|${s.isBuffering}|${s.isLoaded}|${s.currentIndex ?? 0}`;
+    const now = Date.now();
+    if (key === this.logStatusKey && !(s.playing && now - this.logStatusAt >= STATUS_TICK_MS) && !s.didJustFinish) return;
+    this.logStatusKey = key;
+    this.logStatusAt = now;
+    diag('audio', 'status', {
+      playing: s.playing,
+      buffering: s.isBuffering,
+      loaded: s.isLoaded,
+      index: s.currentIndex ?? 0,
+      time: Math.round(s.currentTime * 10) / 10,
+      duration: Number.isFinite(s.duration) ? Math.round(s.duration * 10) / 10 : String(s.duration),
+      finished: !!s.didJustFinish,
+      loading: this.loading,
+      pendingStart: this.pendingStart !== null,
+      keys: this.keys.length,
+    });
+  }
+
+  /** Counts dropped statuses: the first of a run is logged with its fields. */
+  private logDropped(s: { playing: boolean; isLoaded: boolean; currentIndex?: number; currentTime: number; didJustFinish?: boolean }, why: 'stale' | 'no-track'): void {
+    this.staleRun += 1;
+    if (this.staleRun > 1) return;
+    diag('audio', 'status-drop', {
+      why,
+      playing: s.playing,
+      loaded: s.isLoaded,
+      index: s.currentIndex ?? 0,
+      time: Math.round(s.currentTime * 10) / 10,
+      finished: !!s.didJustFinish,
+      loadStart: this.loadStart,
+    });
   }
 
   pause(): void {
     this.intent += 1;
     this.clearStart();
-    this.phase = transition(this.phase, { type: 'pause' });
+    diag('audio', 'pause', { token: this.loadToken, pendingPlay: this.pendingPlay });
+    this.movePhase({ type: 'pause' });
     this.lastPosition = this.livePosition();
     this.statusPlaying = false;
     this.pendingPlay = false;
@@ -474,6 +629,7 @@ export class AudioEngine {
     if (!p) return;
     const s = Math.max(0, seconds);
     const local = Math.max(0, s - (this.offsets[this.lastIndex] ?? 0));
+    diag('audio', 'seek', { to: s, pending: this.pendingStart !== null });
     if (this.pendingStart !== null) {
       this.pendingStart = local;
       return;
@@ -536,7 +692,8 @@ export class AudioEngine {
     const p = this.playlist;
     this.loadToken += 1;
     this.clearStart();
-    this.phase = transition(this.phase, { type: 'pause' });
+    diag('audio', 'unload', { token: this.loadToken });
+    this.movePhase({ type: 'pause' });
     this.loading = false;
     this.pendingStart = null;
     this.pendingPlay = false;

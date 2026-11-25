@@ -13,6 +13,34 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Report a problem.** Settings, "Report a problem" lets you write what went wrong and share a
+  plain-text report (iOS, Android) or copy it (web, Mac app). The report holds the app version, the
+  update, the platform, the system version and a player log. The log is always on and is kept
+  after the app closes. It holds no server address, no account and no song names. "Show log" shows
+  the last entries on the device. Send the report to admin@zog-tech.com or attach it to a GitHub
+  issue. Not on TV.
+- **A new TV look (Modern).** TVs get a second design: tiles with a white ring and no caption
+  strip, flat text actions with one white focus rectangle instead of grey pills, an Ember primary
+  action and a soft fill on focused rows. Home and the movie and show pages run their art full
+  screen under a bare side menu; library grids, Search, Music and Settings get a page title and a
+  one-line text toolbar. Action rows and toolbars never wrap: extra actions go behind More, and a
+  long toolbar scrolls. The video and music players have flat controls. Settings, Appearance,
+  "TV look" chooses Auto, Modern or Classic (the design of before); the change applies after a
+  restart. Auto keeps Classic on Fire TV and in Lite mode.
+- **TV: hold to seek.** In the video player, hold Left or Right (or rewind or fast forward) on the
+  remote to rewind or fast forward. The longer you hold, the faster it goes: 10×, then 30×, 60×,
+  120× and 240× (4 minutes of video a second), one step a second, up to the top speed in Settings,
+  Playback, "Hold to seek" (30× to 480×, 240× at first). The
+  seek bar shows where you will land, with a picture of that moment, and the player goes there
+  when you let go. Left and Right on a button still move the focus.
+- **Search before you type.** The Search page opens with chips (All, Movies, Shows, Videos, Music)
+  and rows to start from: movies, shows and albums picked for you, and recently added videos. A
+  chip lists its own kind (top rated, recently added and picked for you). With words, the chips
+  filter the results as before, and Videos is a filter of its own.
+- **TV: titles under the Home tiles.** Every tile on TV Home has its title under the art, not
+  only the one in the billboard. An episode says its show, then the season, episode and name
+  ("S1 · E3 · Pilot"); a movie in Continue watching says the time left.
+
 - **Download a song from its row.** A song that is not on the device has a download button at the
   end of its row (search, albums, playlists, artists), so it downloads without playing. Then the
   row shows the progress ring and the orange downloaded mark. Not on TV, which has no downloads.
@@ -352,6 +380,26 @@ first commit to today. All of it was built in the first weeks of the project.
   root, and iOS does not let the root show a sheet over the music player. The sheet stayed
   hidden and took every touch, so nothing answered until the app was closed. The music player
   now has its own host for the sheet, and a sheet waits until the sheet before it has gone.
+- Android and TV: a film whose default audio track the device cannot play (Dolby TrueHD, DTS-HD)
+  now plays with a playable track in the same language, such as the Dolby Digital "compatibility"
+  track of a Blu-ray remux, and the file plays as it is. Before, the server made a stream for the
+  default track and, for a 4K HDR film, converted the whole picture on its CPU, slower than real
+  time on a NAS: the film stopped to buffer, then failed. A commentary or a track in another
+  language is never picked, and a track you choose in the player stays. The player's audio menu
+  names the track that plays.
+- Android and TV: choosing another audio track in a file that plays as it is now switches inside
+  the file. Before, the server made a new stream for the track, which for a 4K film meant
+  converting the whole picture.
+- A playlist that holds the same song twice shows each entry as its own row. The rows shared one
+  key, so a row could show the wrong entry after a change.
+- TV (Android): on a show's page, Up after scrolling down to the episodes, the cast or More like
+  this did not come back to the season chips and the show's banner with Play, and on a season page
+  not to the rows above. The page list took the parts that scrolled out of view off the screen,
+  so the remote found nothing to move to. The Films and Series page of Live TV had the same fault.
+  Up to the buttons of an item page now also brings back the whole banner with the title.
+- TV: Up on the music Home page jumped to the tabs (Home, Liked Songs, Albums…) instead of the
+  row above. The focused row scrolls to the top of the page, so the row above was just out of
+  view, and the tab strip was nearer. Up now stays in the page until the first row.
 
 - TV: the song menu (⋯) on an artist, album or playlist page no longer scrolls the page to its
   top. When the menu closed, the focus was lost, so the next presses did nothing or went to the

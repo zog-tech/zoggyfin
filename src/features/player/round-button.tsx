@@ -1,40 +1,29 @@
 import * as Haptics from 'expo-haptics';
 import { type ReactNode, useState } from 'react';
 import { findNodeHandle, Platform, Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { Icon, type IconName } from '@/components/icon';
+import { TouchFocusMark, Touchable } from '@/components/touchable';
 import { type FocusTarget } from '@/features/tv/focus';
+import { PlateIcon, TvActionBody, TvFocusPlate, useActionScale } from '@/features/tv/tv-button';
 import { focusFromKeyboard } from '@/lib/input-modality';
 import { isTV } from '@/platform/tv';
-import { tv, webPressable } from '@/theme';
+import { isTvModern } from '@/platform/tv-look-now';
+import { tv, tvm, webPressable } from '@/theme';
 
 import { Glass } from './glass';
 import { c, motion } from './tokens';
 
-/**
- * A round glass button over video. Press-in scales to 0.92 (snappy spring
- * back); with Reduce Motion only the opacity changes. Keyboard focus draws a
- * ring around the circle only (TV: a white ring, and the button grows).
- */
-export function RoundButton({
-  icon,
-  label,
-  size,
-  glyph,
-  onPress,
-  glass = true,
-  haptic,
-  style,
-  children,
-  preferredFocus,
-  onFocusChange,
-  nextFocusDown,
-  tvRef,
-}: {
+/** TV Modern look (design system §7.22): flat controls over video, the focus plate, no circle. */
+const MODERN = isTV && isTvModern;
+
+interface RoundButtonProps {
   icon?: IconName;
   label: string;
+  /** The button's size in points (Modern TV: the square box). */
   size: number;
+  /** The glyph's size in points. */
   glyph: number;
   onPress: () => void;
   glass?: boolean;
@@ -49,7 +38,32 @@ export function RoundButton({
   nextFocusDown?: FocusTarget | null;
   /** TV: the button's view, so the player can move the focus to it. */
   tvRef?: (view: FocusTarget | null) => void;
-}) {
+}
+
+/**
+ * A round glass button over video. Press-in scales to 0.92 (snappy spring
+ * back); with Reduce Motion only the opacity changes. Keyboard focus draws a
+ * ring around the circle only (TV: a white ring, and the button grows).
+ * TV Modern: a bare white glyph in a square box; the focus plate fills the
+ * box and the glyph turns dark (no circle, no glass).
+ */
+export const RoundButton: (props: RoundButtonProps) => ReactNode = MODERN ? ModernRoundButton : ClassicRoundButton;
+
+function ClassicRoundButton({
+  icon,
+  label,
+  size,
+  glyph,
+  onPress,
+  glass = true,
+  haptic,
+  style,
+  children,
+  preferredFocus,
+  onFocusChange,
+  nextFocusDown,
+  tvRef,
+}: RoundButtonProps) {
   const pressed = useSharedValue(0);
   const [focused, setFocused] = useState(false);
   const reduced = useReducedMotion();
@@ -102,6 +116,110 @@ export function RoundButton({
     </Pressable>
   );
 }
+
+// ---------------------------------------------------------------------------
+// TV Modern look. The focus mark is a shared value (UI thread): a focus move
+// does no React render. Classic keeps the ring and the circle above.
+// ---------------------------------------------------------------------------
+
+const STANDARD = Easing.bezier(...motion.easing.standard);
+
+/** Sets the Modern focus mark: a short fade, at once with Reduce Motion. */
+function setMark(mark: { set: (v: number) => void }, on: boolean, reduced: boolean) {
+  if (reduced) mark.set(on ? 1 : 0);
+  else mark.set(withTiming(on ? 1 : 0, { duration: on ? tvm.motion.focus : tvm.motion.blur, easing: STANDARD }));
+}
+
+/**
+ * Modern: the centre transport of the video player (play, skip, channel up
+ * and down). A bare white glyph in a square box (`size`); with the focus the
+ * plate fills the box, the glyph turns dark and the box grows to 1.04. Same
+ * props and focus behaviour as the Classic button: `onFocusChange`,
+ * `nextFocusDown`, `tvRef` and `preferredFocus` work the same.
+ */
+function ModernRoundButton({ icon, label, size, glyph, onPress, haptic, style, children, preferredFocus, onFocusChange, nextFocusDown, tvRef }: RoundButtonProps) {
+  const mark = useSharedValue(0);
+  const reduced = useReducedMotion();
+  return (
+    <Pressable
+      ref={tvRef}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hasTVPreferredFocus={preferredFocus}
+      nextFocusDown={nextFocusDown && Platform.OS !== 'web' ? (findNodeHandle(nextFocusDown) ?? undefined) : undefined}
+      onFocus={() => {
+        setMark(mark, focusFromKeyboard(), reduced);
+        onFocusChange?.(true);
+      }}
+      onBlur={() => {
+        setMark(mark, false, reduced);
+        onFocusChange?.(false);
+      }}
+      onPress={() => {
+        if (haptic && Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
+      style={[webPressable, style]}>
+      <TouchFocusMark value={mark}>
+        <GlyphBox size={size}>
+          {icon ? <PlateIcon name={icon} size={glyph} rest={c.textOnMedia} /> : null}
+          {children}
+        </GlyphBox>
+      </TouchFocusMark>
+    </Pressable>
+  );
+}
+
+function GlyphBox({ size, children }: { size: number; children: ReactNode }) {
+  const grow = useActionScale();
+  return (
+    <Animated.View style={[modern.square, { width: size, height: size }, grow]}>
+      <TvFocusPlate />
+      {children}
+    </Animated.View>
+  );
+}
+
+export interface PlayerActionProps {
+  label: string;
+  icon?: IconName;
+  /** 'primary': the Ember rectangle (the main choice of a prompt or card). 'text' (default): glyph and label, no container. */
+  variant?: 'primary' | 'text';
+  onPress: () => void;
+  /** The action took (true) or lost (false) the focus: the player counts focused controls. */
+  onFocusChange?: (focused: boolean) => void;
+  /** TV: take the focus when it mounts or when this turns true. */
+  preferredFocus?: boolean;
+  accessibilityLabel?: string;
+}
+
+/**
+ * TV Modern: an action of the video player (the option row, Skip Intro, the
+ * next-up card, the error card). It draws `TvActionBody`, the drawing of
+ * `TvButton` (design system §7.22), with white text over video. It keeps its
+ * own Touchable: `preferredFocus` is only `hasTVPreferredFocus` (no page
+ * focus claim, as `TvButton`'s `firstFocus` makes), and the blur callback
+ * feeds the player's focus count. Only call it in the Modern look on TV.
+ */
+export function PlayerAction({ label, icon, variant = 'text', onPress, onFocusChange, preferredFocus, accessibilityLabel }: PlayerActionProps) {
+  return (
+    <Touchable
+      kind="plain"
+      ring={false}
+      hasTVPreferredFocus={preferredFocus}
+      onFocus={() => onFocusChange?.(true)}
+      onBlur={() => onFocusChange?.(false)}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}>
+      <TvActionBody variant={variant} label={label} icon={icon} rest={c.textOnMedia} />
+    </Touchable>
+  );
+}
+
+const modern = StyleSheet.create({
+  square: { alignItems: 'center', justifyContent: 'center' },
+});
 
 const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

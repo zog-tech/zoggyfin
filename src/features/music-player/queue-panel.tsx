@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { memo, useLayoutEffect, useMemo, useState } from 'react';
+import { memo, useContext, useLayoutEffect, useMemo, useState } from 'react';
 import { type AccessibilityActionEvent, Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
@@ -16,15 +16,17 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { Icon, type IconName } from '@/components/icon';
 import { openAddToPlaylist } from '@/features/playlists/add-to-playlist';
 import { ItemImage } from '@/components/item-image';
-import { Touchable } from '@/components/touchable';
+import { TouchFocusMark, Touchable } from '@/components/touchable';
 import { reorderMoves } from '@/lib/reorder-moves';
+import { TvFocusPlate } from '@/features/tv/tv-button';
 import { isTV } from '@/platform/tv';
+import { isTvModern } from '@/platform/tv-look-now';
 import { artistLine, type AudioItem } from '@/player/audio/item';
 import { queueSections, type QueueEntry } from '@/player/audio/queue';
 import { audioSession } from '@/player/audio/session';
 import { useAudioStore } from '@/player/audio/store';
 import { usePlaybackSettings } from '@/settings/playback';
-import { font, scriptStyle, tv, type } from '@/theme';
+import { font, scriptStyle, tv, tvFont, tvm, type, u } from '@/theme';
 
 import { PlayerSheet } from '../player/player-sheet';
 import { c, motion, radius, spacing } from '../player/tokens';
@@ -34,6 +36,10 @@ export const QUEUE_ROW_HEIGHT = 60;
 const MAX_ROWS = 150;
 /** The red Remove area slides in from the trailing edge by the swipe distance. */
 const REVEAL_WIDTH = 600;
+/** TV Modern look (§7.22): rows in TV units, the soft row fill, the More button with the focus plate (no ring, no circle). */
+const MODERN = isTV && isTvModern;
+/** The More glyph of a TV row: Modern draws it in TV units. */
+const MORE_GLYPH = MODERN ? u(28) : 18;
 
 function haptic(kind: 'medium' | 'light' | 'selection') {
   if (Platform.OS === 'web') return;
@@ -383,6 +389,18 @@ const DraggableRow = memo(function DraggableRow({
             onAccessibilityAction={onAction}
             handle={
               isTV ? (
+                MODERN ? (
+                  <Touchable
+                    kind="plain"
+                    ring={false}
+                    onPress={() => onMenu({ rows, position })}
+                    style={styles.handle}
+                    accessibilityRole="button"
+                    accessibilityLabel={`More for ${row.entry.item.Name ?? 'this song'}`}>
+                    <TvFocusPlate />
+                    <MoreGlyph />
+                  </Touchable>
+                ) : (
                 <Touchable
                   kind="icon"
                   radius={22}
@@ -392,6 +410,7 @@ const DraggableRow = memo(function DraggableRow({
                   accessibilityLabel={`More for ${row.entry.item.Name ?? 'this song'}`}>
                   <Icon name="ellipsis" size={18} color={c.textOnMedia} />
                 </Touchable>
+                )
               ) : (
               <GestureDetector gesture={drag}>
                 <View style={styles.handle} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -428,7 +447,7 @@ function QueueRow({
   const artist = artistLine(item);
   const body = (
     <>
-      <ItemImage item={item} variant="square" width={44} aspectRatio={1} rounded={radius.sm} hideArtTitle />
+      <ItemImage item={item} variant="square" width={MODERN ? u(64) : 44} aspectRatio={1} rounded={MODERN ? u(8) : radius.sm} hideArtTitle />
       <View style={styles.rowText}>
         <Text style={[styles.title, current && styles.titleCurrent, scriptStyle(item.Name, styles.title)]} numberOfLines={1}>
           {item.Name}
@@ -447,7 +466,7 @@ function QueueRow({
     return (
       <View style={styles.row} accessible accessibilityLabel={label}>
         {body}
-        <Icon name="waveform" size={18} color={c.accent} weight="semibold" />
+        <Icon name="waveform" size={MORE_GLYPH} color={c.accent} weight="semibold" />
       </View>
     );
   }
@@ -478,7 +497,24 @@ function QueueRow({
   );
 }
 
-const styles = StyleSheet.create({
+/** Modern: the More glyph turns dark on the plate (two copies, cross-faded on the UI thread). */
+function MoreGlyph() {
+  const mark = useContext(TouchFocusMark);
+  const lit = useAnimatedStyle(() => ({ opacity: mark ? mark.get() : 0 }));
+  const dim = useAnimatedStyle(() => ({ opacity: mark ? 1 - mark.get() : 1 }));
+  return (
+    <View style={{ width: MORE_GLYPH, height: MORE_GLYPH }}>
+      <Animated.View style={[StyleSheet.absoluteFill, dim]}>
+        <Icon name="ellipsis" size={MORE_GLYPH} color={c.textOnMedia} />
+      </Animated.View>
+      <Animated.View style={[StyleSheet.absoluteFill, lit]}>
+        <Icon name="ellipsis" size={MORE_GLYPH} color={tvm.color.plateText} />
+      </Animated.View>
+    </View>
+  );
+}
+
+const classicStyles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   content: { paddingBottom: spacing.xl },
@@ -532,3 +568,21 @@ const styles = StyleSheet.create({
   autoplayNote: { ...font(type.footnote), color: c.textOnMediaSecondary, marginTop: -spacing.xs, marginBottom: spacing.xs },
   empty: { ...font(type.subheadline), color: c.textOnMediaSecondary, marginTop: spacing.xl, textAlign: 'center' },
 });
+
+/** Modern TV: the keys that differ from Classic (TV units; the Touchable draws the row fill). */
+const ROW = u(tvm.size.listRowHeight);
+const modernStyles = StyleSheet.create({
+  contentTV: { paddingHorizontal: 0 },
+  header: { ...tvFont(tvm.type.meta), fontWeight: '700', color: c.textOnMediaSecondary, marginTop: u(24), marginBottom: u(8) },
+  rowWrap: { height: ROW, justifyContent: 'center', overflow: 'visible', borderRadius: u(tvm.size.listRowRadius) },
+  row: { height: ROW, flexDirection: 'row', alignItems: 'center', gap: u(20), borderRadius: u(tvm.size.listRowRadius), paddingHorizontal: u(16) },
+  tvRow: { height: ROW, flexDirection: 'row', alignItems: 'center', gap: u(8) },
+  title: { ...tvFont(tvm.type.tileTitle), color: c.textOnMedia },
+  sub: { ...tvFont(tvm.type.tileMeta), color: c.textOnMediaSecondary },
+  handle: { width: u(68), height: u(68), alignItems: 'center', justifyContent: 'center', borderRadius: u(tvm.size.plateRadius) },
+  more: { ...tvFont(tvm.type.tileMeta), color: c.textOnMediaSecondary, marginTop: u(16), textAlign: 'center' },
+  autoplayNote: { ...tvFont(tvm.type.tileMeta), color: c.textOnMediaSecondary, marginTop: -u(4), marginBottom: u(8) },
+  empty: { ...tvFont(tvm.type.meta), color: c.textOnMediaSecondary, marginTop: u(32), textAlign: 'center' },
+});
+
+const styles = MODERN ? { ...classicStyles, ...modernStyles } : classicStyles;

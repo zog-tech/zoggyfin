@@ -35,6 +35,8 @@ import '@/invite/wiring';
 import { useInviteLinks } from '@/invite/use-invite-links';
 import { setChannelLiteCheck, startIptvSync } from '@/iptv';
 import { startMemProbe } from '@/platform/mem-probe';
+import { startDiagLog } from '@/lib/diag-store';
+import { storage } from '@/storage/kv';
 import { installAppContextMenu } from '@/components/context-menu';
 import { isDesktop } from '@/platform/desktop';
 import { setLiteCheck } from '@/platform/lite-flag';
@@ -117,6 +119,8 @@ function Root({ session }: { session: boolean }) {
   useEffect(() => startOtaChecks(), []);
   // EXPO_PUBLIC_MEM_PROBE=1 builds only: the JS heap in the device log every 5 s.
   useEffect(() => startMemProbe(), []);
+  // The player log for "Report a problem": on in every build, saved so it survives an app kill.
+  useEffect(() => startDiagLog(storage), []);
   // Lite mode drops the Live TV channel lists when no page uses them (iptv/holds.ts).
   useEffect(() => {
     setChannelLiteCheck(liteNow);

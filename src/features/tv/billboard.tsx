@@ -6,6 +6,8 @@
  * item or backdrop. The art keeps its 16:9 shape from the top: its
  * lower part runs on under the first row and fades into the page, so the
  * billboard's short box never crops the top of a backdrop.
+ *
+ * TV Modern look: the same rules, drawn full bleed by `billboard-modern.tsx`.
  */
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,6 +32,7 @@ import { usePlayer } from '@/player';
 import { previewBufferOptions } from '@/player/buffer-ahead';
 import { mediaCapabilities } from '@/player/capabilities';
 import { useLite } from '@/platform/use-lite';
+import { isTvModern } from '@/platform/tv-look-now';
 import { usePlayerStore } from '@/player/store';
 import { usePlaybackSettings } from '@/settings/playback';
 import {
@@ -43,18 +46,24 @@ import {
   sizes,
   spacing,
   tv,
+  tvm,
   type,
+  u,
   useLayout,
   useStyles,
   useTheme,
   withAlpha,
 } from '@/theme';
 
+import { MODERN_LOGO, ModernBillboard, modernArtBox, modernArtRequest, modernBillboardHeight, ModernTitleText } from './billboard-modern';
 import { noteHomeMove, setPreviewPause, useTvChrome } from './chrome-store';
 import { tvFocusRest } from './focus-settle';
 import { PREVIEW_DELAY_MS, PREVIEW_LENGTH_MS, previewPlayable, previewStart, previewUrl } from './preview';
 import { TvRowScroll, useRowFade } from './shelf';
 import { TvButton } from './tv-button';
+
+/** The Modern drawing (billboard-modern.tsx). Fixed per run, like the look. */
+const MODERN = isTvModern;
 
 interface BillboardState {
   item: BaseItemDto | null;
@@ -80,6 +89,7 @@ export function showOnBillboard(item: BaseItemDto): void {
 
 /** The billboard height for a window height. */
 export function billboardHeight(windowHeight: number): number {
+  if (MODERN) return modernBillboardHeight(windowHeight);
   return Math.round(windowHeight * tv.billboardFactor);
 }
 
@@ -116,14 +126,17 @@ export function Billboard() {
   const item = full.data?.Id === shown?.Id ? (full.data ?? shown) : shown;
   const height = billboardHeight(l.height);
   const width = l.contentWidth;
-  const artW = Math.round(width * 0.72);
-  const artH = Math.round((artW * 9) / 16);
+  // Modern: the art fills the whole width from the top (full bleed, under the rail).
+  const modernBox = MODERN ? modernArtBox(l.width, l.height) : null;
+  const artW = modernBox ? modernBox.width : Math.round(width * 0.72);
+  const artH = modernBox ? modernBox.height : Math.round((artW * 9) / 16);
   const server = useImageServer();
   // One backdrop at the size it shows (capped), so a focus move loads a small image. Lite mode: 1x (a
   // backdrop under a dark fade loses nothing at TV distance; about half the bytes of 1.5x).
   const lite = useLite();
   const scale = lite ? 1 : Math.min(PixelRatio.get(), 1.5);
-  const art = item ? resolveImage(item, 'backdrop', { width: Math.round(artW * scale), height: Math.round(artH * scale) }, server) : null;
+  const request = modernBox ? modernArtRequest(modernBox, PixelRatio.get(), lite) : { width: Math.round(artW * scale), height: Math.round(artH * scale) };
+  const art = item ? resolveImage(item, 'backdrop', request, server) : null;
   // A movie or show with no wide art falls back to its tall poster: show all of it at the edge, not a slice.
   const tall = art?.kind === 'remote' && item?.Type !== 'Episode' && (art.source === 'Primary' || art.source === 'SeriesPrimary');
 
@@ -132,34 +145,40 @@ export function Billboard() {
   useLayoutEffect(() => {
     if (reduced || !shownId) return;
     opacity.set(0);
-    opacity.set(withTiming(1, { duration: motion.duration.base }));
+    opacity.set(withTiming(1, { duration: MODERN ? tvm.motion.text : motion.duration.base }));
   }, [shownId, reduced, opacity]);
 
   if (!item) return <View style={{ height }} />;
   const title = (item.Type === 'Episode' ? item.SeriesName : null) ?? item.Name ?? '';
   const meta = metaLine(item);
   const rated = item.Type === 'Episode' ? null : (item.OfficialRating ?? null);
+  const artImage = (
+    <>
+      {art?.kind === 'remote' ? (
+        <Image
+          source={imageSource(art.uri, server)}
+          style={StyleSheet.absoluteFill}
+          contentFit={tall ? 'contain' : 'cover'}
+          contentPosition={tall ? 'right top' : 'top'}
+          transition={MODERN ? tvm.motion.backdrop : motion.duration.base}
+          decodeFormat={lite ? 'rgb' : 'argb'}
+          cachePolicy="memory-disk"
+          priority="high"
+        />
+      ) : (
+        <ItemImage item={item} variant="backdrop" width={artW} aspectRatio={modernBox ? artW / artH : 16 / 9} rounded={0} hideArtTitle hairline={false} />
+      )}
+      {/* After a rest, a clip of the title fades in over the art (under the fades, like the art). */}
+      <BillboardPreview item={item} />
+    </>
+  );
+  if (modernBox) {
+    return <ModernBillboard item={item} height={height} art={artImage} artBox={modernBox} title={<Title item={item} title={title} />} fade={fade} />;
+  }
   return (
     <View style={[s.root, { height }]} accessibilityLiveRegion="polite">
       {/* No key: the old backdrop stays until the new one has loaded, then cross-fades. */}
-      <View style={[s.art, { width: artW, height: artH }]}>
-        {art?.kind === 'remote' ? (
-          <Image
-            source={imageSource(art.uri, server)}
-            style={StyleSheet.absoluteFill}
-            contentFit={tall ? 'contain' : 'cover'}
-            contentPosition={tall ? 'right top' : 'top'}
-            transition={motion.duration.base}
-            decodeFormat={lite ? 'rgb' : 'argb'}
-            cachePolicy="memory-disk"
-            priority="high"
-          />
-        ) : (
-          <ItemImage item={item} variant="backdrop" width={artW} aspectRatio={16 / 9} rounded={0} hideArtTitle hairline={false} />
-        )}
-        {/* After a rest, a clip of the title fades in over the art (under the fades, like the art). */}
-        <BillboardPreview item={item} />
-      </View>
+      <View style={[s.art, { width: artW, height: artH }]}>{artImage}</View>
       {/*
         The art fades into the page on the left and at the bottom. Each fade covers only the strip of
         the art it fades: a TV GPU fills few pixels a second, and full-screen fades cost frames.
@@ -221,15 +240,16 @@ function Title({ item, title }: { item: BaseItemDto; title: string }) {
       : null;
   const uri =
     logo && server
-      ? buildImageUrl(server, { itemId: logo.id, type: 'Logo', tag: logo.tag, width: scaled(sizes.logoMaxWidth) * PixelRatio.get() })
+      ? buildImageUrl(server, { itemId: logo.id, type: 'Logo', tag: logo.tag, width: (MODERN ? MODERN_LOGO.width : scaled(sizes.logoMaxWidth)) * PixelRatio.get() })
       : null;
   if (uri && failed !== uri) {
     return (
-      <View style={s.logoBox} accessible accessibilityRole="header" accessibilityLabel={title}>
+      <View style={MODERN ? MODERN_LOGO : s.logoBox} accessible accessibilityRole="header" accessibilityLabel={title}>
         <Image source={imageSource(uri, server)} style={s.logo} contentFit="contain" contentPosition="left" onError={() => setFailed(uri)} />
       </View>
     );
   }
+  if (MODERN) return <ModernTitleText title={title} />;
   return (
     <Text style={[s.title, scriptStyle(title, s.title, true)]} numberOfLines={2} accessibilityRole="header">
       {title}
@@ -286,9 +306,13 @@ export function HomeHero() {
     useBillboardStore.setState({ item });
     page?.scrollTo(row.current);
   };
+  // Modern: Play (or Resume) is the Ember primary action, 22 u under the billboard, and "More info" a text action 24 u after it.
+  const rowStyle = MODERN
+    ? { flexDirection: 'row' as const, gap: u(24), paddingHorizontal: l.gutter, paddingTop: u(22) }
+    : { flexDirection: 'row' as const, gap: spacing.md, paddingHorizontal: l.gutter, paddingTop: spacing.sm };
   return (
-    <Animated.View ref={row} style={[{ flexDirection: 'row', gap: spacing.md, paddingHorizontal: l.gutter, paddingTop: spacing.sm }, fade.style]}>
-      <TvButton label={label} icon="play.fill" progress={resumed ? playedFraction(item) : null} firstFocus onFocus={onFocus} onPress={() => void player.play({ item })} />
+    <Animated.View ref={row} style={[rowStyle, fade.style]}>
+      <TvButton label={label} icon="play.fill" variant="primary" progress={resumed ? playedFraction(item) : null} firstFocus onFocus={onFocus} onPress={() => void player.play({ item })} />
       <TvButton label="More info" icon="info.circle" onFocus={onFocus} onPress={() => open(item)} />
     </Animated.View>
   );
@@ -385,7 +409,8 @@ function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
     <Animated.View style={[StyleSheet.absoluteFill, style]} pointerEvents="none">
       <VideoView
         player={player}
-        style={StyleSheet.absoluteFill}
+        // The size too: on the web the view is a <video>, which keeps its own size (640 x 480) with only the edges set.
+        style={previewStyles.video}
         contentFit="cover"
         nativeControls={false}
         // A TextureView, so the clip can fade in over the art (a SurfaceView ignores the opacity).
@@ -397,6 +422,8 @@ function PreviewVideo({ itemId, start }: { itemId: string; start: number }) {
     </Animated.View>
   );
 }
+
+const previewStyles = StyleSheet.create({ video: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' } });
 
 /** True inside the TV Home rows: their tiles show only art and report focus to the billboard. */
 export const BillboardRows = createContext(false);
