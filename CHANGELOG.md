@@ -13,6 +13,12 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Control Zoggyfin on a TV from your phone.** Zoggyfin on Android TV, Fire TV, the Mac app and a
+  desktop browser now accepts remote control through your Jellyfin server. From a phone ("Play
+  on…" and the Remote screen) or the Jellyfin web client of the same account you can start a film,
+  an episode or music, pause, seek, skip, stop, mute, change the audio and subtitle track and show
+  a message. The Mac app and the browser also take the volume; a TV keeps its hardware volume.
+  Phones and tablets are never controlled.
 - **Volume in the app (web and Mac app).** Music and video share one volume with a mute switch,
   saved on the device. Now Playing has a volume row under the controls, the video player has a
   speaker button and a slider beside the times, and the wide mini player has a small one. In the

@@ -77,6 +77,7 @@ All app code is in `src/`. The path alias `@/` points to `src/` (`tsconfig.json`
 | `src/player/` | Video session, engines, stream plan, device profile, progress reporter. `audio/` is the music player |
 | `src/downloads/` | Download manager, state machine, engines, files, offline outbox, record migrations |
 | `src/together/` | Watch and listen together: nearby mode and Jellyfin SyncPlay |
+| `src/remote-target/` | Remote control target: this TV, Mac app or desktop browser obeys the user's other clients through the server (section 2.6a) |
 | `src/extensions/` | The data-only extension runtime (manifests, actions, Home rows, panels, share targets) |
 | `src/registry/` | Small ordered registries: item actions, Home sections and music Home sections |
 | `src/features/` | Feature UI and logic, one folder per feature (see below) |
@@ -191,6 +192,16 @@ Play → session.ts finds the completed record (local.ts) → plays the file →
 - `rendezvous.ts` + `rendezvous-crypto.ts`: the BLE rendezvous (X25519, cipher primitives in `rendezvous-cipher.ts` with @noble, `rendezvous-cipher.ios.ts` with CryptoKit). Both must give the same bytes as `__tests__/rendezvous-vectors.json`.
 - Player bindings: `player-binding.ts`, `player-port.ts`, `audio-binding.ts`.
 - Test helpers: `test-utils/fake-link.ts` (in-memory network) and `test-utils/sim.ts` (virtual clock).
+
+### 2.6a Remote control target (`src/remote-target/`)
+
+The controller side is `features/remote/` ("Play on…", the Remote screen). This area is the other end: Zoggyfin as the device that is controlled.
+
+- `rules.ts` (pure, tested): `targetSupport` (TV, the Mac app, a desktop browser or the web TV preview; never a phone, a tablet or a touch-only browser), `supportedCommands` / `capabilitiesFor` (volume commands only with the app volume, `features.inAppVolume`; mute everywhere), `parseMessage` (socket message → `RemoteAction`; another user's command and unknown commands give null; the empty controller Id of `POST /Sessions/{id}/Message` counts as no user named), `playPlan` (what a `Play` does with the fetched items).
+- `index.ts` (I/O): `startRemoteTarget()` from the root layout. While signed in it subscribes to `Play`, `Playstate` and `GeneralCommand` (`jf.subscribeRemoteCommands`), which keeps the server socket open, and posts the capabilities (`jf.postCapabilities`) on sign-in, account switch, foreground, when the server answers again and on every socket (re)connect (`jf.onSocketOpen`: a new socket can be a new server session). Sign-out and account switch unsubscribe and cancel a pending Play (`createGate`).
+- Commands go through `@/player` only: `playerController().play` (the play router applies), `queueHere`, `activePlayback` (pause, resume, seek, next, previous, skip, `setMuted`, `selectTrack`, `stopAndClose`), and `settings/volume.ts` for the app volume. The control gate of a together session applies as for a local press.
+- The server session state the controller reads comes from the progress reports: `CanSeek`, `IsPaused`, `IsMuted`, `VolumeLevel` (app volume only) and `NowPlayingQueue` (`reportedVolume` in `player/volume.ts`). A pause, seek or mute reports at once; an app volume change reports 500 ms after the last move.
+- The player log gets `diag('remote', …)` with command names and short ids only.
 
 ### 2.7 Extensions and registries (`src/extensions/`, `src/registry/`)
 
@@ -339,6 +350,7 @@ The "Manual check" column lists what unit tests cannot see. The `verify-change` 
 | `src/extensions/store.ts`, `migrate.ts`, `sync/` (list per account in MMKV `extensions.v2`, from `extensions.v1`; ledger `extensions.sync.<serverId>.<userId>`; blob in DisplayPreferences `zoggyfin-extensions`, keys `ext.parts` and `ext.<n>`) | `src/extensions/__tests__/` (migrate, store-accounts, registration, saved-tasks, sync-blob) | Every installed extension on every device; account switch | An upgrade with extensions installed keeps them on each saved account; two accounts keep their own lists; two browser contexts as the same user: an extension added in one is offered once in the other ("Not now" does not come back), a removal goes from both. Remove the blob you wrote on a shared server (`/DisplayPreferences/zoggyfin-extensions?client=zoggyfin`, send empty CustomPrefs) |
 | `src/registry/`, `src/features/actions/`, `src/features/home/` | `src/registry/__tests__/registry.test.ts` | Action sheet, Home, extensions | Open the action sheet on a movie, an episode, an album, a playlist; Home rows appear in order |
 | `src/invite/`, `site/public/join` | `src/invite/__tests__/` (payload, join, join-page, policy, records, cleanup, addresses, qr) | Accept-invite flow, admin, extensions | Create an invite as admin, open the link, paste invite, set a password |
+| `src/remote-target/`, `postCapabilities` / `subscribeRemoteCommands` / `onSocketOpen` in `src/api/jellyfin.ts`, `activePlayback` in `src/player/index.ts` | `src/remote-target/__tests__/rules.test.ts`, `src/player/__tests__/progress-reporter.test.ts`, `volume.test.ts` | Video and music player, progress reports, the app volume | Web (`?tv=1` and plain) signed in to the demo server; from a second session of the same user (curl with a token or the Jellyfin web client): `GET /Sessions` shows the web session with `SupportsRemoteControl: true`; `POST /Sessions/{id}/Playing`, `/Playing/Pause`, `/Playing/Seek`, `/Command/ToggleMute`, `/Message` act and the next `GET /Sessions` shows the new state. A phone build never lists itself. Fast Refresh adds a second socket listener: reload the page before you test |
 | `src/features/remote/`, remote calls in `src/api/jellyfin.ts` | `src/features/remote/__tests__/logic.test.ts` | Item action sheet (Play on…), profile menu | Web or phone with a second client signed in as the same user (the Jellyfin web client works): Play on…, then pause, seek, volume, stop from the Remote screen; phone and iPad width; TV preview hides it |
 | `src/features/admin/` | `src/features/admin/__tests__/` | none | Dev builds: Settings, Development, "Admin fixture data" (web: `?adminFixtures=1`) |
 | `src/features/*` with pure logic | The `__tests__/` folder of that feature | The screens of that feature | The screens on phone, iPad width and web |
