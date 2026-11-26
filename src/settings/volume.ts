@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 
 import { features } from '@/platform/tv';
-import { audibleLevel, readVolume, savedVolume, stepVolume, toggleMute, type VolumeState, withLevel } from '@/player/volume';
+import { audibleLevel, readVolume, reportedVolume, savedVolume, stepVolume, toggleMute, type VolumeState, withLevel } from '@/player/volume';
 import { readJson, writeJson } from '@/storage/json';
 
 const KEY = 'settings.volume';
@@ -48,6 +48,18 @@ export function stepAppVolume(steps: number): void {
 /** The speaker button. */
 export function toggleAppMute(): void {
   apply(toggleMute(useVolume.getState()));
+}
+
+/** Remote control: Mute, Unmute. */
+export function setAppMuted(muted: boolean): void {
+  const cur = useVolume.getState();
+  if (muted) apply({ ...cur, muted: true });
+  else if (cur.muted || cur.level === 0) apply(toggleMute(cur));
+}
+
+/** The mute and volume for a progress report; `playerMuted` is the player's own mute. */
+export function reportVolume(playerMuted: boolean): { isMuted: boolean; volumeLevel: number | null } {
+  return reportedVolume(features.inAppVolume ? useVolume.getState() : null, playerMuted);
 }
 
 /** The level that plays now (0 when muted). Always 1 where the app has no volume of its own. */

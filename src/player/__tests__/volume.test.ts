@@ -5,6 +5,7 @@ import {
   elementGain,
   mpvVolume,
   readVolume,
+  reportedVolume,
   savedVolume,
   stepVolume,
   toggleMute,
@@ -96,5 +97,18 @@ describe('app volume', () => {
     expect(readVolume({ version: 1, level: 0.3, muted: true })).toEqual({ level: 0.3, muted: true });
     expect(readVolume({ version: 1, level: 7, muted: 'yes' })).toEqual({ level: 1, muted: false });
     expect(readVolume(savedVolume({ level: 0.25, muted: false }))).toEqual({ level: 0.25, muted: false });
+  });
+});
+
+describe('reportedVolume', () => {
+  it('reports the app volume where the app has one', () => {
+    expect(reportedVolume({ level: 0.4, muted: false }, false)).toEqual({ isMuted: false, volumeLevel: 40 });
+    expect(reportedVolume({ level: 0.4, muted: true }, false)).toEqual({ isMuted: true, volumeLevel: 40 });
+    expect(reportedVolume({ level: 0, muted: false }, false)).toEqual({ isMuted: true, volumeLevel: 0 });
+  });
+
+  it('reports only the player mute where the hardware sets the volume', () => {
+    expect(reportedVolume(null, true)).toEqual({ isMuted: true, volumeLevel: null });
+    expect(reportedVolume(null, false)).toEqual({ isMuted: false, volumeLevel: null });
   });
 });

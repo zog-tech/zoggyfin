@@ -24,6 +24,7 @@ import { diag } from '@/lib/diag-store';
 import { isOffline } from '@/lib/online';
 import { toast } from '@/lib/toast';
 import { bitrateFor, skipChoices, usePlaybackSettings } from '@/settings/playback';
+import { reportVolume } from '@/settings/volume';
 
 import { mediaCapabilities } from './capabilities';
 import { controlGate, togglePauses } from './control-gate';
@@ -465,13 +466,15 @@ class VideoSession {
 
   private snapshot = () => {
     const st = playerState();
+    const ids = [st.now?.item.Id, st.now?.next?.Id].filter((id): id is string => !!id);
     return {
       positionTicks: secondsToTicks(this.engine.position || st.position),
       isPaused: !st.playing,
-      isMuted: st.muted,
+      ...reportVolume(st.muted),
       playbackRate: st.rate,
       audioStreamIndex: st.now?.plan.audioIndex ?? null,
       subtitleStreamIndex: st.now?.plan.subtitleIndex ?? null,
+      queue: ids,
     };
   };
 
@@ -1407,9 +1410,20 @@ class VideoSession {
   }
 
   toggleMuted(): void {
-    const muted = !playerState().muted;
+    this.setMuted(!playerState().muted);
+  }
+
+  /** The player's own mute (phones and TVs; the web and the Mac app use the app volume). */
+  setMuted(muted: boolean): void {
+    if (muted === playerState().muted) return;
     this.engine.setMuted(muted);
     setPlayerState({ muted });
+    this.reporter?.tick('VolumeChange');
+  }
+
+  /** A progress report now (a remote controller waits for the new state). */
+  reportNow(event: 'VolumeChange' | 'TimeUpdate' = 'TimeUpdate'): void {
+    this.reporter?.tick(event);
   }
 
   startPip(): void {

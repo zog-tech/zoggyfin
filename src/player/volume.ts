@@ -59,6 +59,17 @@ export function audibleLevel(state: VolumeState): number {
   return state.muted ? 0 : clampVolume(state.level);
 }
 
+/**
+ * The mute and volume a progress report carries (the remote controller reads
+ * them). With the app's own volume (`app`): its switch and level, 0 to 100.
+ * Without it (phones, TVs): the player's mute, and no level, since the
+ * hardware volume is not the app's to report.
+ */
+export function reportedVolume(app: VolumeState | null, playerMuted: boolean): { isMuted: boolean; volumeLevel: number | null } {
+  if (!app) return { isMuted: playerMuted, volumeLevel: null };
+  return { isMuted: playerMuted || audibleLevel(app) === 0, volumeLevel: Math.round(clampVolume(app.level) * 100) };
+}
+
 /** The gain of an HTML media element (`volume`, linear amplitude) for a level: the cubic curve. */
 export function elementGain(level: number): number {
   const l = clampVolume(level);
