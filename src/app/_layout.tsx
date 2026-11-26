@@ -34,6 +34,7 @@ import { audioSession } from '@/player/audio/session';
 import '@/invite/wiring';
 import { useInviteLinks } from '@/invite/use-invite-links';
 import { setChannelLiteCheck, startIptvSync } from '@/iptv';
+import { startRemoteTarget } from '@/remote-target';
 import { startMemProbe } from '@/platform/mem-probe';
 import { startDiagLog } from '@/lib/diag-store';
 import { storage } from '@/storage/kv';
@@ -140,6 +141,8 @@ function Root({ session }: { session: boolean }) {
     audioSession().restore();
     // Live TV in the Jellyfin account: pull the setup now and follow account switches.
     startIptvSync();
+    // TV, the Mac app and desktop browsers: accept remote control from the user's other clients.
+    startRemoteTarget();
   }, [session]);
   return (
           <View style={[styles.flex, { backgroundColor: isTV ? TV_PAGE_BG : c.bg }]}>

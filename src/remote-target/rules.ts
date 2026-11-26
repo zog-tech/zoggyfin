@@ -89,7 +89,8 @@ export function capabilitiesFor(s: TargetSupport, persistentId: boolean): Target
 export type PlayCommand = 'PlayNow' | 'PlayNext' | 'PlayLast' | 'PlayInstantMix' | 'PlayShuffle';
 
 export type RemoteAction =
-  | { kind: 'play'; command: PlayCommand; itemIds: string[]; startIndex: number; startPositionTicks: number | undefined }
+  /** `startPositionTicks` 0 is the beginning, as on the Jellyfin clients: a resume sends its position. */
+  | { kind: 'play'; command: PlayCommand; itemIds: string[]; startIndex: number; startPositionTicks: number }
   | { kind: 'stop' }
   | { kind: 'pause' }
   | { kind: 'unpause' }
@@ -132,11 +133,16 @@ function int(v: unknown): number | null {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
-/** True when the controller is this user, or the server did not say who it is. */
+/**
+ * True when the controller is this user, or the server did not say who it is
+ * (no Id, or the empty Id: `POST /Sessions/{id}/Message` sends all zeros).
+ */
 function fromSameUser(data: Record<string, unknown>, ownUserId: string): boolean {
   const by = data.ControllingUserId;
   if (typeof by !== 'string' || !by) return true;
-  return normalizeId(by) === normalizeId(ownUserId);
+  const id = normalizeId(by);
+  if (/^0+$/.test(id)) return true;
+  return id === normalizeId(ownUserId);
 }
 
 /** The action of one socket message, or null (another type, another user, bad data). */
@@ -166,7 +172,7 @@ function parsePlay(d: Record<string, unknown>): RemoteAction | null {
     command,
     itemIds: ids,
     startIndex: start !== null && start >= 0 && start < ids.length ? start : 0,
-    startPositionTicks: ticks !== null && ticks > 0 ? ticks : undefined,
+    startPositionTicks: ticks !== null && ticks > 0 ? ticks : 0,
   };
 }
 
@@ -264,8 +270,8 @@ export function orderByIds<T extends PlanItem>(items: readonly T[], ids: readonl
 const CONTAINERS = new Set(['MusicAlbum', 'MusicArtist', 'MusicGenre', 'Playlist', 'Series', 'Season', 'BoxSet', 'Folder', 'CollectionFolder']);
 
 export type PlayPlan<T> =
-  | { kind: 'audio'; item: T; list: T[] | null; index: number; shuffle: boolean; startPositionTicks: number | undefined }
-  | { kind: 'video'; item: T; queue: T[]; startPositionTicks: number | undefined }
+  | { kind: 'audio'; item: T; list: T[] | null; index: number; shuffle: boolean; startPositionTicks: number }
+  | { kind: 'video'; item: T; queue: T[]; startPositionTicks: number }
   | { kind: 'queue'; how: 'next' | 'last'; items: T[] }
   | { kind: 'mix'; item: T }
   | { kind: 'refuse'; text: string }
@@ -299,7 +305,7 @@ export function playPlan<T extends PlanItem>(
   if (command === 'PlayInstantMix') return { kind: 'mix', item };
 
   if (command === 'PlayNext' || command === 'PlayLast') {
-    if (nowKind === null) return playNow(items, index, audio, false, undefined);
+    if (nowKind === null) return playNow(items, index, audio, false, 0);
     if (nowKind === 'audio' && audio) return { kind: 'queue', how: command === 'PlayNext' ? 'next' : 'last', items: items.filter((i) => isAudio(i)) };
     return { kind: 'refuse', text: 'This device can add only music to the queue that plays.' };
   }
@@ -307,7 +313,7 @@ export function playPlan<T extends PlanItem>(
   return playNow(items, index, audio, command === 'PlayShuffle', action.startPositionTicks);
 }
 
-function playNow<T extends PlanItem>(items: readonly T[], index: number, audio: boolean, shuffle: boolean, ticks: number | undefined): PlayPlan<T> {
+function playNow<T extends PlanItem>(items: readonly T[], index: number, audio: boolean, shuffle: boolean, ticks: number): PlayPlan<T> {
   const item = items[index] as T;
   if (audio) {
     // A list of songs: Previous and the queue know what came before. A container expands in the player.

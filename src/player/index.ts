@@ -100,7 +100,64 @@ export const activePlayback = {
     if (playerState().now?.kind === 'audio') audioSession().skip(seconds);
     else videoSession().skip(seconds);
   },
+  pause(): void {
+    if (playerState().now?.kind === 'audio') audioSession().pause();
+    else videoSession().pause();
+  },
+  resume(): void {
+    if (playerState().now?.kind === 'audio') audioSession().resume();
+    else videoSession().play_();
+  },
+  seekTo(seconds: number): void {
+    if (playerState().now?.kind === 'audio') audioSession().seekTo(seconds);
+    else videoSession().seekTo(seconds);
+  },
+  /** The player's own mute (where the app has no volume of its own). `toggle` flips it. */
+  setMuted(muted: boolean | 'toggle'): void {
+    const next = muted === 'toggle' ? !playerState().muted : muted;
+    if (playerState().now?.kind === 'audio') audioSession().setMuted(next);
+    else videoSession().setMuted(next);
+  },
+  /** A progress report now, so a remote controller sees a change at once (the app volume). */
+  reportNow(event: 'VolumeChange' | 'TimeUpdate' = 'TimeUpdate'): void {
+    const now = playerState().now;
+    if (!now) return;
+    if (now.kind === 'audio') audioSession().reportNow(event);
+    else videoSession().reportNow(event);
+  },
+  /** Stop from outside the player (a remote controller): the full-screen video player closes too. */
+  async stopAndClose(): Promise<void> {
+    if (playerState().now?.kind === 'audio') await audioSession().stop();
+    else await stopVideoForAudio();
+  },
+  /**
+   * A server item's audio or subtitle track (Jellyfin stream index; null
+   * turns subtitles off). Live channels and external titles have no
+   * Jellyfin indexes, so they ignore it.
+   */
+  selectTrack(kind: 'audio' | 'subtitle', index: number | null): void {
+    const now = playerState().now;
+    if (now?.kind !== 'video' || now.live || now.external) return;
+    if (kind === 'audio') {
+      if (index !== null) void videoSession().selectAudio(index);
+    } else void videoSession().selectSubtitle(index);
+  },
 };
+
+/**
+ * Adds items to the music queue in order, one after another (a remote
+ * controller's Play next or Play last). In a together session the queue may
+ * be locked; the device then says why.
+ */
+export async function queueHere(items: BaseItemDto[], how: 'next' | 'last'): Promise<void> {
+  if (!queueAllowed()) return;
+  // Each Play next goes right after the song that plays, so the last one goes first.
+  const ordered = how === 'next' ? [...items].reverse() : items;
+  for (const item of ordered) {
+    if (how === 'next') await audioSession().playNext(item);
+    else await audioSession().addToQueue(item);
+  }
+}
 
 /**
  * Audio takes over from video: the video stops, and its full-screen player
@@ -237,5 +294,10 @@ const controller: PlayerController = {
 };
 
 export function usePlayer(): PlayerController {
+  return controller;
+}
+
+/** The same controller outside React (the remote control target). */
+export function playerController(): PlayerController {
   return controller;
 }

@@ -72,7 +72,7 @@ describe('parseMessage', () => {
       command: 'PlayNow',
       itemIds: ['a'],
       startIndex: 0,
-      startPositionTicks: undefined,
+      startPositionTicks: 0,
     });
   });
 
@@ -126,6 +126,11 @@ describe('parseMessage', () => {
   it('takes commands from the same user only, in any Id form', () => {
     expect(msg('Playstate', { Command: 'Pause', ControllingUserId: 'AAAABBBB-CCCC-DDDD-1111-222233334444' })).toEqual({ kind: 'pause' });
     expect(msg('Playstate', { Command: 'Pause', ControllingUserId: 'ffff0000ffff0000ffff0000ffff0000' })).toBeNull();
+    // The server's message endpoint names no user.
+    expect(msg('GeneralCommand', { Name: 'DisplayMessage', ControllingUserId: '00000000000000000000000000000000', Arguments: { Text: 'Hi' } })).toEqual({
+      kind: 'message',
+      text: 'Hi',
+    });
   });
 });
 
@@ -148,7 +153,7 @@ describe('playPlan', () => {
     command: 'PlayNow',
     itemIds,
     startIndex: 0,
-    startPositionTicks: undefined,
+    startPositionTicks: 0,
     ...extra,
   });
 
@@ -181,7 +186,7 @@ describe('playPlan', () => {
       list: null,
       index: 0,
       shuffle: true,
-      startPositionTicks: undefined,
+      startPositionTicks: 0,
     });
   });
 
