@@ -13,6 +13,10 @@ first commit to today. All of it was built in the first weeks of the project.
 
 ### Added
 
+- **Like from the mini player.** While a song plays, the mini player has a heart next to play
+  and next, on phones, iPad, the web and the Mac app (also in the compact bar under the iOS 26
+  tab bar). It is the same Like as the full player, so the heart agrees everywhere and the song
+  shows in Liked Songs. Live channels and extension media have no heart.
 - **Volume in the app (web and Mac app).** Music and video share one volume with a mute switch,
   saved on the device. Now Playing has a volume row under the controls, the video player has a
   speaker button and a slider beside the times, and the wide mini player has a small one. In the
@@ -383,6 +387,13 @@ first commit to today. All of it was built in the first weeks of the project.
 - A saved server stays one entry when its address or its Id changes.
 
 ### Fixed
+
+- **iPhone: a song that would not start until play was pressed again.** The app sends play
+  before a song is ready. Once the song turned ready, the iOS player could keep waiting to play
+  (more often on a weak connection) and sent no status while it waited, so the app's start check
+  kept waiting too, and the song sat at 0:00 until the user pressed play. The check now looks at
+  the player on a timer and plays again when a ready song still has no sound after 3 s, up to 3
+  times, only before the first sound. JavaScript only; ships over the air.
 
 - **"Add to playlist" in the music player froze the app (iOS).** The sheet belongs to the app
   root, and iOS does not let the root show a sheet over the music player. The sheet stayed
