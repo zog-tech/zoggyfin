@@ -6,6 +6,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { Icon } from '@/components/icon';
 import { ChannelLogo } from '@/features/iptv/channel-logo';
+import { useLike } from '@/features/music-player/use-like';
 import { TogetherChip } from '@/features/together/together-pill';
 import { ItemImage } from '@/components/item-image';
 import { Touchable } from '@/components/touchable';
@@ -30,8 +31,10 @@ export function useMiniPlayerVisible(): boolean {
 }
 
 /**
- * The mini player (design-system §7.2): art, title, play/pause, next (audio) and
- * close (video, web and TV; phone audio stops with a swipe down), with a 2 pt progress line. Tap or swipe up opens the full player.
+ * The mini player (design-system §7.2): art, title, Like (a Jellyfin song),
+ * play/pause, next (audio) and close (video, web and TV; phone audio stops
+ * with a swipe down), with a 2 pt progress line. Tap or swipe up opens the
+ * full player. The heart is the players' Like (use-like.ts), so the three agree.
  * `inline` is the compact iOS 26 accessory placement.
  */
 export function MiniPlayer({ inline = false, floating = false }: { inline?: boolean; floating?: boolean }) {
@@ -52,6 +55,9 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
   }));
 
   const isAudio = usePlayerStore((s) => s.now?.kind === 'audio');
+  // Only a Jellyfin song has a like: not a live channel or an extension's media.
+  const likeable = isAudio && !now?.live && !now?.external && !!now?.item.Id;
+  const like = useLike(likeable ? now?.item : undefined);
   const rules = { isAudio, web: Platform.OS === 'web', tv: isTV };
   const dismissable = canSwipeDismiss(rules);
   const dismiss = () => {
@@ -147,6 +153,21 @@ export function MiniPlayer({ inline = false, floating = false }: { inline?: bool
         </Animated.View>
       </Touchable>
       <TogetherChip iconOnly={inline || narrow} />
+      {likeable ? (
+        <Touchable
+          radius={inline ? 16 : 22}
+          onPress={() => {
+            if (Platform.OS !== 'web') void Haptics.selectionAsync();
+            void like.toggle();
+          }}
+          hitSlop={inline ? 4 : 6}
+          style={inline ? styles.buttonSmall : styles.button}
+          accessibilityRole="button"
+          accessibilityState={{ selected: like.liked }}
+          accessibilityLabel={like.liked ? 'Unlike' : 'Like'}>
+          <Icon name={like.liked ? 'heart.fill' : 'heart'} size={inline ? iconSize.sm : iconSize.md - 2} color={like.liked ? c.accent : c.text} />
+        </Touchable>
+      ) : null}
       <Touchable radius={22} onPress={toggle} hitSlop={6} style={styles.button} accessibilityRole="button" accessibilityLabel={showsPause ? 'Pause' : 'Play'}>
         <Icon name={showsPause ? 'pause.fill' : 'play.fill'} size={iconSize.md} color={c.text} weight="semibold" />
       </Touchable>
