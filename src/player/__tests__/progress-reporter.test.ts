@@ -1,4 +1,4 @@
-import { type PlaybackReport, type PlaybackSnapshot, ProgressReporter, type ProgressTransport, secondsToTicks, type Timer } from '../progress-reporter';
+import { type PlaybackReport, type PlaybackSnapshot, ProgressReporter, type ProgressTransport, REPORT_QUEUE_MAX, secondsToTicks, type Timer, toServerReport } from '../progress-reporter';
 
 function fakeTimer() {
   let fn: (() => void) | null = null;
@@ -133,5 +133,37 @@ describe('ProgressReporter', () => {
     r.tick('Seek');
     await r.stop();
     expect(order).toEqual(['start', 'progress', 'stopped']);
+  });
+});
+
+describe('toServerReport', () => {
+  const report: PlaybackReport = {
+    itemId: 'i',
+    mediaSourceId: 'm',
+    playSessionId: null,
+    playMethod: 'DirectPlay',
+    canSeek: true,
+    positionTicks: 10,
+    isPaused: true,
+    isMuted: true,
+    playbackRate: 1,
+    audioStreamIndex: null,
+    subtitleStreamIndex: null,
+  };
+
+  it('carries what a remote controller reads', () => {
+    const body = toServerReport({ ...report, volumeLevel: 42.4, queue: ['a', 'b'] });
+    expect(body).toMatchObject({ CanSeek: true, IsPaused: true, IsMuted: true, VolumeLevel: 42, NowPlayingQueue: [{ Id: 'a' }, { Id: 'b' }] });
+  });
+
+  it('leaves out the volume and queue when they are not known', () => {
+    const body = toServerReport(report);
+    expect(body.VolumeLevel).toBeUndefined();
+    expect(body.NowPlayingQueue).toBeUndefined();
+  });
+
+  it('caps the queue', () => {
+    const queue = Array.from({ length: REPORT_QUEUE_MAX + 20 }, (_, i) => `id${i}`);
+    expect(toServerReport({ ...report, queue }).NowPlayingQueue).toHaveLength(REPORT_QUEUE_MAX);
   });
 });

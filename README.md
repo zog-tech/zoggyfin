@@ -53,7 +53,9 @@ Zoggyfin is not affiliated with the Jellyfin project.
   nearby session with no internet and no server.
 - **Remote control.** Start a film, an episode or music on another Jellyfin app of your account
   with "Play on…", and control it from the Remote screen: play and pause, seek, next and previous,
-  stop, volume and mute. Open it from the profile menu with "Control a device".
+  stop, volume and mute. Open it from the profile menu with "Control a device". Zoggyfin on a TV,
+  the Mac app and a desktop browser can be controlled the same way, from a phone or the Jellyfin
+  web client of the same account.
 - **Live TV (IPTV).** Add an Xtream or M3U provider and watch live channels in the same player.
   Channel groups, favourites, recently watched, search, now and next from the guide, and channel
   up and down. On the plain web, the provider must allow cross-origin requests. Providers and favourites

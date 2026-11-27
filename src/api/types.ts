@@ -21,6 +21,7 @@ export type {
   CodecProfile,
   DeviceProfile,
   DirectPlayProfile,
+  GeneralCommandType,
   LyricDto,
   MediaSegmentDto,
   MediaSourceInfo,

@@ -139,6 +139,7 @@ const EVENT: Record<ProgressEvent, ExternalReportEvent> = {
   Seek: 'seek',
   AudioTrackChange: 'progress',
   SubtitleTrackChange: 'progress',
+  VolumeChange: 'progress',
   Background: 'progress',
 };
 

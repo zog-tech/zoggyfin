@@ -30,7 +30,7 @@ import { isOffline } from '@/lib/online';
 import { randomId } from '@/lib/id';
 import { toast } from '@/lib/toast';
 import { bitrateFor, usePlaybackSettings } from '@/settings/playback';
-import { followAppVolume } from '@/settings/volume';
+import { followAppVolume, reportVolume } from '@/settings/volume';
 import { readJson, writeJson } from '@/storage/json';
 import { storage } from '@/storage/kv';
 
@@ -874,6 +874,20 @@ class AudioSession {
     }
   }
 
+  /** What a progress report carries: the position, the mute and volume, and the queue (the remote's Next and Previous). */
+  private snapshot = () => {
+    const st = playerState();
+    return {
+      positionTicks: secondsToTicks(this.engine.loaded ? this.engine.position : st.position),
+      isPaused: !st.playing,
+      ...reportVolume(this.userMuted),
+      playbackRate: st.rate,
+      audioStreamIndex: null,
+      subtitleStreamIndex: null,
+      queue: audioState().queue.entries.map((e) => e.item.Id),
+    };
+  };
+
   private startReporter(entry: QueueEntry<AudioItem>) {
     // A nearby guest plays the host's queue: its server does not get progress for it.
     if (this.shared && this.sharedNoReports) return;
@@ -883,17 +897,7 @@ class AudioSession {
       // Another server's download: its progress goes only into the outbox, for that server and user.
       const reporter = new ProgressReporter(
         outboxOnly({ serverId: other.serverId, userId: other.userId, runTimeTicks: entry.item.RunTimeTicks ?? null }),
-        () => {
-          const st = playerState();
-          return {
-            positionTicks: secondsToTicks(this.engine.loaded ? this.engine.position : st.position),
-            isPaused: !st.playing,
-            isMuted: false,
-            playbackRate: st.rate,
-            audioStreamIndex: null,
-            subtitleStreamIndex: null,
-          };
-        },
+        this.snapshot,
       );
       reporter.start({ itemId: entry.item.Id, mediaSourceId: entry.item.MediaSources?.[0]?.Id ?? entry.item.Id, playSessionId: null, playMethod: 'DirectPlay', canSeek: true });
       this.reporter = reporter;
@@ -920,17 +924,7 @@ class AudioSession {
     };
     const reporter = new ProgressReporter(
       ids ? withOutbox(base, { serverId: ids.serverId, userId: ids.userId, runTimeTicks: entry.item.RunTimeTicks ?? null }) : base,
-      () => {
-        const st = playerState();
-        return {
-          positionTicks: secondsToTicks(this.engine.loaded ? this.engine.position : st.position),
-          isPaused: !st.playing,
-          isMuted: false,
-          playbackRate: st.rate,
-          audioStreamIndex: null,
-          subtitleStreamIndex: null,
-        };
-      },
+      this.snapshot,
       undefined,
       undefined,
       (e) => console.warn('[audio] progress report failed', describeError(e).title),
@@ -1172,6 +1166,8 @@ class AudioSession {
   async playList(items: BaseItemDto[], startIndex: number, opts: { shuffle: boolean; source: QueueSource | null; longForm: boolean; startSeconds?: number }) {
     const q = playNow(items.map(slimItem), startIndex, { shuffle: opts.shuffle, source: opts.source, repeat: audioState().queue.repeat });
     this.tracks.clear();
+    // A new list starts with sound, like a new video.
+    this.clearMute();
     setAudioState({ queue: q, longForm: opts.longForm, resumedAt: null });
     await this.startCurrent({ autoplay: true, startSeconds: opts.startSeconds });
   }
@@ -1484,6 +1480,8 @@ class AudioSession {
   private groupMuted = false;
   /** The web and the Mac app: the app's volume slider, as an element gain (1 elsewhere). */
   private userVolume = 1;
+  /** The player's own mute (a remote controller on a TV, which has no app volume). */
+  private userMuted = false;
 
   private setSleepVolume(volume: number): void {
     this.sleepVolume = volume;
@@ -1492,7 +1490,27 @@ class AudioSession {
 
   private applyVolume(): void {
     // The mixer multiplies its crossfade gains onto this, so an overlap keeps the user's level.
-    this.engine.setVolume(this.groupMuted ? 0 : volumeProduct(this.userVolume, this.sleepVolume, this.fadeVolume));
+    this.engine.setVolume(this.groupMuted || this.userMuted ? 0 : volumeProduct(this.userVolume, this.sleepVolume, this.fadeVolume));
+  }
+
+  /** The player's own mute. The music keeps playing with no sound. */
+  setMuted(muted: boolean): void {
+    if (muted === this.userMuted) return;
+    this.userMuted = muted;
+    setPlayerState({ muted });
+    this.applyVolume();
+    this.reporter?.tick('VolumeChange');
+  }
+
+  /** A progress report now (a remote controller waits for the new state). */
+  reportNow(event: 'VolumeChange' | 'TimeUpdate' = 'TimeUpdate'): void {
+    this.reporter?.tick(event);
+  }
+
+  private clearMute(): void {
+    if (!this.userMuted) return;
+    this.userMuted = false;
+    this.applyVolume();
   }
 
   // ---- Listen together ---------------------------------------------------------------
@@ -1593,6 +1611,7 @@ class AudioSession {
     await this.finishReporter(this.engine.loaded ? this.engine.position : playerState().position);
     this.engine.unload();
     this.setSleep(sleepOff);
+    this.clearMute();
     const item = playerState().now?.item;
     setAudioState({ ...initialAudioState, queue: { ...initialAudioState.queue, repeat: audioState().queue.repeat } });
     setPlayerState({ ...initialPlayerState });

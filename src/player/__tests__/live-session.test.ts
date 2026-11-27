@@ -49,6 +49,7 @@ jest.mock('../play-router', () => ({ playRouter: { active: false, autoplay: () =
 jest.mock('../control-gate', () => ({ controlGate: { get active() { return mockGate.active; }, intercept: () => false }, togglePauses: (p: boolean) => p }));
 jest.mock('../outbox-transport', () => ({ isForeignDownload: jest.fn(), outboxOnly: jest.fn(), withOutbox: jest.fn() }));
 jest.mock('../track-prefs-store', () => ({ loadTrackPrefs: () => ({}), saveTrackPrefs: jest.fn() }));
+jest.mock('@/settings/volume', () => ({ reportVolume: (muted: boolean) => ({ isMuted: muted, volumeLevel: null }) }));
 jest.mock('@/settings/playback', () => ({ usePlaybackSettings: { getState: () => ({ autoplayNext: true }) }, bitrateFor: () => 0, skipChoices: () => ({}) }));
 
 // eslint-disable-next-line import/first

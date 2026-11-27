@@ -36,6 +36,7 @@ import type {
   AuthenticationResult,
   BaseItemDto,
   BaseItemKind,
+  GeneralCommandType,
   ImageType,
   ItemFields,
   ItemFilter,
@@ -1030,6 +1031,62 @@ export async function remoteSetVolume(api: Api, sessionId: string, volume: numbe
 
 export async function remoteToggleMute(api: Api, sessionId: string): Promise<void> {
   await getSessionApi(api).sendGeneralCommand({ sessionId, command: 'ToggleMute' });
+}
+
+// ---- Remote control target ---------------------------------------------------------
+
+/** What this device accepts as a remote control target (`remote-target/rules.ts` builds it). */
+export interface RemoteTargetCapabilities {
+  PlayableMediaTypes: ('Video' | 'Audio')[];
+  SupportedCommands: string[];
+  SupportsMediaControl: boolean;
+  SupportsPersistentIdentifier: boolean;
+}
+
+/** Tells the server what this session plays and which commands it takes. */
+export async function postCapabilities(api: Api, caps: RemoteTargetCapabilities): Promise<void> {
+  await getSessionApi(api).postFullCapabilities({
+    clientCapabilitiesDto: {
+      PlayableMediaTypes: caps.PlayableMediaTypes,
+      SupportedCommands: caps.SupportedCommands as GeneralCommandType[],
+      SupportsMediaControl: caps.SupportsMediaControl,
+      SupportsPersistentIdentifier: caps.SupportsPersistentIdentifier,
+    },
+  });
+}
+
+/** A remote control message from the server socket. */
+export interface RemoteSocketMessage {
+  MessageType: 'Play' | 'Playstate' | 'GeneralCommand';
+  Data?: unknown;
+}
+
+/**
+ * Listens for remote control commands. The subscription opens the server
+ * socket and keeps it open (the SDK reconnects it), so the session stays
+ * active for the controllers' lists. Returns the unsubscribe; the socket
+ * closes when nothing else listens.
+ */
+export function subscribeRemoteCommands(api: Api, onMessage: (m: RemoteSocketMessage) => void): () => void {
+  return api.subscribe(['Play', 'Playstate', 'GeneralCommand'], (m) => onMessage(m as RemoteSocketMessage));
+}
+
+/**
+ * Calls `onOpen` each time the server socket (re)connects. A new socket can
+ * be a new server session with no capabilities, so the caller posts them
+ * again. The SDK keeps the socket service private; this reads it with a
+ * guard and does nothing when its shape changes. Call it after a subscribe,
+ * which creates the service.
+ */
+export function onSocketOpen(api: Api, onOpen: () => void): () => void {
+  const ws = (api as unknown as { webSocket?: { onStatusChange?: unknown } }).webSocket;
+  if (!ws || typeof ws.onStatusChange !== 'function') return () => undefined;
+  const add = ws.onStatusChange as (fn: (status: unknown) => void) => unknown;
+  const off = add.call(ws, (status: unknown) => {
+    // WebSocket.OPEN
+    if (status === 1) onOpen();
+  });
+  return typeof off === 'function' ? (off as () => void) : () => undefined;
 }
 
 // ---- Playlists -------------------------------------------------------------------

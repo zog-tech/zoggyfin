@@ -5,7 +5,10 @@
  *   idle --start()--> active --stop()--> stopped
  *
  * While active: a progress report every `intervalMs` (10 s), and one at once
- * on pause, resume, seek, track change and when the app goes to the background.
+ * on pause, resume, seek, track change, a volume or mute change and when the
+ * app goes to the background. The report carries what a remote controller
+ * reads from the server session: position, pause, mute, volume, `CanSeek`
+ * and the queue.
  * Transport errors never reach the player; a failed report is retried by the
  * next tick.
  *
@@ -20,6 +23,10 @@ export interface PlaybackSnapshot {
   playbackRate: number;
   audioStreamIndex: number | null;
   subtitleStreamIndex: number | null;
+  /** The app's own volume, 0 to 100; left out where the device uses the hardware volume. */
+  volumeLevel?: number | null;
+  /** The item Ids that play now and next (the remote's Next and Previous need more than one). */
+  queue?: readonly string[] | null;
 }
 
 export interface PlaybackSessionInfo {
@@ -39,7 +46,7 @@ export interface ProgressTransport {
   stopped(report: PlaybackReport): Promise<void>;
 }
 
-export type ProgressEvent = 'TimeUpdate' | 'Pause' | 'Unpause' | 'Seek' | 'AudioTrackChange' | 'SubtitleTrackChange' | 'Background';
+export type ProgressEvent = 'TimeUpdate' | 'Pause' | 'Unpause' | 'Seek' | 'AudioTrackChange' | 'SubtitleTrackChange' | 'VolumeChange' | 'Background';
 
 export interface Timer {
   setInterval(fn: () => void, ms: number): unknown;
@@ -82,7 +89,7 @@ export class ProgressReporter {
     this.handle = this.timer.setInterval(() => this.tick('TimeUpdate'), this.intervalMs);
   }
 
-  /** An immediate progress report: pause, resume, seek, track change, background. */
+  /** An immediate progress report: pause, resume, seek, track change, volume, background. */
   tick(event: ProgressEvent): void {
     if (this.state !== 'active') return;
     this.send((r) => this.transport.progress(r, event));
@@ -115,6 +122,9 @@ export function ticksToSecondsExact(ticks: number | null | undefined): number {
   return ticks ? ticks / 10_000_000 : 0;
 }
 
+/** The queue sent to the server: at most this many items. */
+export const REPORT_QUEUE_MAX = 100;
+
 /** The report body Jellyfin expects. */
 export function toServerReport(r: PlaybackReport) {
   return {
@@ -129,5 +139,7 @@ export function toServerReport(r: PlaybackReport) {
     PlaybackRate: r.playbackRate,
     AudioStreamIndex: r.audioStreamIndex ?? undefined,
     SubtitleStreamIndex: r.subtitleStreamIndex ?? -1,
+    VolumeLevel: typeof r.volumeLevel === 'number' ? Math.round(r.volumeLevel) : undefined,
+    NowPlayingQueue: r.queue?.length ? r.queue.slice(0, REPORT_QUEUE_MAX).map((id) => ({ Id: id })) : undefined,
   };
 }
