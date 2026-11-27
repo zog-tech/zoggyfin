@@ -36,7 +36,7 @@ import { diag } from '@/lib/diag-store';
 
 import { AudioMixer } from './mixer';
 import { type SessionPhase, resumedByItself, transition } from './session-phase';
-import { START_KICK_DELAY_MS, type StartStatus, type StartWatch, startVerdict } from './start-watch';
+import { type StartStatus, type StartWatch, startCheckIn, startVerdict } from './start-watch';
 
 export interface EngineTrack {
   /** The queue entry key. */
@@ -294,12 +294,13 @@ export class AudioEngine {
     });
   }
 
-  /** A status while a start is watched: stop watching once sound came, or play again when the track sits ready and silent. */
+  /** A status while a start is watched: stop watching once sound came, or play again when the track sits ready and silent (or stalled). */
   private watchStart(st: StartStatus) {
     if (st.playing && !st.buffering) this.soundToken = this.loadToken;
     const w = this.start;
     if (!w) return;
     this.startStatus = st;
+    if (st.loaded && w.readyAt == null) w.readyAt = Date.now();
     const verdict = startVerdict(w, st, Date.now());
     if (verdict !== this.logVerdict) {
       this.logVerdict = verdict;
@@ -309,7 +310,13 @@ export class AudioEngine {
       this.clearStart();
       return;
     }
-    if (verdict === 'wait') {
+    this.scheduleStartCheck(w, st);
+  }
+
+  /** Looks at the start again when one is due (start-watch.ts `startCheckIn`); none due cancels the timer. */
+  private scheduleStartCheck(w: StartWatch, st: StartStatus) {
+    const due = startCheckIn(w, st, Date.now());
+    if (due === null) {
       this.cancelStartTimer();
       return;
     }
@@ -317,17 +324,45 @@ export class AudioEngine {
     this.startTimer = setTimeout(() => {
       this.startTimer = null;
       this.kickStart(w);
-    }, START_KICK_DELAY_MS);
+    }, due);
   }
 
-  /** Plays the watched start again, when it still sits ready and silent and nothing replaced it. */
+  /**
+   * The native player's state now. iOS sends no status while it waits to play, so the last
+   * status can be old; null when a property cannot be read (an older binary).
+   */
+  private nativeStatus(p: AudioPlaylist): StartStatus | null {
+    try {
+      const { playing, isBuffering, isLoaded } = p;
+      if (typeof playing !== 'boolean' || typeof isBuffering !== 'boolean' || typeof isLoaded !== 'boolean') return null;
+      return { playing, buffering: isBuffering, loaded: isLoaded, finished: false };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Plays the watched start again, when it still sits ready and silent (or stalled) and nothing replaced it. */
   private kickStart(w: StartWatch) {
     const p = this.playlist;
-    const st = this.startStatus;
-    if (!p || !st || this.start !== w || w.token !== this.loadToken) return;
-    if (startVerdict(w, st, Date.now()) !== 'kick') return;
+    if (!p || this.start !== w || w.token !== this.loadToken) return;
+    const st = this.nativeStatus(p) ?? this.startStatus;
+    if (!st) return;
+    this.startStatus = st;
+    if (st.loaded && w.readyAt == null) w.readyAt = Date.now();
+    const verdict = startVerdict(w, st, Date.now());
+    if (verdict === 'started' || verdict === 'give-up') {
+      if (verdict === 'started') this.soundToken = this.loadToken;
+      this.clearStart();
+      return;
+    }
+    if (verdict !== 'kick') {
+      this.scheduleStartCheck(w, st);
+      return;
+    }
     w.kicks += 1;
-    diag('audio', 'kick', { token: w.token, kicks: w.kicks, phase: this.phase });
+    // A stall is timed from the last play: the next check waits the full stall time again.
+    w.readyAt = Date.now();
+    diag('audio', 'kick', { token: w.token, kicks: w.kicks, phase: this.phase, buffering: st.buffering });
     if (__DEV__) console.log(`[audio] start stayed silent, play again (${w.kicks})`);
     if (guardSession && this.phase === 'lost') {
       // The player stopped by itself: the session may be inactive, so activate it before the play.
@@ -338,6 +373,8 @@ export class AudioEngine {
       return;
     }
     this.playNow(p, 'kick');
+    // iOS may send no status after this play either: look again later.
+    this.scheduleStartCheck(w, st);
   }
 
   private cancelStartTimer() {
@@ -527,7 +564,7 @@ export class AudioEngine {
     // Watch the start until it gives sound (start-watch.ts). A second play of the same start keeps its count.
     const watch = watchStarts && this.soundToken !== this.loadToken && (!this.start || this.start.token !== this.loadToken);
     if (watch) {
-      this.start = { token: this.loadToken, kicks: 0, since: Date.now() };
+      this.start = { token: this.loadToken, kicks: 0, since: Date.now(), readyAt: null };
     }
     diag('audio', 'play-now', { why, token: this.loadToken, watch, loading: this.loading, keys: this.keys.length });
     p.play();
