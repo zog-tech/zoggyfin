@@ -4,6 +4,11 @@ Each section is the notes of one release. `pnpm desktop:publish` puts the sectio
 version into `latest.json` (the update card shows it) and into the GitHub release.
 Write one short line per item.
 
+## 0.1.19 (2026-11-27)
+
+- Remote control: a phone signed in to the same account can play, pause, seek, skip, mute and set the volume of the Mac app (Play on… and the Remote screen)
+- Mini player: a heart to like the playing song
+
 ## 0.1.18 (2026-11-25)
 
 - Volume: a slider in the music player and the video player, saved between starts; click the speaker to mute
